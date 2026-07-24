@@ -14,15 +14,6 @@ import { IVaultEngine } from "./IVaultEngine.sol";
 interface ICollateralJoin {
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when an account is granted authorization.
-    event Rely(address indexed account);
-
-    /// @notice Emitted when an account has its authorization revoked.
-    event Deny(address indexed account);
-
-    /// @notice Emitted when the adapter stops accepting deposits.
-    event Cage();
-
     /// @notice Emitted when tokens are deposited into the system.
     event Join(address indexed user, uint256 amount);
 
@@ -47,30 +38,13 @@ interface ICollateralJoin {
      * @notice Returns the collateral token held in custody.
      * @return The collateral token.
      */
-    function gem() external view returns (IERC20Metadata);
+    function collateralToken() external view returns (IERC20Metadata);
 
     /**
      * @notice Returns the decimals of the collateral token.
      * @return The token decimals.
      */
     function dec() external view returns (uint256);
-
-    /**
-     * @notice Grants authorization to an account.
-     * @param account Address to authorize.
-     */
-    function rely(address account) external;
-
-    /**
-     * @notice Revokes authorization from an account.
-     * @param account Address to deauthorize.
-     */
-    function deny(address account) external;
-
-    /**
-     * @notice Stops accepting new deposits while still allowing withdrawals.
-     */
-    function cage() external;
 
     /**
      * @notice Brings a token into the system so it can be used as collateral.

@@ -10,12 +10,6 @@ pragma solidity 0.8.30;
 interface IReserveAccounting {
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when an account is granted authorization.
-    event Rely(address indexed account);
-
-    /// @notice Emitted when an account has its authorization revoked.
-    event Deny(address indexed account);
-
     /// @notice Emitted when a recorder is added.
     event AddRecorder(address indexed account);
 
@@ -50,18 +44,6 @@ interface IReserveAccounting {
      * @return The settlement escrow [wad].
      */
     function committedEscrow() external view returns (uint256);
-
-    /**
-     * @notice Grants authorization to an account.
-     * @param account Address to authorize.
-     */
-    function rely(address account) external;
-
-    /**
-     * @notice Revokes authorization from an account.
-     * @param account Address to deauthorize.
-     */
-    function deny(address account) external;
 
     /**
      * @notice Allows a contract (a Peg Stability Module) to record reserve movements.

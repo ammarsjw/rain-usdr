@@ -3,7 +3,7 @@
 pragma solidity 0.8.30;
 
 /**
- * @dev Indicates a failure with the caller's authorization. For example, missing the wards mapping.
+ * @dev Indicates a failure with the caller's authorization. For example, missing a required role.
  */
 error NotAuthorized();
 

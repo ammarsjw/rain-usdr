@@ -4,7 +4,9 @@ pragma solidity 0.8.30;
 
 import { IBalanceSheet } from "../interfaces/IBalanceSheet.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { NotAuthorized, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Auth } from "../shared/Auth.sol";
+import { WARD_ROLE } from "../shared/Constants.sol";
+import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -17,11 +19,8 @@ import { _revert } from "../shared/Globals.sol";
  *      for surplus and a controlled backstop for bad debt instead. The strict "fill before burn"
  *      rule is enforced in `distributeSurplus`.
  */
-contract BalanceSheet is IBalanceSheet {
+contract BalanceSheet is IBalanceSheet, Auth {
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized accounts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
 
     /// @notice The Vault Engine (core ledger).
     IVaultEngine public immutable vaultEngine;
@@ -32,16 +31,6 @@ contract BalanceSheet is IBalanceSheet {
     /// @notice The surplus buffer target [rad]. 10% of reserves with a $500,000 floor at launch.
     uint256 public hump;
 
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized accounts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
@@ -49,10 +38,9 @@ contract BalanceSheet is IBalanceSheet {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
-        wards[msg.sender] = 1;
         vaultEngine = vaultEngine_;
 
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */
@@ -60,25 +48,7 @@ contract BalanceSheet is IBalanceSheet {
     /**
      * @inheritdoc IBalanceSheet
      */
-    function rely(address account) external auth {
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc IBalanceSheet
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc IBalanceSheet
-     */
-    function file(bytes32 what, uint256 data) external auth {
+    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (what == "hump") {
             hump = data;
         } else {
@@ -91,7 +61,7 @@ contract BalanceSheet is IBalanceSheet {
     /**
      * @inheritdoc IBalanceSheet
      */
-    function file(bytes32 what, address data) external auth {
+    function file(bytes32 what, address data) external onlyRole(WARD_ROLE) {
         if (what == "buybackReceiver") {
             buybackReceiver = data;
         } else {
@@ -106,7 +76,7 @@ contract BalanceSheet is IBalanceSheet {
     /**
      * @inheritdoc IBalanceSheet
      */
-    function fess(uint256 tab) external auth {
+    function fess(uint256 tab) external onlyRole(WARD_ROLE) {
         emit Fess({ tab: tab });
     }
 
@@ -125,7 +95,7 @@ contract BalanceSheet is IBalanceSheet {
     /**
      * @inheritdoc IBalanceSheet
      */
-    function suck(address kpr, uint256 rad) external auth {
+    function suck(address kpr, uint256 rad) external onlyRole(WARD_ROLE) {
         // Creating the reward as a small piece of bad debt, to be covered later from surplus.
         vaultEngine.suck(address(this), kpr, rad);
 

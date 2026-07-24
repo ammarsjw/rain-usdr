@@ -7,8 +7,9 @@ import { ICircuitBreaker } from "../interfaces/ICircuitBreaker.sol";
 import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
 import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { RAD, RAY, WAD } from "../shared/Constants.sol";
-import { NotAuthorized, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Auth } from "../shared/Auth.sol";
+import { WAD, WARD_ROLE } from "../shared/Constants.sol";
+import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -20,7 +21,7 @@ import { _revert } from "../shared/Globals.sol";
  * @dev Based on MakerDAO's Dog. Adds a circuit breaker check: when the breaker is active, the
  *      rate of new liquidations is throttled to a fraction of normal.
  */
-contract LiquidationTrigger is ILiquidationTrigger {
+contract LiquidationTrigger is ILiquidationTrigger, Auth {
     /* ========================== TYPES ========================== */
 
     /**
@@ -38,9 +39,6 @@ contract LiquidationTrigger is ILiquidationTrigger {
     }
 
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized accounts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
 
     /// @notice Liquidation settings per collateral type.
     mapping(bytes32 ilkId => IlkLiquidation liquidation) public ilks;
@@ -66,16 +64,6 @@ contract LiquidationTrigger is ILiquidationTrigger {
     /// @notice Liveness flag. `1` while live, `0` after shutdown.
     uint256 public live;
 
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized accounts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
@@ -83,12 +71,11 @@ contract LiquidationTrigger is ILiquidationTrigger {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
-        wards[msg.sender] = 1;
         vaultEngine = vaultEngine_;
         throttle = WAD / 5;
         live = 1;
 
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */
@@ -96,25 +83,7 @@ contract LiquidationTrigger is ILiquidationTrigger {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function rely(address account) external auth {
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc ILiquidationTrigger
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc ILiquidationTrigger
-     */
-    function file(bytes32 what, uint256 data) external auth {
+    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (what == "Hole") {
             Hole = data;
         } else if (what == "throttle") {
@@ -129,7 +98,7 @@ contract LiquidationTrigger is ILiquidationTrigger {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function file(bytes32 what, address data) external auth {
+    function file(bytes32 what, address data) external onlyRole(WARD_ROLE) {
         if (what == "balanceSheet") {
             balanceSheet = IBalanceSheet(data);
         } else if (what == "circuitBreaker") {
@@ -144,7 +113,7 @@ contract LiquidationTrigger is ILiquidationTrigger {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function file(bytes32 ilkId, bytes32 what, uint256 data) external auth {
+    function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (what == "chop") {
             require(data >= WAD, "LiquidationTrigger/chop-below-one");
 
@@ -161,7 +130,7 @@ contract LiquidationTrigger is ILiquidationTrigger {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function file(bytes32 ilkId, bytes32 what, address clip_) external auth {
+    function file(bytes32 ilkId, bytes32 what, address clip_) external onlyRole(WARD_ROLE) {
         if (what == "clip") {
             ilks[ilkId].clip = clip_;
         } else {
@@ -174,7 +143,7 @@ contract LiquidationTrigger is ILiquidationTrigger {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function cage() external auth {
+    function cage() external onlyRole(WARD_ROLE) {
         live = 0;
 
         emit Cage();
@@ -222,7 +191,7 @@ contract LiquidationTrigger is ILiquidationTrigger {
             }
 
             // uint256.max()/(RAD*WAD) = 115,792,089,237,316
-            dart = _min(art, (room / rate) * WAD / milk.chop);
+            dart = _min(art, ((room / rate) * WAD) / milk.chop);
 
             // Partial liquidation edge case logic.
             if (art > dart) {
@@ -263,7 +232,7 @@ contract LiquidationTrigger is ILiquidationTrigger {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function digs(bytes32 ilkId, uint256 rad) external auth {
+    function digs(bytes32 ilkId, uint256 rad) external onlyRole(WARD_ROLE) {
         Dirt -= rad;
         ilks[ilkId].dirt -= rad;
 

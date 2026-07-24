@@ -38,12 +38,6 @@ interface IVaultEngine {
 
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when an account is granted authorization.
-    event Rely(address indexed account);
-
-    /// @notice Emitted when an account has its authorization revoked.
-    event Deny(address indexed account);
-
     /// @notice Emitted when an owner permits an operator to manage its positions.
     event Hope(address indexed owner, address indexed operator);
 
@@ -113,7 +107,7 @@ interface IVaultEngine {
      * @param user Account being queried.
      * @return The free collateral balance [wad].
      */
-    function gem(bytes32 ilkId, address user) external view returns (uint256);
+    function collateral(bytes32 ilkId, address user) external view returns (uint256);
 
     /**
      * @notice Returns a user's internal USDR balance.
@@ -128,18 +122,6 @@ interface IVaultEngine {
      * @return The bad debt balance [rad].
      */
     function sin(address debtSink) external view returns (uint256);
-
-    /**
-     * @notice Grants authorization to a system contract.
-     * @param account Address to authorize.
-     */
-    function rely(address account) external;
-
-    /**
-     * @notice Revokes authorization from a system contract.
-     * @param account Address to deauthorize.
-     */
-    function deny(address account) external;
 
     /**
      * @notice Permits an operator to manage the caller's positions.

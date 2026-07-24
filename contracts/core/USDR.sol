@@ -6,7 +6,9 @@ import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { ERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 
 import { IUSDR } from "../interfaces/IUSDR.sol";
-import { InvalidAddress, InvalidAmount, NotAuthorized } from "../shared/Errors.sol";
+import { Auth } from "../shared/Auth.sol";
+import { WARD_ROLE } from "../shared/Constants.sol";
+import { InvalidAddress, InvalidAmount } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -15,24 +17,10 @@ import { _revert } from "../shared/Globals.sol";
  * @notice The Rain Dollar stablecoin. A standard, transferable digital dollar that can only be
  *         minted or burned by authorized system contracts (the Vault Engine adapter and the
  *         Peg Stability Module). No administrator can create USDR out of nothing.
- * @dev Based on MakerDAO's Dai token. Uses the `rely`/`deny` wards pattern for minter authorization.
+ * @dev Based on MakerDAO's Dai token. Minter authorization is governed by the `WARD_ROLE` of the
+ *      shared AccessControl-based Auth base.
  */
-contract USDR is IUSDR, ERC20, ERC20Permit {
-    /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized minters. `wards[account] == 1` grants mint and burn rights.
-    mapping(address account => uint256 authorization) public wards;
-
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized minters.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
+contract USDR is IUSDR, ERC20, ERC20Permit, Auth {
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
@@ -40,9 +28,7 @@ contract USDR is IUSDR, ERC20, ERC20Permit {
      *         to the Vault Engine adapter and the Peg Stability Module during deployment.
      */
     constructor() ERC20("Rain Dollar", "USDR") ERC20Permit("Rain Dollar") {
-        wards[msg.sender] = 1;
-
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== FUNCTIONS ========================== */
@@ -50,29 +36,7 @@ contract USDR is IUSDR, ERC20, ERC20Permit {
     /**
      * @inheritdoc IUSDR
      */
-    function rely(address account) external auth {
-        if (account == address(0)) {
-            _revert(InvalidAddress.selector);
-        }
-
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc IUSDR
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc IUSDR
-     */
-    function mint(address to, uint256 amount) external auth {
+    function mint(address to, uint256 amount) external onlyRole(WARD_ROLE) {
         if (to == address(0)) {
             _revert(InvalidAddress.selector);
         }
@@ -87,7 +51,7 @@ contract USDR is IUSDR, ERC20, ERC20Permit {
      * @inheritdoc IUSDR
      */
     function burn(address from, uint256 amount) external {
-        if (from != msg.sender && wards[msg.sender] != 1) {
+        if (from != msg.sender && !hasRole(WARD_ROLE, msg.sender)) {
             _spendAllowance(from, msg.sender, amount);
         }
 

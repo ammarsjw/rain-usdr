@@ -10,12 +10,6 @@ pragma solidity 0.8.30;
 interface IDutchAuction {
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when an account is granted authorization.
-    event Rely(address indexed account);
-
-    /// @notice Emitted when an account has its authorization revoked.
-    event Deny(address indexed account);
-
     /// @notice Emitted when a numeric parameter is updated.
     event File(bytes32 indexed what, uint256 data);
 
@@ -23,30 +17,42 @@ interface IDutchAuction {
     event File(bytes32 indexed what, address addr);
 
     /// @notice Emitted when a new auction opens.
-    event Kick(uint256 indexed id, uint256 top, uint256 tab, uint256 lot, address indexed usr, address indexed kpr, uint256 coin);
+    event Kick(
+        uint256 indexed id,
+        uint256 top,
+        uint256 tab,
+        uint256 lot,
+        address indexed usr,
+        address indexed kpr,
+        uint256 coin
+    );
 
     /// @notice Emitted when a keeper buys from an auction.
-    event Take(uint256 indexed id, uint256 max, uint256 price, uint256 owe, uint256 tab, uint256 lot, address indexed usr);
+    event Take(
+        uint256 indexed id,
+        uint256 max,
+        uint256 price,
+        uint256 owe,
+        uint256 tab,
+        uint256 lot,
+        address indexed usr
+    );
 
     /// @notice Emitted when a stale auction is reset.
-    event Redo(uint256 indexed id, uint256 top, uint256 tab, uint256 lot, address indexed usr, address indexed kpr, uint256 coin);
+    event Redo(
+        uint256 indexed id,
+        uint256 top,
+        uint256 tab,
+        uint256 lot,
+        address indexed usr,
+        address indexed kpr,
+        uint256 coin
+    );
 
     /// @notice Emitted when an auction is forcibly ended.
     event Yank(uint256 indexed id);
 
     /* ========================== FUNCTIONS ========================== */
-
-    /**
-     * @notice Grants authorization to an account.
-     * @param account Address to authorize.
-     */
-    function rely(address account) external;
-
-    /**
-     * @notice Revokes authorization from an account.
-     * @param account Address to deauthorize.
-     */
-    function deny(address account) external;
 
     /**
      * @notice Adjusts an auction parameter: "buf" (start markup), "tail" (reset time),

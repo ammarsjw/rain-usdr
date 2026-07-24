@@ -10,12 +10,6 @@ pragma solidity 0.8.30;
 interface IPriceConverter {
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when an account is granted authorization.
-    event Rely(address indexed account);
-
-    /// @notice Emitted when an account has its authorization revoked.
-    event Deny(address indexed account);
-
     /// @notice Emitted when a collateral type's oracle is assigned.
     event File(bytes32 indexed ilkId, bytes32 indexed what, address pip);
 
@@ -32,18 +26,6 @@ interface IPriceConverter {
     event Poke(bytes32 indexed ilkId, bytes32 val, uint256 spot);
 
     /* ========================== FUNCTIONS ========================== */
-
-    /**
-     * @notice Grants authorization to an account.
-     * @param account Address to authorize.
-     */
-    function rely(address account) external;
-
-    /**
-     * @notice Revokes authorization from an account.
-     * @param account Address to deauthorize.
-     */
-    function deny(address account) external;
 
     /**
      * @notice Assigns which oracle a collateral type reads from.

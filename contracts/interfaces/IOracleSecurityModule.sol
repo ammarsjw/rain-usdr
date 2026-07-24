@@ -12,12 +12,6 @@ import { IPriceSource } from "./IPriceSource.sol";
 interface IOracleSecurityModule {
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when an account is granted authorization.
-    event Rely(address indexed account);
-
-    /// @notice Emitted when an account has its authorization revoked.
-    event Deny(address indexed account);
-
     /// @notice Emitted when price updates are frozen.
     event Stop();
 
@@ -40,18 +34,6 @@ interface IOracleSecurityModule {
     event Poke(uint128 current, uint128 next);
 
     /* ========================== FUNCTIONS ========================== */
-
-    /**
-     * @notice Grants authorization to an account.
-     * @param account Address to authorize.
-     */
-    function rely(address account) external;
-
-    /**
-     * @notice Revokes authorization from an account.
-     * @param account Address to deauthorize.
-     */
-    function deny(address account) external;
 
     /**
      * @notice Freezes price updates.

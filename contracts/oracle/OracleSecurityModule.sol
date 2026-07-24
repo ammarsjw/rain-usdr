@@ -4,7 +4,9 @@ pragma solidity 0.8.30;
 
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceSource } from "../interfaces/IPriceSource.sol";
-import { InvalidAddress, NotAuthorized, NotLive } from "../shared/Errors.sol";
+import { Auth } from "../shared/Auth.sol";
+import { READER_ROLE, WARD_ROLE } from "../shared/Constants.sol";
+import { InvalidAddress, NotLive } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -17,7 +19,7 @@ import { _revert } from "../shared/Globals.sol";
  * @dev Based on MakerDAO's OSM. The price source is switchable by governance (e.g. from a
  *      Uniswap time-weighted average to a Chainlink feed) without any other contract changing.
  */
-contract OracleSecurityModule is IOracleSecurityModule {
+contract OracleSecurityModule is IOracleSecurityModule, Auth {
     /* ========================== TYPES ========================== */
 
     /// @dev A stored price and its validity flag.
@@ -27,12 +29,6 @@ contract OracleSecurityModule is IOracleSecurityModule {
     }
 
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized accounts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
-
-    /// @notice Whitelisted readers. `bud[account] == 1` grants price read access.
-    mapping(address account => uint256 permission) public bud;
 
     /// @notice The raw price source being read.
     IPriceSource public src;
@@ -52,24 +48,6 @@ contract OracleSecurityModule is IOracleSecurityModule {
     /// @dev The next price, which becomes current after the delay.
     Feed internal nxt;
 
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized accounts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
-    /// @dev Restricts a function to whitelisted readers.
-    modifier toll() {
-        if (bud[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
@@ -77,10 +55,9 @@ contract OracleSecurityModule is IOracleSecurityModule {
      * @param src_ Address of the raw price source.
      */
     constructor(IPriceSource src_) {
-        wards[msg.sender] = 1;
         src = src_;
 
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */
@@ -88,25 +65,7 @@ contract OracleSecurityModule is IOracleSecurityModule {
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function rely(address account) external auth {
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc IOracleSecurityModule
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc IOracleSecurityModule
-     */
-    function stop() external auth {
+    function stop() external onlyRole(WARD_ROLE) {
         stopped = 1;
 
         emit Stop();
@@ -115,7 +74,7 @@ contract OracleSecurityModule is IOracleSecurityModule {
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function start() external auth {
+    function start() external onlyRole(WARD_ROLE) {
         stopped = 0;
 
         emit Start();
@@ -124,7 +83,7 @@ contract OracleSecurityModule is IOracleSecurityModule {
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function void() external auth {
+    function void() external onlyRole(WARD_ROLE) {
         cur = nxt = Feed(0, 0);
         stopped = 1;
 
@@ -134,7 +93,7 @@ contract OracleSecurityModule is IOracleSecurityModule {
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function change(IPriceSource src_) external auth {
+    function change(IPriceSource src_) external onlyRole(WARD_ROLE) {
         if (address(src_) == address(0)) {
             _revert(InvalidAddress.selector);
         }
@@ -147,12 +106,12 @@ contract OracleSecurityModule is IOracleSecurityModule {
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function kiss(address account) external auth {
+    function kiss(address account) external onlyRole(WARD_ROLE) {
         if (account == address(0)) {
             _revert(InvalidAddress.selector);
         }
 
-        bud[account] = 1;
+        _grantRole(READER_ROLE, account);
 
         emit Kiss({ account: account });
     }
@@ -160,8 +119,8 @@ contract OracleSecurityModule is IOracleSecurityModule {
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function diss(address account) external auth {
-        bud[account] = 0;
+    function diss(address account) external onlyRole(WARD_ROLE) {
+        _revokeRole(READER_ROLE, account);
 
         emit Diss({ account: account });
     }
@@ -200,21 +159,21 @@ contract OracleSecurityModule is IOracleSecurityModule {
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function peek() external view toll returns (bytes32, bool) {
+    function peek() external view onlyRole(READER_ROLE) returns (bytes32, bool) {
         return (bytes32(uint256(cur.val)), cur.has == 1);
     }
 
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function peep() external view toll returns (bytes32, bool) {
+    function peep() external view onlyRole(READER_ROLE) returns (bytes32, bool) {
         return (bytes32(uint256(nxt.val)), nxt.has == 1);
     }
 
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function read() external view toll returns (bytes32) {
+    function read() external view onlyRole(READER_ROLE) returns (bytes32) {
         require(cur.has == 1, "OracleSecurityModule/no-current-value");
 
         return bytes32(uint256(cur.val));

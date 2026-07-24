@@ -3,6 +3,8 @@
 pragma solidity 0.8.30;
 
 import { IGovernor } from "../interfaces/IGovernor.sol";
+import { Auth } from "../shared/Auth.sol";
+import { WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, NotAuthorized, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -16,7 +18,7 @@ import { _revert } from "../shared/Globals.sol";
  * @dev Based on MakerDAO's Spell and Pause. The pause auto-expires after 72 hours and its scope
  *      is fixed at the moment of pausing.
  */
-contract Governor is IGovernor {
+contract Governor is IGovernor, Auth {
     /* ========================== TYPES ========================== */
 
     /**
@@ -36,9 +38,6 @@ contract Governor is IGovernor {
     }
 
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized governance accounts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
 
     /// @notice Scheduled changes, keyed by id.
     mapping(uint256 changeId => Change change) public changes;
@@ -61,16 +60,6 @@ contract Governor is IGovernor {
     /// @notice Change id counter.
     uint256 public changeCount;
 
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized governance accounts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
@@ -78,10 +67,9 @@ contract Governor is IGovernor {
      * @param delay_ The mandatory delay in seconds.
      */
     constructor(uint256 delay_) {
-        wards[msg.sender] = 1;
         delay = delay_;
 
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */
@@ -89,25 +77,7 @@ contract Governor is IGovernor {
     /**
      * @inheritdoc IGovernor
      */
-    function rely(address account) external auth {
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc IGovernor
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc IGovernor
-     */
-    function file(bytes32 what, uint256 data) external auth {
+    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (what == "delay") {
             delay = data;
         } else {
@@ -122,7 +92,7 @@ contract Governor is IGovernor {
     /**
      * @inheritdoc IGovernor
      */
-    function schedule(address target, bytes calldata data) external auth returns (uint256 id) {
+    function schedule(address target, bytes calldata data) external onlyRole(WARD_ROLE) returns (uint256 id) {
         if (target == address(0)) {
             _revert(InvalidAddress.selector);
         }
@@ -169,7 +139,7 @@ contract Governor is IGovernor {
     /**
      * @inheritdoc IGovernor
      */
-    function cancel(uint256 id) external auth {
+    function cancel(uint256 id) external onlyRole(WARD_ROLE) {
         Change storage change = changes[id];
 
         require(change.target != address(0), "Governor/not-scheduled");
@@ -183,7 +153,7 @@ contract Governor is IGovernor {
     /**
      * @inheritdoc IGovernor
      */
-    function pause(bytes32 scope) external auth {
+    function pause(bytes32 scope) external onlyRole(WARD_ROLE) {
         // The system must not already be paused.
         require(!paused, "Governor/already-paused");
 
@@ -204,7 +174,7 @@ contract Governor is IGovernor {
         // Once 72 hours have passed since the pause began, anyone can lift it — no governance
         // action required. Before that, only governance can lift it early.
         if (block.timestamp < pausedAt + PAUSE_MAX) {
-            if (wards[msg.sender] != 1) {
+            if (!hasRole(WARD_ROLE, msg.sender)) {
                 _revert(NotAuthorized.selector);
             }
         }

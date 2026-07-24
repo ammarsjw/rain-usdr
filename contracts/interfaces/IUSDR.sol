@@ -10,36 +10,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * @notice Interface for the Rain Dollar stablecoin.
  */
 interface IUSDR is IERC20 {
-    /* ========================== EVENTS ========================== */
-
-    /**
-     * @notice Emitted when an account is granted minting rights.
-     * @param account Address that gained authorization.
-     */
-    event Rely(address indexed account);
-
-    /**
-     * @notice Emitted when an account has its minting rights revoked.
-     * @param account Address that lost authorization.
-     */
-    event Deny(address indexed account);
-
     /* ========================== FUNCTIONS ========================== */
-
-    /**
-     * @notice Grants minting and burning rights to an account.
-     * @dev Only callable by an existing authorized address. In practice this is set once at
-     *      deployment (Vault Engine adapter and Peg Stability Module) and never touched again.
-     * @param account Address to authorize.
-     */
-    function rely(address account) external;
-
-    /**
-     * @notice Revokes minting and burning rights from an account.
-     * @dev Only callable by an existing authorized address.
-     * @param account Address to deauthorize.
-     */
-    function deny(address account) external;
 
     /**
      * @notice Creates new USDR and gives it to a specified wallet.

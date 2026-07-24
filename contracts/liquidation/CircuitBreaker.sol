@@ -4,8 +4,9 @@ pragma solidity 0.8.30;
 
 import { ICircuitBreaker } from "../interfaces/ICircuitBreaker.sol";
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
-import { WAD } from "../shared/Constants.sol";
-import { NotAuthorized, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Auth } from "../shared/Auth.sol";
+import { WAD, WARD_ROLE } from "../shared/Constants.sol";
+import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -19,11 +20,8 @@ import { _revert } from "../shared/Globals.sol";
  *      from the one-hour trend; deactivates after the deviation stays below the threshold for
  *      the required number of consecutive calm blocks (3).
  */
-contract CircuitBreaker is ICircuitBreaker {
+contract CircuitBreaker is ICircuitBreaker, Auth {
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized accounts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
 
     /// @notice The Oracle Security Module being watched.
     IOracleSecurityModule public immutable pip;
@@ -52,16 +50,6 @@ contract CircuitBreaker is ICircuitBreaker {
     /// @notice Trend window in seconds (one hour).
     uint256 public constant TREND_WINDOW = 3600;
 
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized accounts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
@@ -69,12 +57,11 @@ contract CircuitBreaker is ICircuitBreaker {
      * @param pip_ Address of the Oracle Security Module to watch.
      */
     constructor(IOracleSecurityModule pip_) {
-        wards[msg.sender] = 1;
         pip = pip_;
         threshold = WAD / 4;
         calmBlocks = 3;
 
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */
@@ -82,25 +69,7 @@ contract CircuitBreaker is ICircuitBreaker {
     /**
      * @inheritdoc ICircuitBreaker
      */
-    function rely(address account) external auth {
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc ICircuitBreaker
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc ICircuitBreaker
-     */
-    function file(bytes32 what, uint256 data) external auth {
+    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (what == "threshold") {
             threshold = data;
         } else if (what == "calmBlocks") {

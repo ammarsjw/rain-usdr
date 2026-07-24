@@ -5,8 +5,9 @@ pragma solidity 0.8.30;
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IUsdrJoin } from "../interfaces/IUsdrJoin.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
+import { AdapterBase } from "./AdapterBase.sol";
 import { RAY } from "../shared/Constants.sol";
-import { NotAuthorized, NotLive } from "../shared/Errors.sol";
+import { NotLive } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -15,31 +16,18 @@ import { _revert } from "../shared/Globals.sol";
  * @notice The adapter for the USDR token itself — moves USDR between the transferable ERC-20
  *         form and the system's internal accounting.
  * @dev Based on MakerDAO's DaiJoin. Internal balances use 45 decimals (rad); the token uses 18.
+ *      Shares its authorization and liveness machinery with the collateral adapter through
+ *      {AdapterBase}. Unlike the collateral adapter, this contract mints and burns USDR, so only
+ *      this single instance is ever granted USDR mint authority.
  */
-contract UsdrJoin is IUsdrJoin {
+contract UsdrJoin is IUsdrJoin, AdapterBase {
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized accounts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
 
     /// @notice The Vault Engine (core ledger).
     IVaultEngine public immutable vaultEngine;
 
     /// @notice The USDR token.
     IUSDR public immutable usdr;
-
-    /// @notice Adapter liveness flag. `1` while live, `0` after shutdown.
-    uint256 public live;
-
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized accounts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
 
     /* ========================== CONSTRUCTOR ========================== */
 
@@ -49,42 +37,13 @@ contract UsdrJoin is IUsdrJoin {
      * @param usdr_ Address of the USDR token.
      */
     constructor(IVaultEngine vaultEngine_, IUSDR usdr_) {
-        wards[msg.sender] = 1;
-        live = 1;
         vaultEngine = vaultEngine_;
         usdr = usdr_;
 
-        emit Rely({ account: msg.sender });
+        _initAdapter();
     }
 
     /* ========================== FUNCTIONS ========================== */
-
-    /**
-     * @inheritdoc IUsdrJoin
-     */
-    function rely(address account) external auth {
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc IUsdrJoin
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc IUsdrJoin
-     */
-    function cage() external auth {
-        live = 0;
-
-        emit Cage();
-    }
 
     /**
      * @inheritdoc IUsdrJoin

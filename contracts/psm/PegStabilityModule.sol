@@ -11,8 +11,9 @@ import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { IUsdrJoin } from "../interfaces/IUsdrJoin.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { RAY, WAD } from "../shared/Constants.sol";
-import { InvalidAmount, NotAuthorized, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Auth } from "../shared/Auth.sol";
+import { WAD, WARD_ROLE } from "../shared/Constants.sol";
+import { InvalidAmount, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -26,22 +27,19 @@ import { _revert } from "../shared/Globals.sol";
  *      reserve is shared: guaranteed obligations always take priority, so redemption reverts
  *      when free slack is too low. This keeps the protocol from promising the same dollar twice.
  */
-contract PegStabilityModule is IPegStabilityModule {
+contract PegStabilityModule is IPegStabilityModule, Auth {
     using SafeERC20 for IERC20Metadata;
 
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized accounts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
 
     /// @notice The Vault Engine (core ledger).
     IVaultEngine public immutable vaultEngine;
 
     /// @notice The collateral adapter for the stablecoin.
-    ICollateralJoin public immutable gemJoin;
+    ICollateralJoin public immutable collateralJoin;
 
     /// @notice The stablecoin (USDT or USDC).
-    IERC20Metadata public immutable gem;
+    IERC20Metadata public immutable stableToken;
 
     /// @notice The USDR token adapter.
     IUsdrJoin public immutable usdrJoin;
@@ -64,38 +62,27 @@ contract PegStabilityModule is IPegStabilityModule {
     /// @notice Redeem fee [wad]. Zero at launch.
     uint256 public tout;
 
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized accounts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
      * @notice Initializes the module and grants the Vault Engine unlimited USDR movement rights.
-     * @param gemJoin_ Address of the stablecoin's collateral adapter.
+     * @param collateralJoin_ Address of the stablecoin's collateral adapter.
      * @param usdrJoin_ Address of the USDR token adapter.
      * @param reserveAccounting_ Address of the reserve accounting contract.
      */
-    constructor(ICollateralJoin gemJoin_, IUsdrJoin usdrJoin_, IReserveAccounting reserveAccounting_) {
-        wards[msg.sender] = 1;
-        gemJoin = gemJoin_;
+    constructor(ICollateralJoin collateralJoin_, IUsdrJoin usdrJoin_, IReserveAccounting reserveAccounting_) {
+        collateralJoin = collateralJoin_;
         usdrJoin = usdrJoin_;
         reserveAccounting = reserveAccounting_;
-        vaultEngine = IVaultEngine(address(gemJoin_.vaultEngine()));
-        gem = gemJoin_.gem();
+        vaultEngine = IVaultEngine(address(collateralJoin_.vaultEngine()));
+        stableToken = collateralJoin_.collateralToken();
         usdr = usdrJoin_.usdr();
-        ilkId = gemJoin_.ilkId();
-        to18ConversionFactor = 10 ** (18 - gemJoin_.dec());
+        ilkId = collateralJoin_.ilkId();
+        to18ConversionFactor = 10 ** (18 - collateralJoin_.dec());
 
         vaultEngine.hope(address(usdrJoin_));
 
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */
@@ -103,25 +90,7 @@ contract PegStabilityModule is IPegStabilityModule {
     /**
      * @inheritdoc IPegStabilityModule
      */
-    function rely(address account) external auth {
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc IPegStabilityModule
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc IPegStabilityModule
-     */
-    function file(bytes32 what, uint256 data) external auth {
+    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (what == "tin") {
             tin = data;
         } else if (what == "tout") {
@@ -138,54 +107,61 @@ contract PegStabilityModule is IPegStabilityModule {
     /**
      * @inheritdoc IPegStabilityModule
      */
-    function sellGem(address user, uint256 gemAmt) external {
-        if (gemAmt == 0) {
+    function sellStable(address user, uint256 stableAmt) external {
+        if (stableAmt == 0) {
             _revert(InvalidAmount.selector);
         }
 
-        uint256 gemAmt18 = gemAmt * to18ConversionFactor;
-        uint256 fee = (gemAmt18 * tin) / WAD;
-        uint256 usdrAmt = gemAmt18 - fee;
+        uint256 stableAmt18 = stableAmt * to18ConversionFactor;
+        uint256 fee = (stableAmt18 * tin) / WAD;
+        uint256 usdrAmt = stableAmt18 - fee;
 
         // Moving the stablecoins into the protocol's stable reserve. The ceiling check happens
         // inside the Vault Engine's frob.
-        gem.safeTransferFrom(msg.sender, address(this), gemAmt);
-        gem.forceApprove(address(gemJoin), gemAmt);
-        gemJoin.join(address(this), gemAmt);
-        vaultEngine.frob(ilkId, address(this), address(this), address(this), int256(gemAmt18), int256(gemAmt18));
+        stableToken.safeTransferFrom(msg.sender, address(this), stableAmt);
+        stableToken.forceApprove(address(collateralJoin), stableAmt);
+        collateralJoin.join(address(this), stableAmt);
+        vaultEngine.frob(ilkId, address(this), address(this), address(this), int256(stableAmt18), int256(stableAmt18));
         usdrJoin.exit(user, usdrAmt);
 
         // Registering the reserve increase.
-        reserveAccounting.recordIncrease(gemAmt18);
+        reserveAccounting.recordIncrease(stableAmt18);
 
-        emit SellGem({ user: user, gemAmt: gemAmt, usdrAmt: usdrAmt });
+        emit SellStable({ user: user, stableAmt: stableAmt, usdrAmt: usdrAmt });
     }
 
     /**
      * @inheritdoc IPegStabilityModule
      */
-    function buyGem(address user, uint256 gemAmt) external {
-        if (gemAmt == 0) {
+    function buyStable(address user, uint256 stableAmt) external {
+        if (stableAmt == 0) {
             _revert(InvalidAmount.selector);
         }
 
-        uint256 gemAmt18 = gemAmt * to18ConversionFactor;
-        uint256 fee = (gemAmt18 * tout) / WAD;
-        uint256 usdrAmt = gemAmt18 + fee;
+        uint256 stableAmt18 = stableAmt * to18ConversionFactor;
+        uint256 fee = (stableAmt18 * tout) / WAD;
+        uint256 usdrAmt = stableAmt18 + fee;
 
         // Free-slack check: redemption is best-effort, served only from the reserve minus the
         // amount committed to guaranteed obligations. If free slack is too low, revert — the
         // user must use the open market instead.
-        require(gemAmt18 <= reserveAccounting.freeSlack(), "PegStabilityModule/insufficient-free-slack");
+        require(stableAmt18 <= reserveAccounting.freeSlack(), "PegStabilityModule/insufficient-free-slack");
 
         usdr.transferFrom(msg.sender, address(this), usdrAmt);
         usdrJoin.join(address(this), usdrAmt);
-        vaultEngine.frob(ilkId, address(this), address(this), address(this), -int256(gemAmt18), -int256(gemAmt18));
-        gemJoin.exit(user, gemAmt);
+        vaultEngine.frob(
+            ilkId,
+            address(this),
+            address(this),
+            address(this),
+            -int256(stableAmt18),
+            -int256(stableAmt18)
+        );
+        collateralJoin.exit(user, stableAmt);
 
         // Registering the reserve decrease.
-        reserveAccounting.recordDecrease(gemAmt18);
+        reserveAccounting.recordDecrease(stableAmt18);
 
-        emit BuyGem({ user: user, gemAmt: gemAmt, usdrAmt: usdrAmt });
+        emit BuyStable({ user: user, stableAmt: stableAmt, usdrAmt: usdrAmt });
     }
 }

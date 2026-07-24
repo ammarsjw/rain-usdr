@@ -3,7 +3,9 @@
 pragma solidity 0.8.30;
 
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { NotAuthorized, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Auth } from "../shared/Auth.sol";
+import { WARD_ROLE } from "../shared/Constants.sol";
+import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -15,11 +17,8 @@ import { _revert } from "../shared/Globals.sol";
  * @dev Based on MakerDAO's Vat. USDR charges no stability fee, so each ilk's `rate` is initialized
  *      to `RAY` (1.0) and never changes. Internal USDR balances are tracked in `rad` (45 decimals).
  */
-contract VaultEngine is IVaultEngine {
+contract VaultEngine is IVaultEngine, Auth {
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized system contracts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
 
     /// @notice Vault management permissions. `can[owner][operator] == 1` lets `operator` manage `owner`'s positions.
     mapping(address owner => mapping(address operator => uint256 permission)) public can;
@@ -31,7 +30,7 @@ contract VaultEngine is IVaultEngine {
     mapping(bytes32 ilkId => mapping(address vaultOwner => Urn vault)) public urns;
 
     /// @notice Free (unlocked) collateral balances inside the system [wad].
-    mapping(bytes32 ilkId => mapping(address user => uint256 balance)) public gem;
+    mapping(bytes32 ilkId => mapping(address user => uint256 balance)) public collateral;
 
     /// @notice Internal USDR balances [rad].
     mapping(address user => uint256 balance) public usdr;
@@ -51,55 +50,18 @@ contract VaultEngine is IVaultEngine {
     /// @notice System liveness flag. `1` while live, `0` after shutdown.
     uint256 public live;
 
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized system contracts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
      * @notice Authorizes the deployer and marks the ledger live.
      */
     constructor() {
-        wards[msg.sender] = 1;
         live = 1;
 
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== AUTHORIZATION ========================== */
-
-    /**
-     * @inheritdoc IVaultEngine
-     */
-    function rely(address account) external auth {
-        if (live != 1) {
-            _revert(NotLive.selector);
-        }
-
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc IVaultEngine
-     */
-    function deny(address account) external auth {
-        if (live != 1) {
-            _revert(NotLive.selector);
-        }
-
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
 
     /**
      * @inheritdoc IVaultEngine
@@ -129,7 +91,7 @@ contract VaultEngine is IVaultEngine {
     /**
      * @inheritdoc IVaultEngine
      */
-    function init(bytes32 ilkId) external auth {
+    function init(bytes32 ilkId) external onlyRole(WARD_ROLE) {
         require(ilks[ilkId].rate == 0, "VaultEngine/ilk-already-init");
 
         ilks[ilkId].rate = 10 ** 27;
@@ -140,7 +102,7 @@ contract VaultEngine is IVaultEngine {
     /**
      * @inheritdoc IVaultEngine
      */
-    function file(bytes32 what, uint256 data) external auth {
+    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -157,7 +119,7 @@ contract VaultEngine is IVaultEngine {
     /**
      * @inheritdoc IVaultEngine
      */
-    function file(bytes32 ilkId, bytes32 what, uint256 data) external auth {
+    function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -178,7 +140,7 @@ contract VaultEngine is IVaultEngine {
     /**
      * @inheritdoc IVaultEngine
      */
-    function cage() external auth {
+    function cage() external onlyRole(WARD_ROLE) {
         live = 0;
 
         emit Cage();
@@ -189,8 +151,8 @@ contract VaultEngine is IVaultEngine {
     /**
      * @inheritdoc IVaultEngine
      */
-    function slip(bytes32 ilkId, address user, int256 wad) external auth {
-        gem[ilkId][user] = _add(gem[ilkId][user], wad);
+    function slip(bytes32 ilkId, address user, int256 wad) external onlyRole(WARD_ROLE) {
+        collateral[ilkId][user] = _add(collateral[ilkId][user], wad);
 
         emit Slip({ ilkId: ilkId, user: user, wad: wad });
     }
@@ -201,8 +163,8 @@ contract VaultEngine is IVaultEngine {
     function flux(bytes32 ilkId, address from, address to, uint256 wad) external {
         require(wish(from, msg.sender), "VaultEngine/not-allowed");
 
-        gem[ilkId][from] -= wad;
-        gem[ilkId][to] += wad;
+        collateral[ilkId][from] -= wad;
+        collateral[ilkId][to] += wad;
 
         emit Flux({ ilkId: ilkId, from: from, to: to, wad: wad });
     }
@@ -246,10 +208,7 @@ contract VaultEngine is IVaultEngine {
 
         // Ceiling check: either debt is being repaid, or both the ilk ceiling and the global
         // ceiling must hold after the change.
-        require(
-            dart <= 0 || (ilk.Art * ilk.rate <= ilk.line && debt <= Line),
-            "VaultEngine/ceiling-exceeded"
-        );
+        require(dart <= 0 || (ilk.Art * ilk.rate <= ilk.line && debt <= Line), "VaultEngine/ceiling-exceeded");
         // Safety check: the vault must be either safer than before, or safe after the change.
         // Uses the delayed oracle price factor already stored in the system.
         require(both(dart <= 0, dink >= 0) || tab <= urn.ink * ilk.spot, "VaultEngine/not-safe");
@@ -264,7 +223,7 @@ contract VaultEngine is IVaultEngine {
         // Minimum size check: a vault must either carry zero debt or at least the minimum size.
         require(urn.art == 0 || tab >= ilk.dust, "VaultEngine/dust");
 
-        gem[ilkId][v] = _sub(gem[ilkId][v], dink);
+        collateral[ilkId][v] = _sub(collateral[ilkId][v], dink);
         usdr[w] = _add(usdr[w], dtab);
 
         urns[ilkId][u] = urn;
@@ -278,7 +237,14 @@ contract VaultEngine is IVaultEngine {
     /**
      * @inheritdoc IVaultEngine
      */
-    function grab(bytes32 ilkId, address u, address v, address w, int256 dink, int256 dart) external auth {
+    function grab(
+        bytes32 ilkId,
+        address u,
+        address v,
+        address w,
+        int256 dink,
+        int256 dart
+    ) external onlyRole(WARD_ROLE) {
         Urn storage urn = urns[ilkId][u];
         Ilk storage ilk = ilks[ilkId];
 
@@ -288,7 +254,7 @@ contract VaultEngine is IVaultEngine {
 
         int256 dtab = _mul(ilk.rate, dart);
 
-        gem[ilkId][v] = _sub(gem[ilkId][v], dink);
+        collateral[ilkId][v] = _sub(collateral[ilkId][v], dink);
         sin[w] = _sub(sin[w], dtab);
         vice = _sub(vice, dtab);
 
@@ -312,7 +278,7 @@ contract VaultEngine is IVaultEngine {
     /**
      * @inheritdoc IVaultEngine
      */
-    function suck(address u, address v, uint256 rad) external auth {
+    function suck(address u, address v, uint256 rad) external onlyRole(WARD_ROLE) {
         sin[u] += rad;
         usdr[v] += rad;
         vice += rad;

@@ -10,12 +10,6 @@ pragma solidity 0.8.30;
 interface ILiquidationTrigger {
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when an account is granted authorization.
-    event Rely(address indexed account);
-
-    /// @notice Emitted when an account has its authorization revoked.
-    event Deny(address indexed account);
-
     /// @notice Emitted when a global numeric parameter is updated.
     event File(bytes32 indexed what, uint256 data);
 
@@ -32,24 +26,20 @@ interface ILiquidationTrigger {
     event Cage();
 
     /// @notice Emitted when an unsafe vault is liquidated.
-    event Bark(bytes32 indexed ilkId, address indexed urn, uint256 ink, uint256 art, uint256 due, address clip, uint256 id);
+    event Bark(
+        bytes32 indexed ilkId,
+        address indexed urn,
+        uint256 ink,
+        uint256 art,
+        uint256 due,
+        address clip,
+        uint256 id
+    );
 
     /// @notice Emitted when auction capacity is freed after an auction clears its debt.
     event Digs(bytes32 indexed ilkId, uint256 rad);
 
     /* ========================== FUNCTIONS ========================== */
-
-    /**
-     * @notice Grants authorization to an account.
-     * @param account Address to authorize.
-     */
-    function rely(address account) external;
-
-    /**
-     * @notice Revokes authorization from an account.
-     * @param account Address to deauthorize.
-     */
-    function deny(address account) external;
 
     /**
      * @notice Adjusts a global parameter: "Hole" (global cap) or "throttle".

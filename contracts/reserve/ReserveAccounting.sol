@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
-import { NotAuthorized } from "../shared/Errors.sol";
-import { _revert } from "../shared/Globals.sol";
+import { Auth } from "../shared/Auth.sol";
+import { COMMITTER_ROLE, RECORDER_ROLE, WARD_ROLE } from "../shared/Constants.sol";
 
 /**
  * @title ReserveAccounting.
@@ -16,17 +16,8 @@ import { _revert } from "../shared/Globals.sol";
  * @dev Custom to USDR. Only the Solvency Engine may update the committed escrow, and only the
  *      Peg Stability Modules may record reserve movements.
  */
-contract ReserveAccounting is IReserveAccounting {
+contract ReserveAccounting is IReserveAccounting, Auth {
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized accounts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
-
-    /// @notice Contracts allowed to record reserve movements (the Peg Stability Modules).
-    mapping(address account => uint256 permission) public recorders;
-
-    /// @notice Contracts allowed to update the committed escrow (the Solvency Engine).
-    mapping(address account => uint256 permission) public committers;
 
     /// @notice Total stable reserve (all USDT and USDC held) [wad].
     uint256 public totalReserve;
@@ -34,41 +25,13 @@ contract ReserveAccounting is IReserveAccounting {
     /// @notice Amount committed to guaranteed obligations (the settlement escrow) [wad].
     uint256 public committedEscrow;
 
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized accounts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
-    /// @dev Restricts a function to authorized recorders.
-    modifier onlyRecorder() {
-        if (recorders[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
-    /// @dev Restricts a function to authorized committers.
-    modifier onlyCommitter() {
-        if (committers[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
      * @notice Authorizes the deployer.
      */
     constructor() {
-        wards[msg.sender] = 1;
-
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */
@@ -76,26 +39,8 @@ contract ReserveAccounting is IReserveAccounting {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function rely(address account) external auth {
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc IReserveAccounting
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc IReserveAccounting
-     */
-    function addRecorder(address account) external auth {
-        recorders[account] = 1;
+    function addRecorder(address account) external onlyRole(WARD_ROLE) {
+        _grantRole(RECORDER_ROLE, account);
 
         emit AddRecorder({ account: account });
     }
@@ -103,8 +48,8 @@ contract ReserveAccounting is IReserveAccounting {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function removeRecorder(address account) external auth {
-        recorders[account] = 0;
+    function removeRecorder(address account) external onlyRole(WARD_ROLE) {
+        _revokeRole(RECORDER_ROLE, account);
 
         emit RemoveRecorder({ account: account });
     }
@@ -112,8 +57,8 @@ contract ReserveAccounting is IReserveAccounting {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function addCommitter(address account) external auth {
-        committers[account] = 1;
+    function addCommitter(address account) external onlyRole(WARD_ROLE) {
+        _grantRole(COMMITTER_ROLE, account);
 
         emit AddCommitter({ account: account });
     }
@@ -121,8 +66,8 @@ contract ReserveAccounting is IReserveAccounting {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function removeCommitter(address account) external auth {
-        committers[account] = 0;
+    function removeCommitter(address account) external onlyRole(WARD_ROLE) {
+        _revokeRole(COMMITTER_ROLE, account);
 
         emit RemoveCommitter({ account: account });
     }
@@ -132,7 +77,7 @@ contract ReserveAccounting is IReserveAccounting {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function recordIncrease(uint256 wad) external onlyRecorder {
+    function recordIncrease(uint256 wad) external onlyRole(RECORDER_ROLE) {
         totalReserve += wad;
 
         emit RecordIncrease({ wad: wad, totalReserve: totalReserve });
@@ -141,7 +86,7 @@ contract ReserveAccounting is IReserveAccounting {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function recordDecrease(uint256 wad) external onlyRecorder {
+    function recordDecrease(uint256 wad) external onlyRole(RECORDER_ROLE) {
         totalReserve -= wad;
 
         emit RecordDecrease({ wad: wad, totalReserve: totalReserve });
@@ -150,7 +95,7 @@ contract ReserveAccounting is IReserveAccounting {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function updateCommittedEscrow(uint256 wad) external onlyCommitter {
+    function updateCommittedEscrow(uint256 wad) external onlyRole(COMMITTER_ROLE) {
         // The committed amount must not exceed the total reserve — this is the solvency
         // guarantee expressed at the accounting level.
         require(wad <= totalReserve, "ReserveAccounting/escrow-exceeds-reserve");

@@ -6,8 +6,9 @@ import { IExternalExposure } from "../interfaces/IExternalExposure.sol";
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { RAY, WAD } from "../shared/Constants.sol";
-import { NotAuthorized, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Auth } from "../shared/Auth.sol";
+import { RAY, WAD, WARD_ROLE } from "../shared/Constants.sol";
+import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -20,11 +21,8 @@ import { _revert } from "../shared/Globals.sol";
  *      of normal liquidation market depth. Exposure reported by the prediction market layer is
  *      consumed as a number through a dedicated interface owned by the other team.
  */
-contract SolvencyEngine is ISolvencyEngine {
+contract SolvencyEngine is ISolvencyEngine, Auth {
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized accounts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
 
     /// @notice The Vault Engine (core ledger).
     IVaultEngine public immutable vaultEngine;
@@ -44,16 +42,6 @@ contract SolvencyEngine is ISolvencyEngine {
     /// @notice Assumed liquidation market depth under stress [wad]. 35% = 0.35 * WAD.
     uint256 public stressDepth;
 
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized accounts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
@@ -62,13 +50,12 @@ contract SolvencyEngine is ISolvencyEngine {
      * @param reserveAccounting_ Address of the reserve accounting contract.
      */
     constructor(IVaultEngine vaultEngine_, IReserveAccounting reserveAccounting_) {
-        wards[msg.sender] = 1;
         vaultEngine = vaultEngine_;
         reserveAccounting = reserveAccounting_;
         stressMarkdown = WAD / 2;
         stressDepth = (WAD * 35) / 100;
 
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */
@@ -76,25 +63,7 @@ contract SolvencyEngine is ISolvencyEngine {
     /**
      * @inheritdoc ISolvencyEngine
      */
-    function rely(address account) external auth {
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc ISolvencyEngine
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc ISolvencyEngine
-     */
-    function file(bytes32 what, uint256 data) external auth {
+    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (what == "stressMarkdown") {
             stressMarkdown = data;
         } else if (what == "stressDepth") {
@@ -109,7 +78,7 @@ contract SolvencyEngine is ISolvencyEngine {
     /**
      * @inheritdoc ISolvencyEngine
      */
-    function file(bytes32 what, address data) external auth {
+    function file(bytes32 what, address data) external onlyRole(WARD_ROLE) {
         if (what == "externalExposure") {
             externalExposure = IExternalExposure(data);
         } else {
@@ -122,7 +91,7 @@ contract SolvencyEngine is ISolvencyEngine {
     /**
      * @inheritdoc ISolvencyEngine
      */
-    function addVolatileIlk(bytes32 ilkId) external auth {
+    function addVolatileIlk(bytes32 ilkId) external onlyRole(WARD_ROLE) {
         volatileIlks.push(ilkId);
 
         emit AddVolatileIlk({ ilkId: ilkId });

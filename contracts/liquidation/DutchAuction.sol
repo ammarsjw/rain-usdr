@@ -2,15 +2,15 @@
 
 pragma solidity 0.8.30;
 
-import { IBalanceSheet } from "../interfaces/IBalanceSheet.sol";
 import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
 import { IDutchAuctionCallee } from "../interfaces/IDutchAuctionCallee.sol";
 import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceCurve } from "../interfaces/IPriceCurve.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { RAY, WAD } from "../shared/Constants.sol";
-import { NotAuthorized, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Auth } from "../shared/Auth.sol";
+import { RAY, WAD, WARD_ROLE } from "../shared/Constants.sol";
+import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -22,7 +22,7 @@ import { _revert } from "../shared/Globals.sol";
  *         keeper buys and resells in one transaction.
  * @dev Based on MakerDAO's Clipper (Liquidation 2.0). One instance per collateral type.
  */
-contract DutchAuction is IDutchAuction {
+contract DutchAuction is IDutchAuction, Auth {
     /* ========================== TYPES ========================== */
 
     /**
@@ -44,9 +44,6 @@ contract DutchAuction is IDutchAuction {
     }
 
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized accounts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
 
     /// @notice Live auctions, keyed by id.
     mapping(uint256 id => Sale sale) public sales;
@@ -95,14 +92,6 @@ contract DutchAuction is IDutchAuction {
 
     /* ========================== MODIFIERS ========================== */
 
-    /// @dev Restricts a function to authorized accounts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
     /// @dev Reentrancy guard.
     uint256 private locked;
 
@@ -122,13 +111,12 @@ contract DutchAuction is IDutchAuction {
      * @param ilkId_ Identifier of the collateral type.
      */
     constructor(IVaultEngine vaultEngine_, bytes32 ilkId_) {
-        wards[msg.sender] = 1;
         vaultEngine = vaultEngine_;
         ilkId = ilkId_;
         buf = RAY;
         live = 1;
 
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */
@@ -136,25 +124,7 @@ contract DutchAuction is IDutchAuction {
     /**
      * @inheritdoc IDutchAuction
      */
-    function rely(address account) external auth {
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc IDutchAuction
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc IDutchAuction
-     */
-    function file(bytes32 what, uint256 data) external auth {
+    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (what == "buf") {
             buf = data;
         } else if (what == "tail") {
@@ -175,7 +145,7 @@ contract DutchAuction is IDutchAuction {
     /**
      * @inheritdoc IDutchAuction
      */
-    function file(bytes32 what, address data) external auth {
+    function file(bytes32 what, address data) external onlyRole(WARD_ROLE) {
         if (what == "pip") {
             pip = IOracleSecurityModule(data);
         } else if (what == "dog") {
@@ -196,7 +166,12 @@ contract DutchAuction is IDutchAuction {
     /**
      * @inheritdoc IDutchAuction
      */
-    function kick(uint256 tab, uint256 lot, address usr, address kpr) external auth lock returns (uint256 id) {
+    function kick(
+        uint256 tab,
+        uint256 lot,
+        address usr,
+        address kpr
+    ) external onlyRole(WARD_ROLE) lock returns (uint256 id) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -351,7 +326,7 @@ contract DutchAuction is IDutchAuction {
     /**
      * @inheritdoc IDutchAuction
      */
-    function yank(uint256 id) external auth lock {
+    function yank(uint256 id) external onlyRole(WARD_ROLE) lock {
         require(sales[id].usr != address(0), "DutchAuction/not-running-auction");
 
         // The remaining debt goes back to the balance sheet and the remaining collateral

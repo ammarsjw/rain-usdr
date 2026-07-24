@@ -5,8 +5,9 @@ pragma solidity 0.8.30;
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceConverter } from "../interfaces/IPriceConverter.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { RAY } from "../shared/Constants.sol";
-import { NotAuthorized, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Auth } from "../shared/Auth.sol";
+import { RAY, WARD_ROLE } from "../shared/Constants.sol";
+import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -18,7 +19,7 @@ import { _revert } from "../shared/Globals.sol";
  *         is $0.25.
  * @dev Based on MakerDAO's Spot.
  */
-contract PriceConverter is IPriceConverter {
+contract PriceConverter is IPriceConverter, Auth {
     /* ========================== TYPES ========================== */
 
     /**
@@ -33,9 +34,6 @@ contract PriceConverter is IPriceConverter {
 
     /* ========================== STATE VARIABLES ========================== */
 
-    /// @notice Authorized accounts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
-
     /// @notice Oracle configuration per collateral type.
     mapping(bytes32 ilkId => IlkOracle oracle) public ilks;
 
@@ -48,16 +46,6 @@ contract PriceConverter is IPriceConverter {
     /// @notice Liveness flag. `1` while live, `0` after shutdown.
     uint256 public live;
 
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized accounts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
-
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
@@ -65,12 +53,11 @@ contract PriceConverter is IPriceConverter {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
-        wards[msg.sender] = 1;
         vaultEngine = vaultEngine_;
         par = RAY;
         live = 1;
 
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */
@@ -78,25 +65,7 @@ contract PriceConverter is IPriceConverter {
     /**
      * @inheritdoc IPriceConverter
      */
-    function rely(address account) external auth {
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc IPriceConverter
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc IPriceConverter
-     */
-    function file(bytes32 ilkId, bytes32 what, address pip_) external auth {
+    function file(bytes32 ilkId, bytes32 what, address pip_) external onlyRole(WARD_ROLE) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -113,7 +82,7 @@ contract PriceConverter is IPriceConverter {
     /**
      * @inheritdoc IPriceConverter
      */
-    function file(bytes32 what, uint256 data) external auth {
+    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -130,7 +99,7 @@ contract PriceConverter is IPriceConverter {
     /**
      * @inheritdoc IPriceConverter
      */
-    function file(bytes32 ilkId, bytes32 what, uint256 data) external auth {
+    function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -147,7 +116,7 @@ contract PriceConverter is IPriceConverter {
     /**
      * @inheritdoc IPriceConverter
      */
-    function cage() external auth {
+    function cage() external onlyRole(WARD_ROLE) {
         live = 0;
 
         emit Cage();
@@ -162,7 +131,7 @@ contract PriceConverter is IPriceConverter {
         (bytes32 val, bool has) = ilks[ilkId].pip.peek();
 
         // If the price is invalid, do nothing (the price factor stays untouched).
-        uint256 spot = has ? ((uint256(val) * (10 ** 9)) * RAY / par) * RAY / ilks[ilkId].mat : 0;
+        uint256 spot = has ? ((((uint256(val) * (10 ** 9)) * RAY) / par) * RAY) / ilks[ilkId].mat : 0;
 
         vaultEngine.file(ilkId, "spot", spot);
 

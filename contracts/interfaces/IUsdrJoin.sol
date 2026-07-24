@@ -13,15 +13,6 @@ import { IVaultEngine } from "./IVaultEngine.sol";
 interface IUsdrJoin {
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when an account is granted authorization.
-    event Rely(address indexed account);
-
-    /// @notice Emitted when an account has its authorization revoked.
-    event Deny(address indexed account);
-
-    /// @notice Emitted when the adapter is shut down.
-    event Cage();
-
     /// @notice Emitted when USDR tokens are converted into internal balance.
     event Join(address indexed user, uint256 wad);
 
@@ -41,23 +32,6 @@ interface IUsdrJoin {
      * @return The USDR token.
      */
     function usdr() external view returns (IUSDR);
-
-    /**
-     * @notice Grants authorization to an account.
-     * @param account Address to authorize.
-     */
-    function rely(address account) external;
-
-    /**
-     * @notice Revokes authorization from an account.
-     * @param account Address to deauthorize.
-     */
-    function deny(address account) external;
-
-    /**
-     * @notice Shuts the adapter down, blocking further exits.
-     */
-    function cage() external;
 
     /**
      * @notice Burns USDR tokens and credits the equivalent internal balance.

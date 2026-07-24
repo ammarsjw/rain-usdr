@@ -3,7 +3,9 @@
 pragma solidity 0.8.30;
 
 import { IPriceCurve } from "../interfaces/IPriceCurve.sol";
-import { NotAuthorized, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Auth } from "../shared/Auth.sol";
+import { WARD_ROLE } from "../shared/Constants.sol";
+import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -14,24 +16,11 @@ import { _revert } from "../shared/Globals.sol";
  *         decline: the price falls steadily from the start to zero over the auction's lifetime.
  * @dev Based on MakerDAO's LinearDecrease Abacus.
  */
-contract PriceCurve is IPriceCurve {
+contract PriceCurve is IPriceCurve, Auth {
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @notice Authorized accounts. `wards[account] == 1` grants authorization.
-    mapping(address account => uint256 authorization) public wards;
 
     /// @notice Auction lifetime in seconds — how long until the price reaches zero.
     uint256 public tau;
-
-    /* ========================== MODIFIERS ========================== */
-
-    /// @dev Restricts a function to authorized accounts.
-    modifier auth() {
-        if (wards[msg.sender] != 1) {
-            _revert(NotAuthorized.selector);
-        }
-        _;
-    }
 
     /* ========================== CONSTRUCTOR ========================== */
 
@@ -39,9 +28,7 @@ contract PriceCurve is IPriceCurve {
      * @notice Authorizes the deployer.
      */
     constructor() {
-        wards[msg.sender] = 1;
-
-        emit Rely({ account: msg.sender });
+        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */
@@ -49,25 +36,7 @@ contract PriceCurve is IPriceCurve {
     /**
      * @inheritdoc IPriceCurve
      */
-    function rely(address account) external auth {
-        wards[account] = 1;
-
-        emit Rely({ account: account });
-    }
-
-    /**
-     * @inheritdoc IPriceCurve
-     */
-    function deny(address account) external auth {
-        wards[account] = 0;
-
-        emit Deny({ account: account });
-    }
-
-    /**
-     * @inheritdoc IPriceCurve
-     */
-    function file(bytes32 what, uint256 data) external auth {
+    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
         if (what == "tau") {
             tau = data;
         } else {
