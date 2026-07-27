@@ -14,10 +14,16 @@ import { _revert } from "../shared/Globals.sol";
  * @author Rain Team.
  * @notice The delayed price feed. Holds prices back by 30 minutes so that if a price is
  *         manipulated, there is time to detect and respond before the system acts on it.
- *         Stores two prices: the current one (which the system uses) and the next one (which
- *         becomes current after the delay). One instance per priced collateral.
- * @dev Based on MakerDAO's OSM. The price source is switchable by governance (e.g. from a
- *      Uniswap time-weighted average to a Chainlink feed) without any other contract changing.
+ *         Stores two prices per collateral type: the current one (which the system uses) and
+ *         the next one (which becomes current after the delay). A single deployed instance
+ *         serves every priced collateral: tokens are registered dynamically, each with its own
+ *         price source.
+ * @dev Based on MakerDAO's OSM, generalized from one-instance-per-collateral to a single
+ *      multi-collateral module keyed by ilk identifier. The per-ilk price source is any
+ *      {IPriceSource} implementation — a dedicated Uniswap time-weighted average wrapper, a
+ *      Chainlink feed wrapper, or any future adapter — so the module never needs to know what
+ *      kind of oracle backs a token. Sources are switchable by governance per ilk without any
+ *      other contract changing.
  */
 contract OracleSecurityModule is IOracleSecurityModule, Auth {
     /* ========================== TYPES ========================== */
@@ -28,77 +34,86 @@ contract OracleSecurityModule is IOracleSecurityModule, Auth {
         uint128 has;
     }
 
-    /* ========================== STATE VARIABLES ========================== */
+    /// @dev Per-collateral oracle state.
+    struct Ilk {
+        IPriceSource src;
+        uint64 zzz;
+        uint256 stopped;
+        Feed cur;
+        Feed nxt;
+    }
 
-    /// @notice The raw price source being read.
-    IPriceSource public src;
+    /* ========================== STATE VARIABLES ========================== */
 
     /// @notice Update delay in seconds (30 minutes).
     uint16 public constant hop = 1800;
 
-    /// @notice Timestamp of the start of the current delay window.
-    uint64 public zzz;
-
-    /// @notice Module liveness flag. `1` while updating, `0` when stopped.
-    uint256 public stopped;
-
-    /// @dev The current (delayed) price the system uses.
-    Feed internal cur;
-
-    /// @dev The next price, which becomes current after the delay.
-    Feed internal nxt;
-
-    /* ========================== CONSTRUCTOR ========================== */
-
-    /**
-     * @notice Initializes the module with its price source.
-     * @param src_ Address of the raw price source.
-     */
-    constructor(IPriceSource src_) {
-        src = src_;
-    }
+    /// @dev Oracle state per collateral type.
+    mapping(bytes32 ilkId => Ilk ilk) internal ilks;
 
     /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function stop() external onlyRole(WARD_ROLE) {
-        stopped = 1;
-
-        emit Stop();
+    function src(bytes32 ilkId) external view returns (IPriceSource) {
+        return ilks[ilkId].src;
     }
 
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function start() external onlyRole(WARD_ROLE) {
-        stopped = 0;
-
-        emit Start();
+    function zzz(bytes32 ilkId) external view returns (uint64) {
+        return ilks[ilkId].zzz;
     }
 
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function void() external onlyRole(WARD_ROLE) {
-        cur = nxt = Feed(0, 0);
-        stopped = 1;
-
-        emit Void();
+    function stopped(bytes32 ilkId) external view returns (uint256) {
+        return ilks[ilkId].stopped;
     }
 
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function change(IPriceSource src_) external onlyRole(WARD_ROLE) {
+    function stop(bytes32 ilkId) external onlyRole(WARD_ROLE) {
+        ilks[ilkId].stopped = 1;
+
+        emit Stop({ ilkId: ilkId });
+    }
+
+    /**
+     * @inheritdoc IOracleSecurityModule
+     */
+    function start(bytes32 ilkId) external onlyRole(WARD_ROLE) {
+        ilks[ilkId].stopped = 0;
+
+        emit Start({ ilkId: ilkId });
+    }
+
+    /**
+     * @inheritdoc IOracleSecurityModule
+     */
+    function void(bytes32 ilkId) external onlyRole(WARD_ROLE) {
+        Ilk storage ilk = ilks[ilkId];
+        ilk.cur = ilk.nxt = Feed(0, 0);
+        ilk.stopped = 1;
+
+        emit Void({ ilkId: ilkId });
+    }
+
+    /**
+     * @inheritdoc IOracleSecurityModule
+     */
+    function change(bytes32 ilkId, IPriceSource src_) external onlyRole(WARD_ROLE) {
         if (address(src_) == address(0)) {
             _revert(InvalidAddress.selector);
         }
 
-        src = src_;
+        ilks[ilkId].src = src_;
 
-        emit Change({ src: address(src_) });
+        emit Change({ ilkId: ilkId, src: address(src_) });
     }
 
     /**
@@ -126,50 +141,61 @@ contract OracleSecurityModule is IOracleSecurityModule, Auth {
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function pass() public view returns (bool) {
-        return block.timestamp >= zzz + hop;
+    function pass(bytes32 ilkId) public view returns (bool) {
+        return block.timestamp >= ilks[ilkId].zzz + hop;
     }
 
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function poke() external {
-        // The module must not be stopped.
-        if (stopped != 0) {
+    function poke(bytes32 ilkId) external {
+        Ilk storage ilk = ilks[ilkId];
+
+        // The collateral must be registered.
+        if (address(ilk.src) == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+        // The collateral's feed must not be stopped.
+        if (ilk.stopped != 0) {
             _revert(NotLive.selector);
         }
         // At least 30 minutes must have passed since the last update.
-        require(pass(), "OracleSecurityModule/not-passed");
+        require(pass(ilkId), "OracleSecurityModule/not-passed");
 
-        (bytes32 wut, bool ok) = src.peek();
+        (bytes32 wut, bool ok) = ilk.src.peek();
 
         if (ok) {
-            cur = nxt;
-            nxt = Feed(uint128(uint256(wut)), 1);
-            zzz = uint64(block.timestamp - (block.timestamp % hop));
+            ilk.cur = ilk.nxt;
+            ilk.nxt = Feed(uint128(uint256(wut)), 1);
+            ilk.zzz = uint64(block.timestamp - (block.timestamp % hop));
 
-            emit Poke({ current: cur.val, next: nxt.val });
+            emit Poke({ ilkId: ilkId, current: ilk.cur.val, next: ilk.nxt.val });
         }
     }
 
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function peek() external view onlyRole(READER_ROLE) returns (bytes32, bool) {
+    function peek(bytes32 ilkId) external view onlyRole(READER_ROLE) returns (bytes32, bool) {
+        Feed storage cur = ilks[ilkId].cur;
+
         return (bytes32(uint256(cur.val)), cur.has == 1);
     }
 
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function peep() external view onlyRole(READER_ROLE) returns (bytes32, bool) {
+    function peep(bytes32 ilkId) external view onlyRole(READER_ROLE) returns (bytes32, bool) {
+        Feed storage nxt = ilks[ilkId].nxt;
+
         return (bytes32(uint256(nxt.val)), nxt.has == 1);
     }
 
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function read() external view onlyRole(READER_ROLE) returns (bytes32) {
+    function read(bytes32 ilkId) external view onlyRole(READER_ROLE) returns (bytes32) {
+        Feed storage cur = ilks[ilkId].cur;
         require(cur.has == 1, "OracleSecurityModule/no-current-value");
 
         return bytes32(uint256(cur.val));

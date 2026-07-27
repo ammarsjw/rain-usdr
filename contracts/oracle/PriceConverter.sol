@@ -124,7 +124,7 @@ contract PriceConverter is IPriceConverter, Auth {
      * @inheritdoc IPriceConverter
      */
     function poke(bytes32 ilkId) external {
-        (bytes32 val, bool has) = ilks[ilkId].pip.peek();
+        (bytes32 val, bool has) = ilks[ilkId].pip.peek(ilkId);
 
         // If the price is invalid, do nothing (the price factor stays untouched).
         uint256 spot = has ? ((((uint256(val) * (10 ** 9)) * RAY) / par) * RAY) / ilks[ilkId].mat : 0;

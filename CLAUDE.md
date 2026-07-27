@@ -45,7 +45,10 @@ full mapping):
 - `contracts/core/` — `VaultEngine` (Vat: immutable ledger), `USDR` (Dai), `CollateralAdapter`
   (GemJoin + DaiJoin merged; the immutable `isUsdrAdapter` flag selects collateral custody or
   USDR mint/burn per instance)
-- `contracts/oracle/` — `OracleSecurityModule` (OSM, 30-min price delay), `PriceConverter` (Spot)
+- `contracts/oracle/` — `OracleSecurityModule` (OSM, 30-min price delay; a single deployed
+  instance keyed by ilk — collaterals are registered dynamically via `change(ilkId, src)` with
+  any `IPriceSource` adapter: Uniswap TWAP wrapper, Chainlink wrapper, etc.), `PriceConverter`
+  (Spot)
 - `contracts/psm/` — `PegStabilityModule` (1:1 USDT/USDC ↔ USDR)
 - `contracts/reserve/` — `ReserveAccounting`, `SolvencyEngine` (worst-case loss / solvency
   invariant), `BalanceSheet` (Vow)

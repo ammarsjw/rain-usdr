@@ -30,37 +30,33 @@ const deployOracles = async () => {
     // Logging tag.
     logTag("Oracles");
 
-    // Deploying the Oracle Security Modules (one per priced collateral).
-    const rainOsmConstructorArguments = [rainPriceSourceAddress];
-    const rainOsmAddress = await deployContract(osmName, rainOsmConstructorArguments);
-
-    const usdtOsmConstructorArguments = [usdtPriceSourceAddress];
-    const usdtOsmAddress = await deployContract(osmName, usdtOsmConstructorArguments);
-
-    const usdcOsmConstructorArguments = [usdcPriceSourceAddress];
-    const usdcOsmAddress = await deployContract(osmName, usdcOsmConstructorArguments);
+    // Deploying the Oracle Security Module (a single instance serving every priced collateral).
+    const osmConstructorArguments = [];
+    const osmAddress = await deployContract(osmName, osmConstructorArguments);
 
     // Deploying the Price Converter.
     const priceConverterConstructorArguments = [vaultEngineAddress];
     const priceConverterAddress = await deployContract(priceConverterName, priceConverterConstructorArguments);
 
     // Setting up the oracles.
-    const rainOsmInstance = await hardhat.ethers.getContractAt(osmName, rainOsmAddress);
-    const usdtOsmInstance = await hardhat.ethers.getContractAt(osmName, usdtOsmAddress);
-    const usdcOsmInstance = await hardhat.ethers.getContractAt(osmName, usdcOsmAddress);
+    const osmInstance = await hardhat.ethers.getContractAt(osmName, osmAddress);
     const priceConverterInstance = await hardhat.ethers.getContractAt(priceConverterName, priceConverterAddress);
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
 
-    // Whitelisting the Price Converter to read each OSM.
-    await (await rainOsmInstance.kiss(priceConverterAddress)).wait();
-    await (await usdtOsmInstance.kiss(priceConverterAddress)).wait();
-    await (await usdcOsmInstance.kiss(priceConverterAddress)).wait();
+    // Registering each collateral's price source (Uniswap TWAP wrapper or Chainlink wrapper —
+    // any IPriceSource adapter).
+    await (await osmInstance.change(rainIlk, rainPriceSourceAddress)).wait();
+    await (await osmInstance.change(usdtIlk, usdtPriceSourceAddress)).wait();
+    await (await osmInstance.change(usdcIlk, usdcPriceSourceAddress)).wait();
+
+    // Whitelisting the Price Converter to read the OSM.
+    await (await osmInstance.kiss(priceConverterAddress)).wait();
 
     // Assigning oracles and collateralization ratios (RAIN 400%, USDT/USDC 100%).
     const RAY = 10n ** 27n;
-    await (await priceConverterInstance["file(bytes32,bytes32,address)"](rainIlk, hardhat.ethers.encodeBytes32String("pip"), rainOsmAddress)).wait();
-    await (await priceConverterInstance["file(bytes32,bytes32,address)"](usdtIlk, hardhat.ethers.encodeBytes32String("pip"), usdtOsmAddress)).wait();
-    await (await priceConverterInstance["file(bytes32,bytes32,address)"](usdcIlk, hardhat.ethers.encodeBytes32String("pip"), usdcOsmAddress)).wait();
+    await (await priceConverterInstance["file(bytes32,bytes32,address)"](rainIlk, hardhat.ethers.encodeBytes32String("pip"), osmAddress)).wait();
+    await (await priceConverterInstance["file(bytes32,bytes32,address)"](usdtIlk, hardhat.ethers.encodeBytes32String("pip"), osmAddress)).wait();
+    await (await priceConverterInstance["file(bytes32,bytes32,address)"](usdcIlk, hardhat.ethers.encodeBytes32String("pip"), osmAddress)).wait();
     await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](rainIlk, hardhat.ethers.encodeBytes32String("mat"), RAY * 4n)).wait();
     await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](usdtIlk, hardhat.ethers.encodeBytes32String("mat"), RAY)).wait();
     await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](usdcIlk, hardhat.ethers.encodeBytes32String("mat"), RAY)).wait();
@@ -70,18 +66,14 @@ const deployOracles = async () => {
     console.log("Oracles setup complete");
 
     // Updating env.
-    updateEnv("RAIN_OSM_ADDRESS", rainOsmAddress);
-    updateEnv("USDT_OSM_ADDRESS", usdtOsmAddress);
-    updateEnv("USDC_OSM_ADDRESS", usdcOsmAddress);
+    updateEnv("OSM_ADDRESS", osmAddress);
     updateEnv("PRICE_CONVERTER_ADDRESS", priceConverterAddress);
 
     // Waiting for block explorer.
     await wait("60 seconds");
 
     // Verifying oracle contracts.
-    await verifyContract(rainOsmAddress, rainOsmConstructorArguments);
-    await verifyContract(usdtOsmAddress, usdtOsmConstructorArguments);
-    await verifyContract(usdcOsmAddress, usdcOsmConstructorArguments);
+    await verifyContract(osmAddress, osmConstructorArguments);
     await verifyContract(priceConverterAddress, priceConverterConstructorArguments);
 };
 
