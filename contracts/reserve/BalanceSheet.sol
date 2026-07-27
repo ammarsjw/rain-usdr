@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 
 import { IBalanceSheet } from "../interfaces/IBalanceSheet.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { Auth } from "../shared/Auth.sol";
+import { Auth } from "../extensions/Auth.sol";
 import { WARD_ROLE } from "../shared/Constants.sol";
 import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -39,8 +39,6 @@ contract BalanceSheet is IBalanceSheet, Auth {
      */
     constructor(IVaultEngine vaultEngine_) {
         vaultEngine = vaultEngine_;
-
-        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */

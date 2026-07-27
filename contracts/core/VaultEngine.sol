@@ -3,7 +3,7 @@
 pragma solidity 0.8.30;
 
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { Auth } from "../shared/Auth.sol";
+import { Auth } from "../extensions/Auth.sol";
 import { WARD_ROLE } from "../shared/Constants.sol";
 import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -57,8 +57,6 @@ contract VaultEngine is IVaultEngine, Auth {
      */
     constructor() {
         live = 1;
-
-        _initAuth();
     }
 
     /* ========================== AUTHORIZATION ========================== */

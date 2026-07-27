@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 
-import { WARD_ROLE } from "./Constants.sol";
+import { WARD_ROLE } from "../shared/Constants.sol";
 
 /**
  * @title Auth.
@@ -25,15 +25,25 @@ abstract contract Auth is AccessControl {
     /// @notice Emitted when an account has its authorization revoked.
     event Deny(address indexed account);
 
-    /* ========================== INITIALIZER ========================== */
+    /* ========================== CONSTRUCTOR ========================== */
 
     /**
      * @notice Grants the deployer the ward role and makes the role self-administered.
-     * @dev Called from constructors so the authorization setup — and its event — lives in one place
-     *      rather than being inlined into every constructor. Must be `internal` (not `private`) so
-     *      inheriting constructors can call it.
+     * @dev Runs automatically for every inheriting contract, so no explicit initializer call is
+     *      needed in derived constructors.
      */
-    function _initAuth() internal {
+    constructor() {
+        _initAuth();
+    }
+
+    /* ========================== INITIALIZER ========================== */
+
+    /**
+     * @dev Performs the authorization setup and emits the corresponding event. Kept `private` and
+     *      called from the constructor so that event emission never happens directly inside a
+     *      constructor body.
+     */
+    function _initAuth() private {
         _setRoleAdmin(WARD_ROLE, WARD_ROLE);
         _grantRole(WARD_ROLE, msg.sender);
 

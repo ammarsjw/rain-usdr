@@ -39,11 +39,12 @@ npm run check-size            # hardhat contract sizer
 
 ## Architecture
 
-Fourteen contracts, each adapting a battle-tested MakerDAO contract (see README table for the
+Thirteen contracts, each adapting a battle-tested MakerDAO contract (see README table for the
 full mapping):
 
-- `contracts/core/` — `VaultEngine` (Vat: immutable ledger), `USDR` (Dai), `CollateralJoin`
-  (GemJoin), `UsdrJoin` (DaiJoin), plus `AdapterBase` (abstract base the two adapters share)
+- `contracts/core/` — `VaultEngine` (Vat: immutable ledger), `USDR` (Dai), `CollateralAdapter`
+  (GemJoin + DaiJoin merged; the immutable `isUsdrAdapter` flag selects collateral custody or
+  USDR mint/burn per instance)
 - `contracts/oracle/` — `OracleSecurityModule` (OSM, 30-min price delay), `PriceConverter` (Spot)
 - `contracts/psm/` — `PegStabilityModule` (1:1 USDT/USDC ↔ USDR)
 - `contracts/reserve/` — `ReserveAccounting`, `SolvencyEngine` (worst-case loss / solvency
@@ -53,9 +54,10 @@ full mapping):
 - `contracts/governance/` — `Governor` (timelocked param changes + emergency pause)
 - `contracts/interfaces/` — one interface per contract (`I<Name>.sol`); `IExternalExposure` is
   the hook for the external prediction-market exposure feed
-- `contracts/shared/` — `Constants.sol` (WAD/RAY/RAD + AccessControl role ids), `Auth.sol`
-  (abstract AccessControl-based authorization base), `Errors.sol` (custom errors), `Globals.sol`
-  (`_revert` helper)
+- `contracts/extensions/` — home for all abstract contracts; currently `Auth.sol` (abstract
+  AccessControl-based authorization base)
+- `contracts/shared/` — `Constants.sol` (WAD/RAY/RAD + AccessControl role ids), `Errors.sol`
+  (custom errors), `Globals.sol` (`_revert` helper)
 
 ### MakerDAO conventions preserved
 
@@ -68,19 +70,24 @@ full mapping):
 ### Authorization (diverges from MakerDAO)
 
 - Admin auth uses **OpenZeppelin AccessControl**, not the `wards` mapping. Every privileged
-  contract inherits `contracts/shared/Auth.sol`, which defines `WARD_ROLE` (role ids live in
-  `Constants.sol`), a `_initAuth()` constructor initializer, and `rely`/`deny` kept as thin
+  contract inherits `contracts/extensions/Auth.sol`, which defines `WARD_ROLE` (role ids live in
+  `Constants.sol`), performs setup in its own constructor via a private `_initAuth()` (so events
+  are never emitted directly inside a constructor body), and keeps `rely`/`deny` as thin
   wrappers over `_grantRole`/`_revokeRole`. Gate privileged functions with
   `onlyRole(WARD_ROLE)` (never a hand-rolled `auth` modifier). `WARD_ROLE` self-administers, so
   any ward can `rely`/`deny` another — matching the old semantics.
 - Specialized ACLs are also roles: `RECORDER_ROLE`/`COMMITTER_ROLE` (Reserve Accounting) and
   `READER_ROLE` (OSM `bud` whitelist, granted via `kiss`/`diss`). Their management wrappers keep
   their old names and stay `onlyRole(WARD_ROLE)`.
-- The two token adapters do **not** merge (that would leak USDR mint authority to every
-  collateral adapter). They share `core/AdapterBase.sol` (auth + `live`/`cage`) instead.
+- The two token adapters (GemJoin/DaiJoin) **are merged** into `core/CollateralAdapter.sol`.
+  The immutable `isUsdrAdapter` flag chooses the code path per instance. This does not leak
+  USDR mint authority: mint rights are granted per-instance on the token (`usdr.rely(...)`) and
+  only the single USDR instance ever receives them.
 - Collateral vocabulary: the Vault Engine's free-collateral mapping is `collateral` (was `gem`);
-  the adapter's custody token is `collateralToken`; the PSM entrypoints are
+  the adapter's bridged token is `token`; the PSM entrypoints are
   `sellStable`/`buyStable` (were `sellGem`/`buyGem`). The word `gem` no longer appears.
+- Interface naming: one interface per contract, named `I<ContractName>` — unless an interface
+  is shared by more than one contract.
 
 ## Code Style
 

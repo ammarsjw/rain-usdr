@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceSource } from "../interfaces/IPriceSource.sol";
-import { Auth } from "../shared/Auth.sol";
+import { Auth } from "../extensions/Auth.sol";
 import { READER_ROLE, WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, NotLive } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -56,8 +56,6 @@ contract OracleSecurityModule is IOracleSecurityModule, Auth {
      */
     constructor(IPriceSource src_) {
         src = src_;
-
-        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */

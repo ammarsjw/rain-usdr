@@ -7,7 +7,7 @@ import { ICircuitBreaker } from "../interfaces/ICircuitBreaker.sol";
 import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
 import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { Auth } from "../shared/Auth.sol";
+import { Auth } from "../extensions/Auth.sol";
 import { WAD, WARD_ROLE } from "../shared/Constants.sol";
 import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -74,8 +74,6 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
         vaultEngine = vaultEngine_;
         throttle = WAD / 5;
         live = 1;
-
-        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */

@@ -4,10 +4,11 @@ pragma solidity 0.8.30;
 
 import { Test } from "forge-std/Test.sol";
 
+import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+
 import { USDR } from "../contracts/core/USDR.sol";
 import { VaultEngine } from "../contracts/core/VaultEngine.sol";
-import { CollateralJoin } from "../contracts/core/CollateralJoin.sol";
-import { UsdrJoin } from "../contracts/core/UsdrJoin.sol";
+import { CollateralAdapter } from "../contracts/core/CollateralAdapter.sol";
 import { OracleSecurityModule } from "../contracts/oracle/OracleSecurityModule.sol";
 import { PriceConverter } from "../contracts/oracle/PriceConverter.sol";
 import { PegStabilityModule } from "../contracts/psm/PegStabilityModule.sol";
@@ -36,10 +37,10 @@ abstract contract BaseTest is Test {
 
     USDR internal usdr;
     VaultEngine internal vaultEngine;
-    UsdrJoin internal usdrJoin;
-    CollateralJoin internal rainJoin;
-    CollateralJoin internal usdtJoin;
-    CollateralJoin internal usdcJoin;
+    CollateralAdapter internal usdrAdapter;
+    CollateralAdapter internal rainAdapter;
+    CollateralAdapter internal usdtAdapter;
+    CollateralAdapter internal usdcAdapter;
     OracleSecurityModule internal rainOsm;
     PriceConverter internal priceConverter;
     PegStabilityModule internal usdtPsm;
@@ -81,10 +82,10 @@ abstract contract BaseTest is Test {
         // Deploying the core.
         usdr = new USDR();
         vaultEngine = new VaultEngine();
-        usdrJoin = new UsdrJoin(vaultEngine, usdr);
-        rainJoin = new CollateralJoin(vaultEngine, RAIN_ILK, rain);
-        usdtJoin = new CollateralJoin(vaultEngine, USDT_ILK, usdt);
-        usdcJoin = new CollateralJoin(vaultEngine, USDC_ILK, usdc);
+        usdrAdapter = new CollateralAdapter(vaultEngine, bytes32(0), IERC20Metadata(address(usdr)), true);
+        rainAdapter = new CollateralAdapter(vaultEngine, RAIN_ILK, IERC20Metadata(address(rain)), false);
+        usdtAdapter = new CollateralAdapter(vaultEngine, USDT_ILK, IERC20Metadata(address(usdt)), false);
+        usdcAdapter = new CollateralAdapter(vaultEngine, USDC_ILK, IERC20Metadata(address(usdc)), false);
 
         // Deploying the oracles.
         rainOsm = new OracleSecurityModule(IPriceSource(address(rainPriceSource)));
@@ -102,23 +103,23 @@ abstract contract BaseTest is Test {
         circuitBreaker = new CircuitBreaker(rainOsm);
 
         // Deploying the PSMs and the Governor.
-        usdtPsm = new PegStabilityModule(usdtJoin, usdrJoin, reserveAccounting);
-        usdcPsm = new PegStabilityModule(usdcJoin, usdrJoin, reserveAccounting);
+        usdtPsm = new PegStabilityModule(usdtAdapter, usdrAdapter, reserveAccounting);
+        usdcPsm = new PegStabilityModule(usdcAdapter, usdrAdapter, reserveAccounting);
         governor = new Governor(48 hours);
 
         // Wiring the core.
         vaultEngine.init(RAIN_ILK);
         vaultEngine.init(USDT_ILK);
         vaultEngine.init(USDC_ILK);
-        vaultEngine.rely(address(usdrJoin));
-        vaultEngine.rely(address(rainJoin));
-        vaultEngine.rely(address(usdtJoin));
-        vaultEngine.rely(address(usdcJoin));
+        vaultEngine.rely(address(usdrAdapter));
+        vaultEngine.rely(address(rainAdapter));
+        vaultEngine.rely(address(usdtAdapter));
+        vaultEngine.rely(address(usdcAdapter));
         vaultEngine.rely(address(priceConverter));
         vaultEngine.rely(address(liquidationTrigger));
         vaultEngine.rely(address(rainClipper));
         vaultEngine.rely(address(balanceSheet));
-        usdr.rely(address(usdrJoin));
+        usdr.rely(address(usdrAdapter));
 
         // Wiring the oracles (RAIN 400%, stables 100%).
         rainOsm.kiss(address(priceConverter));

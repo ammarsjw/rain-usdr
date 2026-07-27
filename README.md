@@ -8,15 +8,14 @@ possible loss can never exceed its stable reserves.**
 
 ## Architecture
 
-The system is built from fourteen contracts, each adapting a battle-tested MakerDAO contract (or
+The system is built from thirteen contracts, each adapting a battle-tested MakerDAO contract (or
 adding a USDR-specific safety component):
 
 | Contract | Directory | MakerDAO Original | Responsibility |
 | --- | --- | --- | --- |
 | `USDR` | `contracts/core` | Dai | The ERC-20 token. Minted only by the Vault Engine adapter and the PSM. |
 | `VaultEngine` | `contracts/core` | Vat | Immutable core ledger; tracks all collateral and debt. |
-| `CollateralJoin` | `contracts/core` | GemJoin | Doorway for collateral tokens entering/leaving the system. |
-| `UsdrJoin` | `contracts/core` | DaiJoin | Adapter between internal USDR accounting and the ERC-20 token. |
+| `CollateralAdapter` | `contracts/core` | GemJoin + DaiJoin | Doorway for tokens entering/leaving the system; per-instance flag selects collateral custody or USDR mint/burn. |
 | `OracleSecurityModule` | `contracts/oracle` | OSM | Delays price updates by 30 minutes. |
 | `PriceConverter` | `contracts/oracle` | Spot | Turns a raw price into the maximum USDR mintable per unit of collateral. |
 | `PegStabilityModule` | `contracts/psm` | PSM | Swaps USDT/USDC for USDR at 1:1; best-effort redemption. |

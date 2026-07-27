@@ -6,7 +6,7 @@ import { IExternalExposure } from "../interfaces/IExternalExposure.sol";
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { Auth } from "../shared/Auth.sol";
+import { Auth } from "../extensions/Auth.sol";
 import { RAY, WAD, WARD_ROLE } from "../shared/Constants.sol";
 import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -54,8 +54,6 @@ contract SolvencyEngine is ISolvencyEngine, Auth {
         reserveAccounting = reserveAccounting_;
         stressMarkdown = WAD / 2;
         stressDepth = (WAD * 35) / 100;
-
-        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */

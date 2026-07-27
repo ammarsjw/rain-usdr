@@ -20,9 +20,9 @@ const deployGovernance = async () => {
     const governorDelay = process.env.GOVERNOR_DELAY || 172800n; // 48 hours default.
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
     const usdrAddress = process.env.USDR_ADDRESS;
-    const usdrJoinAddress = process.env.USDR_JOIN_ADDRESS;
-    const usdtJoinAddress = process.env.USDT_JOIN_ADDRESS;
-    const usdcJoinAddress = process.env.USDC_JOIN_ADDRESS;
+    const usdrAdapterAddress = process.env.USDR_ADAPTER_ADDRESS;
+    const usdtAdapterAddress = process.env.USDT_ADAPTER_ADDRESS;
+    const usdcAdapterAddress = process.env.USDC_ADAPTER_ADDRESS;
     const reserveAccountingAddress = process.env.RESERVE_ACCOUNTING_ADDRESS;
 
     // Collateral type identifiers.
@@ -37,10 +37,10 @@ const deployGovernance = async () => {
     logTag("Governance");
 
     // Deploying the Peg Stability Modules (one per stablecoin).
-    const usdtPsmConstructorArguments = [usdtJoinAddress, usdrJoinAddress, reserveAccountingAddress];
+    const usdtPsmConstructorArguments = [usdtAdapterAddress, usdrAdapterAddress, reserveAccountingAddress];
     const usdtPsmAddress = await deployContract(psmName, usdtPsmConstructorArguments);
 
-    const usdcPsmConstructorArguments = [usdcJoinAddress, usdrJoinAddress, reserveAccountingAddress];
+    const usdcPsmConstructorArguments = [usdcAdapterAddress, usdrAdapterAddress, reserveAccountingAddress];
     const usdcPsmAddress = await deployContract(psmName, usdcPsmConstructorArguments);
 
     // Deploying the Governor.
@@ -55,7 +55,7 @@ const deployGovernance = async () => {
         reserveAccountingAddress
     );
 
-    // Authorizing the PSMs as USDR minters (via the join) and reserve recorders.
+    // Authorizing the PSMs as USDR minters (via the adapter) and reserve recorders.
     await (await usdrInstance.rely(usdtPsmAddress)).wait();
     await (await usdrInstance.rely(usdcPsmAddress)).wait();
     await (await reserveAccountingInstance.addRecorder(usdtPsmAddress)).wait();

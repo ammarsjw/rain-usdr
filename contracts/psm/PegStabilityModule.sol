@@ -5,13 +5,12 @@ pragma solidity 0.8.30;
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import { ICollateralJoin } from "../interfaces/ICollateralJoin.sol";
+import { ICollateralAdapter } from "../interfaces/ICollateralAdapter.sol";
 import { IPegStabilityModule } from "../interfaces/IPegStabilityModule.sol";
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
-import { IUsdrJoin } from "../interfaces/IUsdrJoin.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { Auth } from "../shared/Auth.sol";
+import { Auth } from "../extensions/Auth.sol";
 import { WAD, WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAmount, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -36,13 +35,13 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
     IVaultEngine public immutable vaultEngine;
 
     /// @notice The collateral adapter for the stablecoin.
-    ICollateralJoin public immutable collateralJoin;
+    ICollateralAdapter public immutable collateralAdapter;
 
     /// @notice The stablecoin (USDT or USDC).
     IERC20Metadata public immutable stableToken;
 
     /// @notice The USDR token adapter.
-    IUsdrJoin public immutable usdrJoin;
+    ICollateralAdapter public immutable usdrAdapter;
 
     /// @notice The USDR token.
     IUSDR public immutable usdr;
@@ -66,23 +65,25 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
 
     /**
      * @notice Initializes the module and grants the Vault Engine unlimited USDR movement rights.
-     * @param collateralJoin_ Address of the stablecoin's collateral adapter.
-     * @param usdrJoin_ Address of the USDR token adapter.
+     * @param collateralAdapter_ Address of the stablecoin's collateral adapter.
+     * @param usdrAdapter_ Address of the USDR token adapter.
      * @param reserveAccounting_ Address of the reserve accounting contract.
      */
-    constructor(ICollateralJoin collateralJoin_, IUsdrJoin usdrJoin_, IReserveAccounting reserveAccounting_) {
-        collateralJoin = collateralJoin_;
-        usdrJoin = usdrJoin_;
+    constructor(
+        ICollateralAdapter collateralAdapter_,
+        ICollateralAdapter usdrAdapter_,
+        IReserveAccounting reserveAccounting_
+    ) {
+        collateralAdapter = collateralAdapter_;
+        usdrAdapter = usdrAdapter_;
         reserveAccounting = reserveAccounting_;
-        vaultEngine = IVaultEngine(address(collateralJoin_.vaultEngine()));
-        stableToken = collateralJoin_.collateralToken();
-        usdr = usdrJoin_.usdr();
-        ilkId = collateralJoin_.ilkId();
-        to18ConversionFactor = 10 ** (18 - collateralJoin_.dec());
+        vaultEngine = IVaultEngine(address(collateralAdapter_.vaultEngine()));
+        stableToken = collateralAdapter_.token();
+        usdr = IUSDR(address(usdrAdapter_.token()));
+        ilkId = collateralAdapter_.ilkId();
+        to18ConversionFactor = 10 ** (18 - collateralAdapter_.dec());
 
-        vaultEngine.hope(address(usdrJoin_));
-
-        _initAuth();
+        vaultEngine.hope(address(usdrAdapter_));
     }
 
     /* ========================== ADMINISTRATION ========================== */
@@ -119,10 +120,10 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
         // Moving the stablecoins into the protocol's stable reserve. The ceiling check happens
         // inside the Vault Engine's frob.
         stableToken.safeTransferFrom(msg.sender, address(this), stableAmt);
-        stableToken.forceApprove(address(collateralJoin), stableAmt);
-        collateralJoin.join(address(this), stableAmt);
+        stableToken.forceApprove(address(collateralAdapter), stableAmt);
+        collateralAdapter.join(address(this), stableAmt);
         vaultEngine.frob(ilkId, address(this), address(this), address(this), int256(stableAmt18), int256(stableAmt18));
-        usdrJoin.exit(user, usdrAmt);
+        usdrAdapter.exit(user, usdrAmt);
 
         // Registering the reserve increase.
         reserveAccounting.recordIncrease(stableAmt18);
@@ -148,7 +149,7 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
         require(stableAmt18 <= reserveAccounting.freeSlack(), "PegStabilityModule/insufficient-free-slack");
 
         usdr.transferFrom(msg.sender, address(this), usdrAmt);
-        usdrJoin.join(address(this), usdrAmt);
+        usdrAdapter.join(address(this), usdrAmt);
         vaultEngine.frob(
             ilkId,
             address(this),
@@ -157,7 +158,7 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
             -int256(stableAmt18),
             -int256(stableAmt18)
         );
-        collateralJoin.exit(user, stableAmt);
+        collateralAdapter.exit(user, stableAmt);
 
         // Registering the reserve decrease.
         reserveAccounting.recordDecrease(stableAmt18);

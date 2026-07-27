@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 
 import { ICircuitBreaker } from "../interfaces/ICircuitBreaker.sol";
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
-import { Auth } from "../shared/Auth.sol";
+import { Auth } from "../extensions/Auth.sol";
 import { WAD, WARD_ROLE } from "../shared/Constants.sol";
 import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -60,8 +60,6 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
         pip = pip_;
         threshold = WAD / 4;
         calmBlocks = 3;
-
-        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */

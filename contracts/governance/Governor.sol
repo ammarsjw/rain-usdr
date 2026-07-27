@@ -3,7 +3,7 @@
 pragma solidity 0.8.30;
 
 import { IGovernor } from "../interfaces/IGovernor.sol";
-import { Auth } from "../shared/Auth.sol";
+import { Auth } from "../extensions/Auth.sol";
 import { WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, NotAuthorized, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -68,8 +68,6 @@ contract Governor is IGovernor, Auth {
      */
     constructor(uint256 delay_) {
         delay = delay_;
-
-        _initAuth();
     }
 
     /* ========================== ADMINISTRATION ========================== */

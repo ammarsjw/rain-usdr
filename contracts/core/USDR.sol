@@ -6,7 +6,7 @@ import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { ERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 
 import { IUSDR } from "../interfaces/IUSDR.sol";
-import { Auth } from "../shared/Auth.sol";
+import { Auth } from "../extensions/Auth.sol";
 import { WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, InvalidAmount } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -27,9 +27,7 @@ contract USDR is IUSDR, ERC20, ERC20Permit, Auth {
      * @notice Initializes the token and authorizes the deployer, which transfers authorization
      *         to the Vault Engine adapter and the Peg Stability Module during deployment.
      */
-    constructor() ERC20("Rain Dollar", "USDR") ERC20Permit("Rain Dollar") {
-        _initAuth();
-    }
+    constructor() ERC20("Rain Dollar", "USDR") ERC20Permit("Rain Dollar") {}
 
     /* ========================== FUNCTIONS ========================== */
 

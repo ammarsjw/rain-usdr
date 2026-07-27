@@ -3,7 +3,7 @@
 pragma solidity 0.8.30;
 
 import { IPriceCurve } from "../interfaces/IPriceCurve.sol";
-import { Auth } from "../shared/Auth.sol";
+import { Auth } from "../extensions/Auth.sol";
 import { WARD_ROLE } from "../shared/Constants.sol";
 import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -21,15 +21,6 @@ contract PriceCurve is IPriceCurve, Auth {
 
     /// @notice Auction lifetime in seconds — how long until the price reaches zero.
     uint256 public tau;
-
-    /* ========================== CONSTRUCTOR ========================== */
-
-    /**
-     * @notice Authorizes the deployer.
-     */
-    constructor() {
-        _initAuth();
-    }
 
     /* ========================== ADMINISTRATION ========================== */
 

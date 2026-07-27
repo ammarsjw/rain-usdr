@@ -3,7 +3,7 @@
 pragma solidity 0.8.30;
 
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
-import { Auth } from "../shared/Auth.sol";
+import { Auth } from "../extensions/Auth.sol";
 import { COMMITTER_ROLE, RECORDER_ROLE, WARD_ROLE } from "../shared/Constants.sol";
 
 /**
@@ -24,15 +24,6 @@ contract ReserveAccounting is IReserveAccounting, Auth {
 
     /// @notice Amount committed to guaranteed obligations (the settlement escrow) [wad].
     uint256 public committedEscrow;
-
-    /* ========================== CONSTRUCTOR ========================== */
-
-    /**
-     * @notice Authorizes the deployer.
-     */
-    constructor() {
-        _initAuth();
-    }
 
     /* ========================== ADMINISTRATION ========================== */
 

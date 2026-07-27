@@ -16,8 +16,7 @@ const deployCore = async () => {
     // Definition variables.
     const usdrName = "USDR";
     const vaultEngineName = "VaultEngine";
-    const usdrJoinName = "UsdrJoin";
-    const collateralJoinName = "CollateralJoin";
+    const collateralAdapterName = "CollateralAdapter";
 
     // Deployment variables.
     let initialOwnerAddress = process.env.INITIAL_OWNER_ADDRESS;
@@ -48,17 +47,18 @@ const deployCore = async () => {
     const vaultEngineAddress = await deployContract(vaultEngineName, vaultEngineConstructorArguments);
 
     // Deploying the USDR adapter and the collateral adapters.
-    const usdrJoinConstructorArguments = [vaultEngineAddress, usdrAddress];
-    const usdrJoinAddress = await deployContract(usdrJoinName, usdrJoinConstructorArguments);
+    const zeroIlk = hardhat.ethers.ZeroHash;
+    const usdrAdapterConstructorArguments = [vaultEngineAddress, zeroIlk, usdrAddress, true];
+    const usdrAdapterAddress = await deployContract(collateralAdapterName, usdrAdapterConstructorArguments);
 
-    const rainJoinConstructorArguments = [vaultEngineAddress, rainIlk, rainAddress];
-    const rainJoinAddress = await deployContract(collateralJoinName, rainJoinConstructorArguments);
+    const rainAdapterConstructorArguments = [vaultEngineAddress, rainIlk, rainAddress, false];
+    const rainAdapterAddress = await deployContract(collateralAdapterName, rainAdapterConstructorArguments);
 
-    const usdtJoinConstructorArguments = [vaultEngineAddress, usdtIlk, usdtAddress];
-    const usdtJoinAddress = await deployContract(collateralJoinName, usdtJoinConstructorArguments);
+    const usdtAdapterConstructorArguments = [vaultEngineAddress, usdtIlk, usdtAddress, false];
+    const usdtAdapterAddress = await deployContract(collateralAdapterName, usdtAdapterConstructorArguments);
 
-    const usdcJoinConstructorArguments = [vaultEngineAddress, usdcIlk, usdcAddress];
-    const usdcJoinAddress = await deployContract(collateralJoinName, usdcJoinConstructorArguments);
+    const usdcAdapterConstructorArguments = [vaultEngineAddress, usdcIlk, usdcAddress, false];
+    const usdcAdapterAddress = await deployContract(collateralAdapterName, usdcAdapterConstructorArguments);
 
     // Setting up the core.
     const vaultEngineInstance = await hardhat.ethers.getContractAt(vaultEngineName, vaultEngineAddress);
@@ -70,22 +70,22 @@ const deployCore = async () => {
     await (await vaultEngineInstance.init(usdcIlk)).wait();
 
     // Authorizing the adapters on the ledger.
-    await (await vaultEngineInstance.rely(usdrJoinAddress)).wait();
-    await (await vaultEngineInstance.rely(rainJoinAddress)).wait();
-    await (await vaultEngineInstance.rely(usdtJoinAddress)).wait();
-    await (await vaultEngineInstance.rely(usdcJoinAddress)).wait();
+    await (await vaultEngineInstance.rely(usdrAdapterAddress)).wait();
+    await (await vaultEngineInstance.rely(rainAdapterAddress)).wait();
+    await (await vaultEngineInstance.rely(usdtAdapterAddress)).wait();
+    await (await vaultEngineInstance.rely(usdcAdapterAddress)).wait();
 
     // Authorizing the USDR adapter as a token minter.
-    await (await usdrInstance.rely(usdrJoinAddress)).wait();
+    await (await usdrInstance.rely(usdrAdapterAddress)).wait();
     console.log("Core setup complete");
 
     // Updating env.
     updateEnv("USDR_ADDRESS", usdrAddress);
     updateEnv("VAULT_ENGINE_ADDRESS", vaultEngineAddress);
-    updateEnv("USDR_JOIN_ADDRESS", usdrJoinAddress);
-    updateEnv("RAIN_JOIN_ADDRESS", rainJoinAddress);
-    updateEnv("USDT_JOIN_ADDRESS", usdtJoinAddress);
-    updateEnv("USDC_JOIN_ADDRESS", usdcJoinAddress);
+    updateEnv("USDR_ADAPTER_ADDRESS", usdrAdapterAddress);
+    updateEnv("RAIN_ADAPTER_ADDRESS", rainAdapterAddress);
+    updateEnv("USDT_ADAPTER_ADDRESS", usdtAdapterAddress);
+    updateEnv("USDC_ADAPTER_ADDRESS", usdcAdapterAddress);
 
     // Waiting for block explorer.
     await wait("60 seconds");
@@ -93,10 +93,10 @@ const deployCore = async () => {
     // Verifying core contracts.
     await verifyContract(usdrAddress, usdrConstructorArguments);
     await verifyContract(vaultEngineAddress, vaultEngineConstructorArguments);
-    await verifyContract(usdrJoinAddress, usdrJoinConstructorArguments);
-    await verifyContract(rainJoinAddress, rainJoinConstructorArguments);
-    await verifyContract(usdtJoinAddress, usdtJoinConstructorArguments);
-    await verifyContract(usdcJoinAddress, usdcJoinConstructorArguments);
+    await verifyContract(usdrAdapterAddress, usdrAdapterConstructorArguments);
+    await verifyContract(rainAdapterAddress, rainAdapterConstructorArguments);
+    await verifyContract(usdtAdapterAddress, usdtAdapterConstructorArguments);
+    await verifyContract(usdcAdapterAddress, usdcAdapterConstructorArguments);
 };
 
 deployCore()
