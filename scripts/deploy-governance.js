@@ -19,10 +19,7 @@ const deployGovernance = async () => {
     // Deployment variables.
     const governorDelay = process.env.GOVERNOR_DELAY || 172800n; // 48 hours default.
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
-    const usdrAddress = process.env.USDR_ADDRESS;
-    const usdrAdapterAddress = process.env.USDR_ADAPTER_ADDRESS;
-    const usdtAdapterAddress = process.env.USDT_ADAPTER_ADDRESS;
-    const usdcAdapterAddress = process.env.USDC_ADAPTER_ADDRESS;
+    const collateralAdapterAddress = process.env.COLLATERAL_ADAPTER_ADDRESS;
     const reserveAccountingAddress = process.env.RESERVE_ACCOUNTING_ADDRESS;
 
     // Collateral type identifiers.
@@ -37,11 +34,8 @@ const deployGovernance = async () => {
     logTag("Governance");
 
     // Deploying the Peg Stability Modules (one per stablecoin).
-    const usdtPsmConstructorArguments = [usdtAdapterAddress, usdrAdapterAddress, reserveAccountingAddress];
-    const usdtPsmAddress = await deployContract(psmName, usdtPsmConstructorArguments);
-
-    const usdcPsmConstructorArguments = [usdcAdapterAddress, usdrAdapterAddress, reserveAccountingAddress];
-    const usdcPsmAddress = await deployContract(psmName, usdcPsmConstructorArguments);
+    const psmConstructorArguments = [collateralAdapterAddress, reserveAccountingAddress];
+    const psmAddress = await deployContract(psmName, psmConstructorArguments);
 
     // Deploying the Governor.
     const governorConstructorArguments = [governorDelay];
@@ -49,17 +43,16 @@ const deployGovernance = async () => {
 
     // Setting up governance and PSM wiring.
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
-    const usdrInstance = await hardhat.ethers.getContractAt("USDR", usdrAddress);
     const reserveAccountingInstance = await hardhat.ethers.getContractAt(
         "ReserveAccounting",
         reserveAccountingAddress
     );
 
-    // Authorizing the PSMs as USDR minters (via the adapter) and reserve recorders.
-    await (await usdrInstance.rely(usdtPsmAddress)).wait();
-    await (await usdrInstance.rely(usdcPsmAddress)).wait();
-    await (await reserveAccountingInstance.addRecorder(usdtPsmAddress)).wait();
-    await (await reserveAccountingInstance.addRecorder(usdcPsmAddress)).wait();
+    // Registering the stablecoin ilks on the PSM and authorizing it as a reserve recorder.
+    const psmInstance = await hardhat.ethers.getContractAt(psmName, psmAddress);
+    await (await psmInstance.init(usdtIlk)).wait();
+    await (await psmInstance.init(usdcIlk)).wait();
+    await (await reserveAccountingInstance.addRecorder(psmAddress)).wait();
 
     // Setting launch risk parameters: ceilings and minimum vault size.
     await (
@@ -102,16 +95,14 @@ const deployGovernance = async () => {
     console.log("Governance setup complete");
 
     // Updating env.
-    updateEnv("USDT_PSM_ADDRESS", usdtPsmAddress);
-    updateEnv("USDC_PSM_ADDRESS", usdcPsmAddress);
+    updateEnv("PSM_ADDRESS", psmAddress);
     updateEnv("GOVERNOR_ADDRESS", governorAddress);
 
     // Waiting for block explorer.
     await wait("60 seconds");
 
     // Verifying governance contracts.
-    await verifyContract(usdtPsmAddress, usdtPsmConstructorArguments);
-    await verifyContract(usdcPsmAddress, usdcPsmConstructorArguments);
+    await verifyContract(psmAddress, psmConstructorArguments);
     await verifyContract(governorAddress, governorConstructorArguments);
 };
 

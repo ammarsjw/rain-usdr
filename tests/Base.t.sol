@@ -21,7 +21,7 @@ import { DutchAuction } from "../contracts/liquidation/DutchAuction.sol";
 import { CircuitBreaker } from "../contracts/liquidation/CircuitBreaker.sol";
 import { Governor } from "../contracts/governance/Governor.sol";
 import { IPriceSource } from "../contracts/interfaces/IPriceSource.sol";
-import { RAD, RAY, WAD } from "../contracts/shared/Constants.sol";
+import { RAD, RAY, USDR_ILK, WAD } from "../contracts/shared/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 import { MockPriceSource } from "./mocks/MockPriceSource.sol";
@@ -37,14 +37,10 @@ abstract contract BaseTest is Test {
 
     USDR internal usdr;
     VaultEngine internal vaultEngine;
-    CollateralAdapter internal usdrAdapter;
-    CollateralAdapter internal rainAdapter;
-    CollateralAdapter internal usdtAdapter;
-    CollateralAdapter internal usdcAdapter;
+    CollateralAdapter internal collateralAdapter;
     OracleSecurityModule internal osm;
     PriceConverter internal priceConverter;
-    PegStabilityModule internal usdtPsm;
-    PegStabilityModule internal usdcPsm;
+    PegStabilityModule internal psm;
     ReserveAccounting internal reserveAccounting;
     SolvencyEngine internal solvencyEngine;
     BalanceSheet internal balanceSheet;
@@ -78,10 +74,11 @@ abstract contract BaseTest is Test {
         // Deploying the core.
         usdr = new USDR();
         vaultEngine = new VaultEngine();
-        usdrAdapter = new CollateralAdapter(vaultEngine, bytes32(0), IERC20Metadata(address(usdr)), true);
-        rainAdapter = new CollateralAdapter(vaultEngine, RAIN_ILK, IERC20Metadata(address(rain)), false);
-        usdtAdapter = new CollateralAdapter(vaultEngine, USDT_ILK, IERC20Metadata(address(usdt)), false);
-        usdcAdapter = new CollateralAdapter(vaultEngine, USDC_ILK, IERC20Metadata(address(usdc)), false);
+        collateralAdapter = new CollateralAdapter(vaultEngine);
+        collateralAdapter.init(USDR_ILK, IERC20Metadata(address(usdr)));
+        collateralAdapter.init(RAIN_ILK, IERC20Metadata(address(rain)));
+        collateralAdapter.init(USDT_ILK, IERC20Metadata(address(usdt)));
+        collateralAdapter.init(USDC_ILK, IERC20Metadata(address(usdc)));
 
         // Deploying the oracles.
         osm = new OracleSecurityModule();
@@ -100,23 +97,21 @@ abstract contract BaseTest is Test {
         circuitBreaker = new CircuitBreaker(osm, RAIN_ILK);
 
         // Deploying the PSMs and the Governor.
-        usdtPsm = new PegStabilityModule(usdtAdapter, usdrAdapter, reserveAccounting);
-        usdcPsm = new PegStabilityModule(usdcAdapter, usdrAdapter, reserveAccounting);
+        psm = new PegStabilityModule(collateralAdapter, reserveAccounting);
+        psm.init(USDT_ILK);
+        psm.init(USDC_ILK);
         governor = new Governor(48 hours);
 
         // Wiring the core.
         vaultEngine.init(RAIN_ILK);
         vaultEngine.init(USDT_ILK);
         vaultEngine.init(USDC_ILK);
-        vaultEngine.rely(address(usdrAdapter));
-        vaultEngine.rely(address(rainAdapter));
-        vaultEngine.rely(address(usdtAdapter));
-        vaultEngine.rely(address(usdcAdapter));
+        vaultEngine.rely(address(collateralAdapter));
         vaultEngine.rely(address(priceConverter));
         vaultEngine.rely(address(liquidationTrigger));
         vaultEngine.rely(address(rainClipper));
         vaultEngine.rely(address(balanceSheet));
-        usdr.rely(address(usdrAdapter));
+        usdr.rely(address(collateralAdapter));
 
         // Wiring the oracles (RAIN 400%, stables 100%).
         osm.kiss(address(priceConverter));
@@ -127,8 +122,7 @@ abstract contract BaseTest is Test {
 
         // Wiring the reserve stack.
         reserveAccounting.addCommitter(address(solvencyEngine));
-        reserveAccounting.addRecorder(address(usdtPsm));
-        reserveAccounting.addRecorder(address(usdcPsm));
+        reserveAccounting.addRecorder(address(psm));
         solvencyEngine.addVolatileIlk(RAIN_ILK);
 
         // Wiring the liquidation stack (launch parameters from the spec).

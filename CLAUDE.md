@@ -43,13 +43,16 @@ Thirteen contracts, each adapting a battle-tested MakerDAO contract (see README 
 full mapping):
 
 - `contracts/core/` — `VaultEngine` (Vat: immutable ledger), `USDR` (Dai), `CollateralAdapter`
-  (GemJoin + DaiJoin merged; the immutable `isUsdrAdapter` flag selects collateral custody or
-  USDR mint/burn per instance)
+  (GemJoin + DaiJoin merged into a single ilk-keyed deployment; ilks register dynamically via
+  `init(ilkId, token)` — collateral ilks use `slip` + custody, the reserved `USDR` ilk uses
+  `move` + mint/burn)
 - `contracts/oracle/` — `OracleSecurityModule` (OSM, 30-min price delay; a single deployed
   instance keyed by ilk — collaterals are registered dynamically via `change(ilkId, src)` with
   any `IPriceSource` adapter: Uniswap TWAP wrapper, Chainlink wrapper, etc.), `PriceConverter`
   (Spot)
-- `contracts/psm/` — `PegStabilityModule` (1:1 USDT/USDC ↔ USDR)
+- `contracts/psm/` — `PegStabilityModule` (1:1 USDT/USDC ↔ USDR; a single deployed instance —
+  stablecoin ilks register dynamically via `init(ilkId)`, reading token/decimals from the
+  adapter)
 - `contracts/reserve/` — `ReserveAccounting`, `SolvencyEngine` (worst-case loss / solvency
   invariant), `BalanceSheet` (Vow)
 - `contracts/liquidation/` — `PriceCurve` (Abacus), `LiquidationTrigger` (Dog), `DutchAuction`
@@ -82,10 +85,10 @@ full mapping):
 - Specialized ACLs are also roles: `RECORDER_ROLE`/`COMMITTER_ROLE` (Reserve Accounting) and
   `READER_ROLE` (OSM `bud` whitelist, granted via `kiss`/`diss`). Their management wrappers keep
   their old names and stay `onlyRole(WARD_ROLE)`.
-- The two token adapters (GemJoin/DaiJoin) **are merged** into `core/CollateralAdapter.sol`.
-  The immutable `isUsdrAdapter` flag chooses the code path per instance. This does not leak
-  USDR mint authority: mint rights are granted per-instance on the token (`usdr.rely(...)`) and
-  only the single USDR instance ever receives them.
+- The two token adapters (GemJoin/DaiJoin) **are merged** into `core/CollateralAdapter.sol`,
+  deployed **once** and keyed by ilk. The reserved `USDR_ILK` (`"USDR"`, in `Constants.sol`)
+  selects the mint/burn path; only `WARD_ROLE` can register ilks, so the collateral path can
+  never reach `mint`. The adapter itself is the only holder of USDR mint authority.
 - Collateral vocabulary: the Vault Engine's free-collateral mapping is `collateral` (was `gem`);
   the adapter's bridged token is `token`; the PSM entrypoints are
   `sellStable`/`buyStable` (were `sellGem`/`buyGem`). The word `gem` no longer appears.

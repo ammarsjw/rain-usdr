@@ -15,10 +15,10 @@ adding a USDR-specific safety component):
 | --- | --- | --- | --- |
 | `USDR` | `contracts/core` | Dai | The ERC-20 token. Minted only by the Vault Engine adapter and the PSM. |
 | `VaultEngine` | `contracts/core` | Vat | Immutable core ledger; tracks all collateral and debt. |
-| `CollateralAdapter` | `contracts/core` | GemJoin + DaiJoin | Doorway for tokens entering/leaving the system; per-instance flag selects collateral custody or USDR mint/burn. |
+| `CollateralAdapter` | `contracts/core` | GemJoin + DaiJoin | Doorway for tokens entering/leaving the system. Single instance; ilks register dynamically — collateral ilks custody tokens, the USDR ilk mints/burns. |
 | `OracleSecurityModule` | `contracts/oracle` | OSM | Delays price updates by 30 minutes. Single instance; collaterals register dynamically, each with its own price source (Uniswap TWAP or Chainlink wrapper). |
 | `PriceConverter` | `contracts/oracle` | Spot | Turns a raw price into the maximum USDR mintable per unit of collateral. |
-| `PegStabilityModule` | `contracts/psm` | PSM | Swaps USDT/USDC for USDR at 1:1; best-effort redemption. |
+| `PegStabilityModule` | `contracts/psm` | PSM | Swaps USDT/USDC for USDR at 1:1; best-effort redemption. Single instance; stablecoin ilks register dynamically. |
 | `ReserveAccounting` | `contracts/reserve` | (custom) | Tracks the stable reserve, escrow and free slack. |
 | `SolvencyEngine` | `contracts/reserve` | (custom) | Computes worst-case loss and enforces the solvency invariant. |
 | `BalanceSheet` | `contracts/reserve` | Vow | Holds surplus, tracks bad debt, manages the absorption waterfall. |
