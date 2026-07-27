@@ -21,7 +21,7 @@ const deployLiquidation = async () => {
     // Deployment variables.
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
     const balanceSheetAddress = process.env.BALANCE_SHEET_ADDRESS;
-    const rainOsmAddress = process.env.RAIN_OSM_ADDRESS;
+    const osmAddress = process.env.OSM_ADDRESS;
 
     // Collateral type identifiers.
     const rainIlk = hardhat.ethers.encodeBytes32String("RAIN-A");
@@ -47,7 +47,7 @@ const deployLiquidation = async () => {
     const rainClipperConstructorArguments = [vaultEngineAddress, rainIlk];
     const rainClipperAddress = await deployContract(dutchAuctionName, rainClipperConstructorArguments);
 
-    const circuitBreakerConstructorArguments = [rainOsmAddress];
+    const circuitBreakerConstructorArguments = [osmAddress, rainIlk];
     const circuitBreakerAddress = await deployContract(circuitBreakerName, circuitBreakerConstructorArguments);
 
     // Setting up the liquidation stack.
@@ -126,7 +126,7 @@ const deployLiquidation = async () => {
         )
     ).wait();
     await (
-        await rainClipperInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("pip"), rainOsmAddress)
+        await rainClipperInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("pip"), osmAddress)
     ).wait();
     await (
         await rainClipperInstance["file(bytes32,address)"](
@@ -146,6 +146,11 @@ const deployLiquidation = async () => {
             priceCurveAddress
         )
     ).wait();
+
+    // Whitelisting the auction and the breaker to read the OSM.
+    const osmInstance = await hardhat.ethers.getContractAt("OracleSecurityModule", osmAddress);
+    await (await osmInstance.kiss(rainClipperAddress)).wait();
+    await (await osmInstance.kiss(circuitBreakerAddress)).wait();
 
     // Wiring authorizations across the ledger and the stack.
     await (await vaultEngineInstance.rely(liquidationTriggerAddress)).wait();

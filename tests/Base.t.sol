@@ -41,7 +41,7 @@ abstract contract BaseTest is Test {
     CollateralAdapter internal rainAdapter;
     CollateralAdapter internal usdtAdapter;
     CollateralAdapter internal usdcAdapter;
-    OracleSecurityModule internal rainOsm;
+    OracleSecurityModule internal osm;
     PriceConverter internal priceConverter;
     PegStabilityModule internal usdtPsm;
     PegStabilityModule internal usdcPsm;
@@ -84,7 +84,8 @@ abstract contract BaseTest is Test {
         usdcAdapter = new CollateralAdapter(vaultEngine, USDC_ILK, IERC20Metadata(address(usdc)), false);
 
         // Deploying the oracles.
-        rainOsm = new OracleSecurityModule(IPriceSource(address(rainPriceSource)));
+        osm = new OracleSecurityModule();
+        osm.change(RAIN_ILK, IPriceSource(address(rainPriceSource)));
         priceConverter = new PriceConverter(vaultEngine);
 
         // Deploying the reserve stack.
@@ -96,7 +97,7 @@ abstract contract BaseTest is Test {
         priceCurve = new PriceCurve();
         liquidationTrigger = new LiquidationTrigger(vaultEngine);
         rainClipper = new DutchAuction(vaultEngine, RAIN_ILK);
-        circuitBreaker = new CircuitBreaker(rainOsm);
+        circuitBreaker = new CircuitBreaker(osm, RAIN_ILK);
 
         // Deploying the PSMs and the Governor.
         usdtPsm = new PegStabilityModule(usdtAdapter, usdrAdapter, reserveAccounting);
@@ -118,10 +119,10 @@ abstract contract BaseTest is Test {
         usdr.rely(address(usdrAdapter));
 
         // Wiring the oracles (RAIN 400%, stables 100%).
-        rainOsm.kiss(address(priceConverter));
-        rainOsm.kiss(address(rainClipper));
-        rainOsm.kiss(address(circuitBreaker));
-        priceConverter.file(RAIN_ILK, "pip", address(rainOsm));
+        osm.kiss(address(priceConverter));
+        osm.kiss(address(rainClipper));
+        osm.kiss(address(circuitBreaker));
+        priceConverter.file(RAIN_ILK, "pip", address(osm));
         priceConverter.file(RAIN_ILK, "mat", 4 * RAY);
 
         // Wiring the reserve stack.
@@ -143,7 +144,7 @@ abstract contract BaseTest is Test {
         rainClipper.file("tail", 1800);
         rainClipper.file("cusp", (RAY * 40) / 100);
         rainClipper.file("chip", (WAD * 2) / 100);
-        rainClipper.file("pip", address(rainOsm));
+        rainClipper.file("pip", address(osm));
         rainClipper.file("dog", address(liquidationTrigger));
         rainClipper.file("vow", address(balanceSheet));
         rainClipper.file("calc", address(priceCurve));

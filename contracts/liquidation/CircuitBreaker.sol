@@ -26,6 +26,9 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
     /// @notice The Oracle Security Module being watched.
     IOracleSecurityModule public immutable pip;
 
+    /// @notice Identifier of the collateral type whose price is being watched.
+    bytes32 public immutable ilkId;
+
     /// @notice Deviation threshold that activates the breaker [wad]. 25% = 0.25 * WAD.
     uint256 public threshold;
 
@@ -55,9 +58,11 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
     /**
      * @notice Initializes the breaker with its launch settings (25% threshold, 3 calm blocks).
      * @param pip_ Address of the Oracle Security Module to watch.
+     * @param ilkId_ Identifier of the collateral type to watch.
      */
-    constructor(IOracleSecurityModule pip_) {
+    constructor(IOracleSecurityModule pip_, bytes32 ilkId_) {
         pip = pip_;
+        ilkId = ilkId_;
         threshold = WAD / 4;
         calmBlocks = 3;
     }
@@ -83,7 +88,7 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
      * @inheritdoc ICircuitBreaker
      */
     function check() external {
-        (bytes32 val, bool has) = pip.peek();
+        (bytes32 val, bool has) = pip.peek(ilkId);
 
         if (!has) {
             return;

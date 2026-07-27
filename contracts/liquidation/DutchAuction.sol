@@ -371,7 +371,7 @@ contract DutchAuction is IDutchAuction, Auth {
 
     /// @dev Reads the current delayed price from the Oracle Security Module, scaled to ray.
     function _getFeedPrice() internal view returns (uint256 feedPrice) {
-        (bytes32 val, bool has) = pip.peek();
+        (bytes32 val, bool has) = pip.peek(ilkId);
         require(has, "DutchAuction/invalid-price");
 
         feedPrice = (uint256(val) * RAY) / WAD;
