@@ -86,7 +86,7 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
         vaultEngine.hope(address(usdrAdapter_));
     }
 
-    /* ========================== ADMINISTRATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IPegStabilityModule
@@ -102,8 +102,6 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
 
         emit File({ what: what, data: data });
     }
-
-    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IPegStabilityModule

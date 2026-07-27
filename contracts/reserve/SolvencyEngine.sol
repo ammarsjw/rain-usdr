@@ -56,7 +56,7 @@ contract SolvencyEngine is ISolvencyEngine, Auth {
         stressDepth = (WAD * 35) / 100;
     }
 
-    /* ========================== ADMINISTRATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc ISolvencyEngine
@@ -94,8 +94,6 @@ contract SolvencyEngine is ISolvencyEngine, Auth {
 
         emit AddVolatileIlk({ ilkId: ilkId });
     }
-
-    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc ISolvencyEngine

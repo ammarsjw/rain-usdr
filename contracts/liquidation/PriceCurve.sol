@@ -22,7 +22,7 @@ contract PriceCurve is IPriceCurve, Auth {
     /// @notice Auction lifetime in seconds — how long until the price reaches zero.
     uint256 public tau;
 
-    /* ========================== ADMINISTRATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IPriceCurve
@@ -36,8 +36,6 @@ contract PriceCurve is IPriceCurve, Auth {
 
         emit File({ what: what, data: data });
     }
-
-    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IPriceCurve

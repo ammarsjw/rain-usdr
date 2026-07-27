@@ -58,7 +58,7 @@ contract PriceConverter is IPriceConverter, Auth {
         live = 1;
     }
 
-    /* ========================== ADMINISTRATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IPriceConverter
@@ -119,8 +119,6 @@ contract PriceConverter is IPriceConverter, Auth {
 
         emit Cage();
     }
-
-    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IPriceConverter

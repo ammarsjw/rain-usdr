@@ -33,7 +33,7 @@ import { MockPriceSource } from "./mocks/MockPriceSource.sol";
  *         contracts inherit from this and add their own scenarios.
  */
 abstract contract BaseTest is Test {
-    /* ========================== SYSTEM CONTRACTS ========================== */
+    /* ========================== STATE VARIABLES ========================== */
 
     USDR internal usdr;
     VaultEngine internal vaultEngine;
@@ -54,14 +54,10 @@ abstract contract BaseTest is Test {
     CircuitBreaker internal circuitBreaker;
     Governor internal governor;
 
-    /* ========================== MOCKS ========================== */
-
     MockERC20 internal rain;
     MockERC20 internal usdt;
     MockERC20 internal usdc;
     MockPriceSource internal rainPriceSource;
-
-    /* ========================== CONSTANTS ========================== */
 
     bytes32 internal constant RAIN_ILK = "RAIN-A";
     bytes32 internal constant USDT_ILK = "USDT-A";
@@ -70,7 +66,7 @@ abstract contract BaseTest is Test {
     address internal user = address(0xBEEF);
     address internal keeper = address(0xCAFE);
 
-    /* ========================== SETUP ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     function setUp() public virtual {
         // Deploying mock tokens (USDT and USDC use 6 decimals; RAIN uses 18).

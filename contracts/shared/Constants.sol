@@ -13,8 +13,6 @@ uint256 constant RAY = 10 ** 27;
 /// @dev Fixed point scalar with 45 decimals of precision. Used for internal debt units (wad * ray).
 uint256 constant RAD = 10 ** 45;
 
-/* ========================== ACCESS CONTROL ROLES ========================== */
-
 /// @dev Core authorization role. Replaces the legacy `wards` mapping; a holder may `rely`/`deny`.
 bytes32 constant WARD_ROLE = keccak256("WARD_ROLE");
 

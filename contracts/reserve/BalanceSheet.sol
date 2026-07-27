@@ -41,7 +41,7 @@ contract BalanceSheet is IBalanceSheet, Auth {
         vaultEngine = vaultEngine_;
     }
 
-    /* ========================== ADMINISTRATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IBalanceSheet
@@ -68,8 +68,6 @@ contract BalanceSheet is IBalanceSheet, Auth {
 
         emit File({ what: what, addr: data });
     }
-
-    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IBalanceSheet

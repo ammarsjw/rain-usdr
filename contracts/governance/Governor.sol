@@ -70,7 +70,7 @@ contract Governor is IGovernor, Auth {
         delay = delay_;
     }
 
-    /* ========================== ADMINISTRATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IGovernor
@@ -84,8 +84,6 @@ contract Governor is IGovernor, Auth {
 
         emit File({ what: what, data: data });
     }
-
-    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IGovernor

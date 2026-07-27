@@ -76,7 +76,7 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
         live = 1;
     }
 
-    /* ========================== ADMINISTRATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc ILiquidationTrigger
@@ -146,8 +146,6 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
 
         emit Cage();
     }
-
-    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc ILiquidationTrigger
@@ -236,8 +234,6 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
 
         emit Digs({ ilkId: ilkId, rad: rad });
     }
-
-    /* ========================== MATH HELPERS ========================== */
 
     /// @dev Returns the smaller of two numbers.
     function _min(uint256 x, uint256 y) internal pure returns (uint256) {

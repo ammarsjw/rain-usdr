@@ -36,7 +36,7 @@ abstract contract Auth is AccessControl {
         _initAuth();
     }
 
-    /* ========================== INITIALIZER ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @dev Performs the authorization setup and emits the corresponding event. Kept `private` and
@@ -49,8 +49,6 @@ abstract contract Auth is AccessControl {
 
         emit Rely({ account: msg.sender });
     }
-
-    /* ========================== AUTHORIZATION ========================== */
 
     /**
      * @notice Grants ward authorization to an account.

@@ -69,7 +69,7 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
         live = 1;
     }
 
-    /* ========================== ADMINISTRATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc ICollateralAdapter
@@ -79,8 +79,6 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
 
         emit Cage();
     }
-
-    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc ICollateralAdapter

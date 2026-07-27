@@ -25,7 +25,7 @@ contract ReserveAccounting is IReserveAccounting, Auth {
     /// @notice Amount committed to guaranteed obligations (the settlement escrow) [wad].
     uint256 public committedEscrow;
 
-    /* ========================== ADMINISTRATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IReserveAccounting
@@ -62,8 +62,6 @@ contract ReserveAccounting is IReserveAccounting, Auth {
 
         emit RemoveCommitter({ account: account });
     }
-
-    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IReserveAccounting

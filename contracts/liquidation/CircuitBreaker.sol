@@ -62,7 +62,7 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
         calmBlocks = 3;
     }
 
-    /* ========================== ADMINISTRATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc ICircuitBreaker
@@ -78,8 +78,6 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
 
         emit File({ what: what, data: data });
     }
-
-    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc ICircuitBreaker
@@ -127,8 +125,6 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
 
         emit Checked({ deviation: deviation, active: active });
     }
-
-    /* ========================== INTERNAL HELPERS ========================== */
 
     /// @dev Returns the relative deviation between two prices [wad].
     function _deviation(uint256 current, uint256 trend) internal pure returns (uint256) {

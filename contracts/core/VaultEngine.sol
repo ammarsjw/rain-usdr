@@ -59,7 +59,7 @@ contract VaultEngine is IVaultEngine, Auth {
         live = 1;
     }
 
-    /* ========================== AUTHORIZATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IVaultEngine
@@ -83,8 +83,6 @@ contract VaultEngine is IVaultEngine, Auth {
     function wish(address owner, address operator) internal view returns (bool) {
         return owner == operator || can[owner][operator] == 1;
     }
-
-    /* ========================== ADMINISTRATION ========================== */
 
     /**
      * @inheritdoc IVaultEngine
@@ -144,8 +142,6 @@ contract VaultEngine is IVaultEngine, Auth {
         emit Cage();
     }
 
-    /* ========================== FUNGIBILITY ========================== */
-
     /**
      * @inheritdoc IVaultEngine
      */
@@ -178,8 +174,6 @@ contract VaultEngine is IVaultEngine, Auth {
 
         emit Move({ from: from, to: to, rad: rad });
     }
-
-    /* ========================== VAULT MANAGEMENT ========================== */
 
     /**
      * @inheritdoc IVaultEngine
@@ -230,8 +224,6 @@ contract VaultEngine is IVaultEngine, Auth {
         emit Frob({ ilkId: ilkId, u: u, v: v, w: w, dink: dink, dart: dart });
     }
 
-    /* ========================== LIQUIDATION ========================== */
-
     /**
      * @inheritdoc IVaultEngine
      */
@@ -259,8 +251,6 @@ contract VaultEngine is IVaultEngine, Auth {
         emit Grab({ ilkId: ilkId, u: u, v: v, w: w, dink: dink, dart: dart });
     }
 
-    /* ========================== SETTLEMENT ========================== */
-
     /**
      * @inheritdoc IVaultEngine
      */
@@ -284,8 +274,6 @@ contract VaultEngine is IVaultEngine, Auth {
 
         emit Suck({ u: u, v: v, rad: rad });
     }
-
-    /* ========================== MATH HELPERS ========================== */
 
     /// @dev Adds a signed integer to an unsigned integer, reverting on over/underflow.
     function _add(uint256 x, int256 y) internal pure returns (uint256 z) {

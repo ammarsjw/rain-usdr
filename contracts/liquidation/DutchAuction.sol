@@ -117,7 +117,7 @@ contract DutchAuction is IDutchAuction, Auth {
         live = 1;
     }
 
-    /* ========================== ADMINISTRATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IDutchAuction
@@ -158,8 +158,6 @@ contract DutchAuction is IDutchAuction, Auth {
 
         emit File({ what: what, addr: data });
     }
-
-    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IDutchAuction
@@ -370,8 +368,6 @@ contract DutchAuction is IDutchAuction, Auth {
         price_ = calc.price(top, block.timestamp - tic);
         done = (block.timestamp - tic > tail || (price_ * RAY) / top < cusp);
     }
-
-    /* ========================== INTERNAL HELPERS ========================== */
 
     /// @dev Reads the current delayed price from the Oracle Security Module, scaled to ray.
     function _getFeedPrice() internal view returns (uint256 feedPrice) {

@@ -58,7 +58,7 @@ contract OracleSecurityModule is IOracleSecurityModule, Auth {
         src = src_;
     }
 
-    /* ========================== ADMINISTRATION ========================== */
+    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IOracleSecurityModule
@@ -122,8 +122,6 @@ contract OracleSecurityModule is IOracleSecurityModule, Auth {
 
         emit Diss({ account: account });
     }
-
-    /* ========================== FUNCTIONS ========================== */
 
     /**
      * @inheritdoc IOracleSecurityModule
