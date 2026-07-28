@@ -44,8 +44,8 @@ const deployLiquidation = async () => {
         liquidationTriggerConstructorArguments
     );
 
-    const rainClipperConstructorArguments = [vaultEngineAddress, rainIlk];
-    const rainClipperAddress = await deployContract(dutchAuctionName, rainClipperConstructorArguments);
+    const dutchAuctionConstructorArguments = [vaultEngineAddress, rainIlk];
+    const dutchAuctionAddress = await deployContract(dutchAuctionName, dutchAuctionConstructorArguments);
 
     const circuitBreakerConstructorArguments = [osmAddress, rainIlk];
     const circuitBreakerAddress = await deployContract(circuitBreakerName, circuitBreakerConstructorArguments);
@@ -56,7 +56,7 @@ const deployLiquidation = async () => {
         liquidationTriggerName,
         liquidationTriggerAddress
     );
-    const rainClipperInstance = await hardhat.ethers.getContractAt(dutchAuctionName, rainClipperAddress);
+    const dutchAuctionInstance = await hardhat.ethers.getContractAt(dutchAuctionName, dutchAuctionAddress);
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
 
     // Price curve: auction lifetime of 1 hour (straight-line decline to zero).
@@ -99,49 +99,49 @@ const deployLiquidation = async () => {
         await liquidationTriggerInstance["file(bytes32,bytes32,address)"](
             rainIlk,
             hardhat.ethers.encodeBytes32String("clip"),
-            rainClipperAddress
+            dutchAuctionAddress
         )
     ).wait();
 
     // Dutch auction: 5% start markup, 30 minute reset time, 40% reset threshold, 2% keeper reward.
     await (
-        await rainClipperInstance["file(bytes32,uint256)"](
+        await dutchAuctionInstance["file(bytes32,uint256)"](
             hardhat.ethers.encodeBytes32String("buf"),
             (RAY * 105n) / 100n
         )
     ).wait();
     await (
-        await rainClipperInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("tail"), 1800n)
+        await dutchAuctionInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("tail"), 1800n)
     ).wait();
     await (
-        await rainClipperInstance["file(bytes32,uint256)"](
+        await dutchAuctionInstance["file(bytes32,uint256)"](
             hardhat.ethers.encodeBytes32String("cusp"),
             (RAY * 40n) / 100n
         )
     ).wait();
     await (
-        await rainClipperInstance["file(bytes32,uint256)"](
+        await dutchAuctionInstance["file(bytes32,uint256)"](
             hardhat.ethers.encodeBytes32String("chip"),
             (WAD * 2n) / 100n
         )
     ).wait();
     await (
-        await rainClipperInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("pip"), osmAddress)
+        await dutchAuctionInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("pip"), osmAddress)
     ).wait();
     await (
-        await rainClipperInstance["file(bytes32,address)"](
+        await dutchAuctionInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("dog"),
             liquidationTriggerAddress
         )
     ).wait();
     await (
-        await rainClipperInstance["file(bytes32,address)"](
+        await dutchAuctionInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("vow"),
             balanceSheetAddress
         )
     ).wait();
     await (
-        await rainClipperInstance["file(bytes32,address)"](
+        await dutchAuctionInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("calc"),
             priceCurveAddress
         )
@@ -149,20 +149,20 @@ const deployLiquidation = async () => {
 
     // Whitelisting the auction and the breaker to read the OSM.
     const osmInstance = await hardhat.ethers.getContractAt("OracleSecurityModule", osmAddress);
-    await (await osmInstance.kiss(rainClipperAddress)).wait();
+    await (await osmInstance.kiss(dutchAuctionAddress)).wait();
     await (await osmInstance.kiss(circuitBreakerAddress)).wait();
 
     // Wiring authorizations across the ledger and the stack.
     await (await vaultEngineInstance.rely(liquidationTriggerAddress)).wait();
-    await (await vaultEngineInstance.rely(rainClipperAddress)).wait();
-    await (await liquidationTriggerInstance.rely(rainClipperAddress)).wait();
-    await (await rainClipperInstance.rely(liquidationTriggerAddress)).wait();
+    await (await vaultEngineInstance.rely(dutchAuctionAddress)).wait();
+    await (await liquidationTriggerInstance.rely(dutchAuctionAddress)).wait();
+    await (await dutchAuctionInstance.rely(liquidationTriggerAddress)).wait();
     console.log("Liquidation setup complete");
 
     // Updating env.
     updateEnv("PRICE_CURVE_ADDRESS", priceCurveAddress);
     updateEnv("LIQUIDATION_TRIGGER_ADDRESS", liquidationTriggerAddress);
-    updateEnv("RAIN_CLIPPER_ADDRESS", rainClipperAddress);
+    updateEnv("DUTCH_AUCTION_ADDRESS", dutchAuctionAddress);
     updateEnv("CIRCUIT_BREAKER_ADDRESS", circuitBreakerAddress);
 
     // Waiting for block explorer.
@@ -171,7 +171,7 @@ const deployLiquidation = async () => {
     // Verifying liquidation contracts.
     await verifyContract(priceCurveAddress, priceCurveConstructorArguments);
     await verifyContract(liquidationTriggerAddress, liquidationTriggerConstructorArguments);
-    await verifyContract(rainClipperAddress, rainClipperConstructorArguments);
+    await verifyContract(dutchAuctionAddress, dutchAuctionConstructorArguments);
     await verifyContract(circuitBreakerAddress, circuitBreakerConstructorArguments);
 };
 

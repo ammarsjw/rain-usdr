@@ -46,7 +46,7 @@ abstract contract BaseTest is Test {
     BalanceSheet internal balanceSheet;
     PriceCurve internal priceCurve;
     LiquidationTrigger internal liquidationTrigger;
-    DutchAuction internal rainClipper;
+    DutchAuction internal dutchAuction;
     CircuitBreaker internal circuitBreaker;
     Governor internal governor;
 
@@ -93,7 +93,7 @@ abstract contract BaseTest is Test {
         // Deploying the liquidation stack.
         priceCurve = new PriceCurve();
         liquidationTrigger = new LiquidationTrigger(vaultEngine);
-        rainClipper = new DutchAuction(vaultEngine, RAIN_ILK);
+        dutchAuction = new DutchAuction(vaultEngine, RAIN_ILK);
         circuitBreaker = new CircuitBreaker(osm, RAIN_ILK);
 
         // Deploying the PSMs and the Governor.
@@ -109,13 +109,13 @@ abstract contract BaseTest is Test {
         vaultEngine.rely(address(collateralAdapter));
         vaultEngine.rely(address(priceConverter));
         vaultEngine.rely(address(liquidationTrigger));
-        vaultEngine.rely(address(rainClipper));
+        vaultEngine.rely(address(dutchAuction));
         vaultEngine.rely(address(balanceSheet));
         usdr.rely(address(collateralAdapter));
 
         // Wiring the oracles (RAIN 400%, stables 100%).
         osm.kiss(address(priceConverter));
-        osm.kiss(address(rainClipper));
+        osm.kiss(address(dutchAuction));
         osm.kiss(address(circuitBreaker));
         priceConverter.file(RAIN_ILK, "pip", address(osm));
         priceConverter.file(RAIN_ILK, "mat", 4 * RAY);
@@ -132,17 +132,17 @@ abstract contract BaseTest is Test {
         liquidationTrigger.file("circuitBreaker", address(circuitBreaker));
         liquidationTrigger.file(RAIN_ILK, "chop", (WAD * 113) / 100);
         liquidationTrigger.file(RAIN_ILK, "hole", 50_000 * RAD);
-        liquidationTrigger.file(RAIN_ILK, "clip", address(rainClipper));
-        liquidationTrigger.rely(address(rainClipper));
-        rainClipper.file("buf", (RAY * 105) / 100);
-        rainClipper.file("tail", 1800);
-        rainClipper.file("cusp", (RAY * 40) / 100);
-        rainClipper.file("chip", (WAD * 2) / 100);
-        rainClipper.file("pip", address(osm));
-        rainClipper.file("dog", address(liquidationTrigger));
-        rainClipper.file("vow", address(balanceSheet));
-        rainClipper.file("calc", address(priceCurve));
-        rainClipper.rely(address(liquidationTrigger));
+        liquidationTrigger.file(RAIN_ILK, "clip", address(dutchAuction));
+        liquidationTrigger.rely(address(dutchAuction));
+        dutchAuction.file("buf", (RAY * 105) / 100);
+        dutchAuction.file("tail", 1800);
+        dutchAuction.file("cusp", (RAY * 40) / 100);
+        dutchAuction.file("chip", (WAD * 2) / 100);
+        dutchAuction.file("pip", address(osm));
+        dutchAuction.file("dog", address(liquidationTrigger));
+        dutchAuction.file("vow", address(balanceSheet));
+        dutchAuction.file("calc", address(priceCurve));
+        dutchAuction.rely(address(liquidationTrigger));
 
         // Setting launch ceilings and minimum vault size.
         vaultEngine.file("Line", 1_100_000 * RAD);
