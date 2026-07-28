@@ -12,8 +12,8 @@ import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
- * @title SolvencyEngine.
- * @author Rain Team.
+ * @title SolvencyEngine
+ * @author Rain Team
  * @notice The guardian. Computes the protocol's worst-case loss under stress and verifies that
  *         the stable reserve exceeds it. If that rule would ever be broken, the protocol refuses
  *         the action that would break it. This single rule is what makes USDR provably solvent.

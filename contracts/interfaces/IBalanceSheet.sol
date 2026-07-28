@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 /**
- * @title IBalanceSheet.
- * @author Rain Team.
+ * @title IBalanceSheet
+ * @author Rain Team
  * @notice Interface for the protocol's treasury and bad debt manager.
  */
 interface IBalanceSheet {

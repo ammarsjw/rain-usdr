@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 /**
- * @title IDutchAuction.
- * @author Rain Team.
+ * @title IDutchAuction
+ * @author Rain Team
  * @notice Interface for the descending-price auction house that sells seized collateral.
  */
 interface IDutchAuction {

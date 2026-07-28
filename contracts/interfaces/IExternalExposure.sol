@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 /**
- * @title IExternalExposure.
- * @author Rain Team.
+ * @title IExternalExposure
+ * @author Rain Team
  * @notice Dedicated interface through which the prediction market layer (owned by a separate
  *         team) reports its exposure. The Solvency Engine consumes this figure as a number.
  */

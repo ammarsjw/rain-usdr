@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 /**
- * @title IVaultEngine.
- * @author Rain Team.
+ * @title IVaultEngine
+ * @author Rain Team
  * @notice Interface for the immutable core ledger of the USDR system.
  */
 interface IVaultEngine {

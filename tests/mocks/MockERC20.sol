@@ -5,8 +5,8 @@ pragma solidity 0.8.30;
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /**
- * @title MockERC20.
- * @author Rain Team.
+ * @title MockERC20
+ * @author Rain Team
  * @notice Minimal mintable ERC-20 with configurable decimals for tests.
  */
 contract MockERC20 is ERC20 {

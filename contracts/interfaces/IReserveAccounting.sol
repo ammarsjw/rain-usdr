@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 /**
- * @title IReserveAccounting.
- * @author Rain Team.
+ * @title IReserveAccounting
+ * @author Rain Team
  * @notice Interface for the stable reserve bookkeeper.
  */
 interface IReserveAccounting {

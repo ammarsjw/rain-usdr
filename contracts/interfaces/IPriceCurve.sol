@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 /**
- * @title IPriceCurve.
- * @author Rain Team.
+ * @title IPriceCurve
+ * @author Rain Team
  * @notice Interface for the falling auction price calculator.
  */
 interface IPriceCurve {

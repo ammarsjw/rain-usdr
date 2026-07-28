@@ -16,8 +16,8 @@ import { InvalidAddress, InvalidAmount, UnrecognizedParameter } from "../shared/
 import { _revert } from "../shared/Globals.sol";
 
 /**
- * @title PegStabilityModule.
- * @author Rain Team.
+ * @title PegStabilityModule
+ * @author Rain Team
  * @notice The on-ramp and off-ramp for stablecoins. Deposit USDT or USDC, get USDR one-for-one.
  *         Return USDR, get stablecoins back — but redemption is best-effort, served only from
  *         the protocol's free reserves after guaranteed obligations are covered. A single

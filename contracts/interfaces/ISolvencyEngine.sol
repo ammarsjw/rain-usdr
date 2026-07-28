@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 /**
- * @title ISolvencyEngine.
- * @author Rain Team.
+ * @title ISolvencyEngine
+ * @author Rain Team
  * @notice Interface for the contract that enforces the master safety rule.
  */
 interface ISolvencyEngine {

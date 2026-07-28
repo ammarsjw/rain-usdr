@@ -9,8 +9,8 @@ import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
- * @title PriceCurve.
- * @author Rain Team.
+ * @title PriceCurve
+ * @author Rain Team
  * @notice A pure calculator. Given an auction's starting price, its start time, and how long it
  *         should run, it returns the current price at any moment. USDR uses a straight-line
  *         decline: the price falls steadily from the start to zero over the auction's lifetime.

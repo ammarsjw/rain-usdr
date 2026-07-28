@@ -14,8 +14,8 @@ import { InvalidAddress, InvalidAmount, NotLive } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
- * @title CollateralAdapter.
- * @author Rain Team.
+ * @title CollateralAdapter
+ * @author Rain Team
  * @notice The doorway for tokens entering and leaving the system. Bridges real tokens (RAIN,
  *         USDT, USDC — and USDR itself) and the internal ledger. A single deployed instance
  *         serves every token: ilks are registered dynamically, each carrying its own token and

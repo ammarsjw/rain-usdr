@@ -5,8 +5,8 @@ pragma solidity 0.8.30;
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
- * @title IUSDR.
- * @author Rain Team.
+ * @title IUSDR
+ * @author Rain Team
  * @notice Interface for the Rain Dollar stablecoin.
  */
 interface IUSDR is IERC20 {

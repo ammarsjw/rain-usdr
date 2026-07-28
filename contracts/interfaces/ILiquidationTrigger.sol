@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 /**
- * @title ILiquidationTrigger.
- * @author Rain Team.
+ * @title ILiquidationTrigger
+ * @author Rain Team
  * @notice Interface for the contract that detects unsafe vaults and starts auctions.
  */
 interface ILiquidationTrigger {

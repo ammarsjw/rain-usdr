@@ -12,8 +12,8 @@ import { InvalidAddress, InvalidAmount } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
- * @title USDR.
- * @author Rain Team.
+ * @title USDR
+ * @author Rain Team
  * @notice The Rain Dollar stablecoin. A standard, transferable digital dollar that can only be
  *         minted or burned by authorized system contracts (the Vault Engine adapter and the
  *         Peg Stability Module). No administrator can create USDR out of nothing.

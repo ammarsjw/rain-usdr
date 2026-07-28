@@ -27,8 +27,8 @@ import { MockERC20 } from "./mocks/MockERC20.sol";
 import { MockPriceSource } from "./mocks/MockPriceSource.sol";
 
 /**
- * @title BaseTest.
- * @author Rain Team.
+ * @title BaseTest
+ * @author Rain Team
  * @notice Shared test harness that deploys and wires the full USDR system. Concrete test
  *         contracts inherit from this and add their own scenarios.
  */

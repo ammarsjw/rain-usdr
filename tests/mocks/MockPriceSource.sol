@@ -5,8 +5,8 @@ pragma solidity 0.8.30;
 import { IPriceSource } from "../../contracts/interfaces/IPriceSource.sol";
 
 /**
- * @title MockPriceSource.
- * @author Rain Team.
+ * @title MockPriceSource
+ * @author Rain Team
  * @notice Settable price source for tests, standing in for the Uniswap TWAP wrapper.
  */
 contract MockPriceSource is IPriceSource {

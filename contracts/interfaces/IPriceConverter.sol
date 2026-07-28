@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 /**
- * @title IPriceConverter.
- * @author Rain Team.
+ * @title IPriceConverter
+ * @author Rain Team
  * @notice Interface for the contract that turns a raw price into a collateralization limit.
  */
 interface IPriceConverter {

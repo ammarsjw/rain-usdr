@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 /**
- * @title IGovernor.
- * @author Rain Team.
+ * @title IGovernor
+ * @author Rain Team
  * @notice Interface for the timelocked parameter changer and emergency pause.
  */
 interface IGovernor {

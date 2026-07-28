@@ -7,8 +7,8 @@ import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/I
 import { IVaultEngine } from "./IVaultEngine.sol";
 
 /**
- * @title ICollateralAdapter.
- * @author Rain Team.
+ * @title ICollateralAdapter
+ * @author Rain Team
  * @notice Interface for the token adapter bridging real tokens and the internal ledger from a
  *         single deployed instance. Collateral ilks custody deposits; the USDR ilk mints and
  *         burns the token.

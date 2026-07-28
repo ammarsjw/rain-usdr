@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 /**
- * @title ICircuitBreaker.
- * @author Rain Team.
+ * @title ICircuitBreaker
+ * @author Rain Team
  * @notice Interface for the contract that slows liquidations when the price moves suspiciously fast.
  */
 interface ICircuitBreaker {

@@ -10,8 +10,8 @@ import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
- * @title BalanceSheet.
- * @author Rain Team.
+ * @title BalanceSheet
+ * @author Rain Team
  * @notice The protocol's treasury and debt manager. Receives revenue as surplus, holds a safety
  *         buffer, and absorbs bad debt through an ordered waterfall. When the surplus buffer is
  *         full, the excess goes toward buying back and burning RAIN.

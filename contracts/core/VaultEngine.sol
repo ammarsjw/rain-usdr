@@ -9,8 +9,8 @@ import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
- * @title VaultEngine.
- * @author Rain Team.
+ * @title VaultEngine
+ * @author Rain Team
  * @notice The immutable core ledger. Master record of every piece of collateral and every unit of
  *         debt in the system. Enforces the fundamental rule that no vault can mint more USDR than
  *         its collateral allows. Its rules can never be changed after deployment.

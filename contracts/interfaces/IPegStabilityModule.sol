@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 /**
- * @title IPegStabilityModule.
- * @author Rain Team.
+ * @title IPegStabilityModule
+ * @author Rain Team
  * @notice Interface for the module that swaps stablecoins for USDR at 1:1, serving every
  *         stablecoin from a single deployed instance.
  */

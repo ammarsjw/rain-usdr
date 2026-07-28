@@ -14,8 +14,8 @@ import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
- * @title DutchAuction.
- * @author Rain Team.
+ * @title DutchAuction
+ * @author Rain Team
  * @notice The auction house. Runs each liquidation as a Dutch auction: the collateral starts at
  *         a price above market and falls over time until a keeper buys it. It settles instantly,
  *         needs no locked capital from bidders, and supports flash-loan-style buying where the

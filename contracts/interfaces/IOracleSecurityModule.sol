@@ -5,8 +5,8 @@ pragma solidity 0.8.30;
 import { IPriceSource } from "./IPriceSource.sol";
 
 /**
- * @title IOracleSecurityModule.
- * @author Rain Team.
+ * @title IOracleSecurityModule
+ * @author Rain Team
  * @notice Interface for the delayed price feed serving every priced collateral from a single
  *         deployed instance.
  */

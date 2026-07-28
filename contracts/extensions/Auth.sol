@@ -7,8 +7,8 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 import { WARD_ROLE } from "../shared/Constants.sol";
 
 /**
- * @title Auth.
- * @author Rain Team.
+ * @title Auth
+ * @author Rain Team
  * @notice Shared authorization base built on OpenZeppelin AccessControl. Every system contract that
  *         needs privileged access inherits this instead of hand-rolling the authorization mapping.
  * @dev Replaces MakerDAO's `wards` mapping with the `WARD_ROLE` role, while preserving the familiar

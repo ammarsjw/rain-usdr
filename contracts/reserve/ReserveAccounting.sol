@@ -7,8 +7,8 @@ import { Auth } from "../extensions/Auth.sol";
 import { COMMITTER_ROLE, RECORDER_ROLE, WARD_ROLE } from "../shared/Constants.sol";
 
 /**
- * @title ReserveAccounting.
- * @author Rain Team.
+ * @title ReserveAccounting
+ * @author Rain Team
  * @notice The bookkeeper for the protocol's stable dollars. Tracks the total reserve (all USDT
  *         and USDC held), how much is committed to guaranteed obligations (the settlement
  *         escrow), and how much is free (the slack). This is where the reserve is split so

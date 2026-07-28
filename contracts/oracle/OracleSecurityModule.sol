@@ -10,8 +10,8 @@ import { InvalidAddress, NotLive } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
- * @title OracleSecurityModule.
- * @author Rain Team.
+ * @title OracleSecurityModule
+ * @author Rain Team
  * @notice The delayed price feed. Holds prices back by 30 minutes so that if a price is
  *         manipulated, there is time to detect and respond before the system acts on it.
  *         Stores two prices per collateral type: the current one (which the system uses) and

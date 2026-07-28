@@ -9,8 +9,8 @@ import { InvalidAddress, NotAuthorized, UnrecognizedParameter } from "../shared/
 import { _revert } from "../shared/Globals.sol";
 
 /**
- * @title Governor.
- * @author Rain Team.
+ * @title Governor
+ * @author Rain Team
  * @notice The controlled way to change the protocol's adjustable settings. Every change waits
  *         out a mandatory delay before it can take effect, giving the community time to review.
  *         Also holds the emergency pause. It can never touch the immutable core — only the risk

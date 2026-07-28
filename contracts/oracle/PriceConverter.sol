@@ -11,8 +11,8 @@ import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
- * @title PriceConverter.
- * @author Rain Team.
+ * @title PriceConverter
+ * @author Rain Team
  * @notice The link between the oracle and the Vault Engine. Takes the delayed price and divides
  *         it by the required collateralization ratio to produce the price factor — the maximum
  *         USDR mintable per unit of collateral. For RAIN at $1 with a 400% ratio, the factor

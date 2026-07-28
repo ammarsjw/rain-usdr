@@ -10,8 +10,8 @@ import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
- * @title CircuitBreaker.
- * @author Rain Team.
+ * @title CircuitBreaker
+ * @author Rain Team
  * @notice A defense against price manipulation during liquidation. Watches how far the delayed
  *         price has moved from its recent trend. If the move is too large too fast, it throttles
  *         liquidations — slowing them, never freezing them — so a manipulated price cannot
