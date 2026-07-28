@@ -99,7 +99,7 @@ const deployGovernance = async () => {
     updateEnv("GOVERNOR_ADDRESS", governorAddress);
 
     // Waiting for block explorer.
-    await wait("60 seconds");
+    await wait("30 seconds");
 
     // Verifying governance contracts.
     await verifyContract(psmAddress, psmConstructorArguments);

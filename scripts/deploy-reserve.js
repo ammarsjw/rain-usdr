@@ -60,7 +60,7 @@ const deployReserve = async () => {
     updateEnv("BALANCE_SHEET_ADDRESS", balanceSheetAddress);
 
     // Waiting for block explorer.
-    await wait("60 seconds");
+    await wait("30 seconds");
 
     // Verifying reserve contracts.
     await verifyContract(reserveAccountingAddress, reserveAccountingConstructorArguments);

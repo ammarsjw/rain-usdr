@@ -81,7 +81,7 @@ const deployCore = async () => {
     updateEnv("COLLATERAL_ADAPTER_ADDRESS", collateralAdapterAddress);
 
     // Waiting for block explorer.
-    await wait("60 seconds");
+    await wait("30 seconds");
 
     // Verifying core contracts.
     await verifyContract(usdrAddress, usdrConstructorArguments);

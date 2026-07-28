@@ -73,7 +73,7 @@ const deployOracles = async () => {
     updateEnv("PRICE_CONVERTER_ADDRESS", priceConverterAddress);
 
     // Waiting for block explorer.
-    await wait("60 seconds");
+    await wait("30 seconds");
 
     // Verifying oracle contracts.
     await verifyContract(osmAddress, osmConstructorArguments);

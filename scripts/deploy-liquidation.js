@@ -166,7 +166,7 @@ const deployLiquidation = async () => {
     updateEnv("CIRCUIT_BREAKER_ADDRESS", circuitBreakerAddress);
 
     // Waiting for block explorer.
-    await wait("60 seconds");
+    await wait("30 seconds");
 
     // Verifying liquidation contracts.
     await verifyContract(priceCurveAddress, priceCurveConstructorArguments);
