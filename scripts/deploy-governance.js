@@ -14,13 +14,10 @@ const deployGovernance = async () => {
 
     // Definition variables.
     const governorName = "Governor";
-    const psmName = "PegStabilityModule";
 
     // Deployment variables.
     const governorDelay = process.env.GOVERNOR_DELAY || 172800n; // 48 hours default.
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
-    const collateralAdapterAddress = process.env.COLLATERAL_ADAPTER_ADDRESS;
-    const reserveAccountingAddress = process.env.RESERVE_ACCOUNTING_ADDRESS;
 
     // Collateral type identifiers.
     const rainIlk = hardhat.ethers.encodeBytes32String("RAIN-A");
@@ -33,26 +30,12 @@ const deployGovernance = async () => {
     // Logging tag.
     logTag("Governance");
 
-    // Deploying the Peg Stability Modules (one per stablecoin).
-    const psmConstructorArguments = [collateralAdapterAddress, reserveAccountingAddress];
-    const psmAddress = await deployContract(psmName, psmConstructorArguments);
-
     // Deploying the Governor.
     const governorConstructorArguments = [governorDelay];
     const governorAddress = await deployContract(governorName, governorConstructorArguments);
 
-    // Setting up governance and PSM wiring.
+    // Setting up governance wiring.
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
-    const reserveAccountingInstance = await hardhat.ethers.getContractAt(
-        "ReserveAccounting",
-        reserveAccountingAddress
-    );
-
-    // Registering the stablecoin ilks on the PSM and authorizing it as a reserve recorder.
-    const psmInstance = await hardhat.ethers.getContractAt(psmName, psmAddress);
-    await (await psmInstance.init(usdtIlk)).wait();
-    await (await psmInstance.init(usdcIlk)).wait();
-    await (await reserveAccountingInstance.addRecorder(psmAddress)).wait();
 
     // Setting launch risk parameters: ceilings and minimum vault size.
     await (
@@ -95,14 +78,12 @@ const deployGovernance = async () => {
     console.log("Governance setup complete");
 
     // Updating env.
-    updateEnv("PSM_ADDRESS", psmAddress);
     updateEnv("GOVERNOR_ADDRESS", governorAddress);
 
     // Waiting for block explorer.
     await wait("30 seconds");
 
     // Verifying governance contracts.
-    await verifyContract(psmAddress, psmConstructorArguments);
     await verifyContract(governorAddress, governorConstructorArguments);
 };
 

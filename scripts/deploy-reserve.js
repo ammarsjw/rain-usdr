@@ -16,12 +16,16 @@ const deployReserve = async () => {
     const reserveAccountingName = "ReserveAccounting";
     const solvencyEngineName = "SolvencyEngine";
     const balanceSheetName = "BalanceSheet";
+    const psmName = "PegStabilityModule";
 
     // Deployment variables.
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
+    const collateralAdapterAddress = process.env.COLLATERAL_ADAPTER_ADDRESS;
 
     // Collateral type identifiers.
     const rainIlk = hardhat.ethers.encodeBytes32String("RAIN-A");
+    const usdtIlk = hardhat.ethers.encodeBytes32String("USDT-A");
+    const usdcIlk = hardhat.ethers.encodeBytes32String("USDC-A");
 
     // Logging tag.
     logTag("Reserve");
@@ -36,6 +40,10 @@ const deployReserve = async () => {
     const balanceSheetConstructorArguments = [vaultEngineAddress];
     const balanceSheetAddress = await deployContract(balanceSheetName, balanceSheetConstructorArguments);
 
+    // Deploying the Peg Stability Module.
+    const psmConstructorArguments = [collateralAdapterAddress, reserveAccountingAddress];
+    const psmAddress = await deployContract(psmName, psmConstructorArguments);
+
     // Setting up the reserve stack.
     const reserveAccountingInstance = await hardhat.ethers.getContractAt(
         reserveAccountingName,
@@ -46,6 +54,12 @@ const deployReserve = async () => {
 
     // Allowing the Solvency Engine to commit escrow in Reserve Accounting.
     await (await reserveAccountingInstance.addCommitter(solvencyEngineAddress)).wait();
+
+    // Registering the stablecoin ilks on the PSM and authorizing it as a reserve recorder.
+    const psmInstance = await hardhat.ethers.getContractAt(psmName, psmAddress);
+    await (await psmInstance.init(usdtIlk)).wait();
+    await (await psmInstance.init(usdcIlk)).wait();
+    await (await reserveAccountingInstance.addRecorder(psmAddress)).wait();
 
     // Registering RAIN as a volatile collateral in the solvency stress calculation.
     await (await solvencyEngineInstance.addVolatileIlk(rainIlk)).wait();
@@ -58,6 +72,7 @@ const deployReserve = async () => {
     updateEnv("RESERVE_ACCOUNTING_ADDRESS", reserveAccountingAddress);
     updateEnv("SOLVENCY_ENGINE_ADDRESS", solvencyEngineAddress);
     updateEnv("BALANCE_SHEET_ADDRESS", balanceSheetAddress);
+    updateEnv("PSM_ADDRESS", psmAddress);
 
     // Waiting for block explorer.
     await wait("30 seconds");
@@ -66,6 +81,7 @@ const deployReserve = async () => {
     await verifyContract(reserveAccountingAddress, reserveAccountingConstructorArguments);
     await verifyContract(solvencyEngineAddress, solvencyEngineConstructorArguments);
     await verifyContract(balanceSheetAddress, balanceSheetConstructorArguments);
+    await verifyContract(psmAddress, psmConstructorArguments);
 };
 
 deployReserve()
