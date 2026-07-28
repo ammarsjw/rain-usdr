@@ -6,8 +6,8 @@ import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceConverter } from "../interfaces/IPriceConverter.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { Auth } from "../extensions/Auth.sol";
-import { RAY, WARD_ROLE } from "../shared/Constants.sol";
-import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { RAY, WAD, WARD_ROLE } from "../shared/Constants.sol";
+import { InvalidAddress, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -16,20 +16,29 @@ import { _revert } from "../shared/Globals.sol";
  * @notice The link between the oracle and the Vault Engine. Takes the delayed price and divides
  *         it by the required collateralization ratio to produce the price factor — the maximum
  *         USDR mintable per unit of collateral. For RAIN at $1 with a 400% ratio, the factor
- *         is $0.25.
- * @dev Based on MakerDAO's Spot.
+ *         is $0.25. Supported stablecoins skip the oracle entirely: they are marked fixed and
+ *         always convert at $1, so USDR mints 1:1 against them.
+ * @dev Based on MakerDAO's Spot. Every ilk is configured as exactly one of two kinds — fixed
+ *      (no oracle, price pinned to $1; the trust decision lives in listing governance) or
+ *      oracle-backed (price read from the OSM). The OSM itself never learns about fixed ilks:
+ *      being registered on the OSM is what "needs a price lookup" means, and this contract is
+ *      the single place that routes between the two kinds. `file("pip")` and `file("fixed")`
+ *      clear each other so an ilk can never be both, and `poke` reverts for unconfigured ilks
+ *      rather than writing a zero spot.
  */
 contract PriceConverter is IPriceConverter, Auth {
     /* ========================== TYPES ========================== */
 
     /**
      * @notice Oracle configuration for a collateral type.
-     * @param pip The collateral's Oracle Security Module.
+     * @param pip The collateral's Oracle Security Module. Zero for fixed-price ilks.
      * @param mat The required collateralization ratio [ray]. 400% = 4 * RAY.
+     * @param fixedPrice Whether the ilk is a supported stablecoin pinned to $1 (no oracle).
      */
     struct IlkOracle {
         IOracleSecurityModule pip;
         uint256 mat;
+        bool fixedPrice;
     }
 
     /* ========================== STATE VARIABLES ========================== */
@@ -69,7 +78,9 @@ contract PriceConverter is IPriceConverter, Auth {
         }
 
         if (what == "pip") {
+            // Assigning an oracle makes the ilk oracle-backed; the kinds are mutually exclusive.
             ilks[ilkId].pip = IOracleSecurityModule(pip_);
+            ilks[ilkId].fixedPrice = false;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -104,6 +115,11 @@ contract PriceConverter is IPriceConverter, Auth {
 
         if (what == "mat") {
             ilks[ilkId].mat = data;
+        } else if (what == "fixed") {
+            // Marking an ilk fixed pins it to $1 and detaches any oracle; clearing it leaves
+            // the ilk unconfigured until an oracle is assigned.
+            ilks[ilkId].fixedPrice = data == 1;
+            ilks[ilkId].pip = IOracleSecurityModule(address(0));
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -124,10 +140,26 @@ contract PriceConverter is IPriceConverter, Auth {
      * @inheritdoc IPriceConverter
      */
     function poke(bytes32 ilkId) external {
-        (bytes32 val, bool has) = ilks[ilkId].pip.peek(ilkId);
+        IlkOracle storage ilk = ilks[ilkId];
+
+        bytes32 val;
+        bool has;
+
+        if (ilk.fixedPrice) {
+            // Supported stablecoin: the price is pinned to $1, no oracle lookup.
+            val = bytes32(WAD);
+            has = true;
+        } else {
+            // Oracle-backed collateral: the ilk must have an oracle assigned.
+            if (address(ilk.pip) == address(0)) {
+                _revert(InvalidAddress.selector);
+            }
+
+            (val, has) = ilk.pip.peek(ilkId);
+        }
 
         // If the price is invalid, do nothing (the price factor stays untouched).
-        uint256 spot = has ? ((((uint256(val) * (10 ** 9)) * RAY) / par) * RAY) / ilks[ilkId].mat : 0;
+        uint256 spot = has ? ((((uint256(val) * (10 ** 9)) * RAY) / par) * RAY) / ilk.mat : 0;
 
         vaultEngine.file(ilkId, "spot", spot);
 

@@ -19,8 +19,6 @@ const deployOracles = async () => {
     // Deployment variables.
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
     const rainPriceSourceAddress = process.env.RAIN_PRICE_SOURCE_ADDRESS;
-    const usdtPriceSourceAddress = process.env.USDT_PRICE_SOURCE_ADDRESS;
-    const usdcPriceSourceAddress = process.env.USDC_PRICE_SOURCE_ADDRESS;
 
     // Collateral type identifiers.
     const rainIlk = hardhat.ethers.encodeBytes32String("RAIN-A");
@@ -43,26 +41,31 @@ const deployOracles = async () => {
     const priceConverterInstance = await hardhat.ethers.getContractAt(priceConverterName, priceConverterAddress);
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
 
-    // Registering each collateral's price source (Uniswap TWAP wrapper or Chainlink wrapper —
-    // any IPriceSource adapter).
+    // Registering RAIN's price source (Uniswap TWAP wrapper — any IPriceSource adapter works,
+    // e.g. a Chainlink wrapper for future volatile collaterals like ETH or WBTC). Supported
+    // stablecoins are never registered on the OSM: they are marked fixed on the Price
+    // Converter and always convert at $1.
     await (await osmInstance.change(rainIlk, rainPriceSourceAddress)).wait();
-    await (await osmInstance.change(usdtIlk, usdtPriceSourceAddress)).wait();
-    await (await osmInstance.change(usdcIlk, usdcPriceSourceAddress)).wait();
 
     // Whitelisting the Price Converter to read the OSM.
     await (await osmInstance.kiss(priceConverterAddress)).wait();
 
-    // Assigning oracles and collateralization ratios (RAIN 400%, USDT/USDC 100%).
+    // Configuring RAIN as oracle-backed (400%) and the stablecoins as fixed $1 (100%).
     const RAY = 10n ** 27n;
     await (await priceConverterInstance["file(bytes32,bytes32,address)"](rainIlk, hardhat.ethers.encodeBytes32String("pip"), osmAddress)).wait();
-    await (await priceConverterInstance["file(bytes32,bytes32,address)"](usdtIlk, hardhat.ethers.encodeBytes32String("pip"), osmAddress)).wait();
-    await (await priceConverterInstance["file(bytes32,bytes32,address)"](usdcIlk, hardhat.ethers.encodeBytes32String("pip"), osmAddress)).wait();
     await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](rainIlk, hardhat.ethers.encodeBytes32String("mat"), RAY * 4n)).wait();
     await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](usdtIlk, hardhat.ethers.encodeBytes32String("mat"), RAY)).wait();
     await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](usdcIlk, hardhat.ethers.encodeBytes32String("mat"), RAY)).wait();
+    await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](usdtIlk, hardhat.ethers.encodeBytes32String("fixed"), 1n)).wait();
+    await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](usdcIlk, hardhat.ethers.encodeBytes32String("fixed"), 1n)).wait();
 
     // Authorizing the Price Converter to push price factors into the ledger.
     await (await vaultEngineInstance.rely(priceConverterAddress)).wait();
+
+    // Setting the stablecoins' price factors once; fixed ilks never need another poke unless
+    // par or mat changes.
+    await (await priceConverterInstance.poke(usdtIlk)).wait();
+    await (await priceConverterInstance.poke(usdcIlk)).wait();
     console.log("Oracles setup complete");
 
     // Updating env.

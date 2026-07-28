@@ -47,9 +47,14 @@ full mapping):
   `init(ilkId, token)` — collateral ilks use `slip` + custody, the reserved `USDR` ilk uses
   `move` + mint/burn)
 - `contracts/oracle/` — `OracleSecurityModule` (OSM, 30-min price delay; a single deployed
-  instance keyed by ilk — collaterals are registered dynamically via `change(ilkId, src)` with
-  any `IPriceSource` adapter: Uniswap TWAP wrapper, Chainlink wrapper, etc.), `PriceConverter`
-  (Spot)
+  instance keyed by ilk — volatile collaterals are registered dynamically via
+  `change(ilkId, src)` with any `IPriceSource` adapter: Uniswap TWAP wrapper, Chainlink
+  wrapper, etc.), `PriceConverter` (Spot; every ilk is exactly one of two kinds — **fixed**
+  (`file(ilkId, "fixed", 1)`, price pinned to $1, never touches the OSM; used for supported
+  stablecoins so USDR mints 1:1) or **oracle-backed** (`file(ilkId, "pip", osm)`). The kinds
+  clear each other and `poke` reverts for unconfigured ilks. The OSM deciding factor: being
+  registered on the OSM *is* what "needs a price lookup" means — fixed ilks are simply never
+  registered there.)
 - `contracts/psm/` — `PegStabilityModule` (1:1 USDT/USDC ↔ USDR; a single deployed instance —
   stablecoin ilks register dynamically via `init(ilkId)`, reading token/decimals from the
   adapter)

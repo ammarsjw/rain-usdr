@@ -119,6 +119,12 @@ abstract contract BaseTest is Test {
         osm.kiss(address(circuitBreaker));
         priceConverter.file(RAIN_ILK, "pip", address(osm));
         priceConverter.file(RAIN_ILK, "mat", 4 * RAY);
+        priceConverter.file(USDT_ILK, "mat", RAY);
+        priceConverter.file(USDC_ILK, "mat", RAY);
+        priceConverter.file(USDT_ILK, "fixed", 1);
+        priceConverter.file(USDC_ILK, "fixed", 1);
+        priceConverter.poke(USDT_ILK);
+        priceConverter.poke(USDC_ILK);
 
         // Wiring the reserve stack.
         reserveAccounting.addCommitter(address(solvencyEngine));

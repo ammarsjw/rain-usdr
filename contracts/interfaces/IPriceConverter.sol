@@ -43,10 +43,12 @@ interface IPriceConverter {
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets a collateral type's collateralization ratio ("mat").
+     * @notice Sets a collateral type's collateralization ratio ("mat") or marks it as a
+     *         supported stablecoin pinned to $1 ("fixed", 1 to set and 0 to clear). Marking an
+     *         ilk fixed detaches any assigned oracle — the two kinds are mutually exclusive.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
-     * @param data New value [ray].
+     * @param data New value [ray] for "mat"; 1 or 0 for "fixed".
      */
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
 
@@ -56,9 +58,11 @@ interface IPriceConverter {
     function cage() external;
 
     /**
-     * @notice Recalculates a collateral type's price factor from the latest delayed price and
-     *         pushes it into the Vault Engine.
-     * @dev Public — anyone can trigger it. Does nothing if the price is invalid.
+     * @notice Recalculates a collateral type's price factor and pushes it into the Vault
+     *         Engine. Fixed-price ilks convert at $1 without an oracle lookup; oracle-backed
+     *         ilks read the latest delayed price from their OSM.
+     * @dev Public — anyone can trigger it. Does nothing if the price is invalid; reverts for
+     *      ilks configured neither fixed nor with an oracle.
      * @param ilkId Identifier of the collateral type.
      */
     function poke(bytes32 ilkId) external;
