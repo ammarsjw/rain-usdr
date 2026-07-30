@@ -24,6 +24,14 @@ import { _revert } from "../shared/Globals.sol";
  *      contract changing.
  */
 contract OracleSecurityModule is IOracleSecurityModule, Auth {
+    /* ========================== STATE VARIABLES ========================== */
+
+    /// @inheritdoc IOracleSecurityModule
+    uint16 public constant HOP = 1800;
+
+    /// @dev Oracle state per collateral type.
+    mapping(bytes32 ilkId => Ilk ilk) internal _ilks;
+
     /* ========================== TYPES ========================== */
 
     /// @dev A stored price and its validity flag.
@@ -40,14 +48,6 @@ contract OracleSecurityModule is IOracleSecurityModule, Auth {
         Feed cur;
         Feed nxt;
     }
-
-    /* ========================== STATE VARIABLES ========================== */
-
-    /// @inheritdoc IOracleSecurityModule
-    uint16 public constant HOP = 1800;
-
-    /// @dev Oracle state per collateral type.
-    mapping(bytes32 ilkId => Ilk ilk) internal _ilks;
 
     /* ========================== FUNCTIONS ========================== */
 

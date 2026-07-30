@@ -34,13 +34,13 @@ contract SolvencyEngine is ISolvencyEngine, Auth {
     IExternalExposure public externalExposure;
 
     /// @inheritdoc ISolvencyEngine
-    bytes32[] public volatileIlks;
-
-    /// @inheritdoc ISolvencyEngine
     uint256 public stressMarkdown;
 
     /// @inheritdoc ISolvencyEngine
     uint256 public stressDepth;
+
+    /// @inheritdoc ISolvencyEngine
+    bytes32[] public volatileIlks;
 
     /* ========================== CONSTRUCTOR ========================== */
 

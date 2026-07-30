@@ -23,6 +23,18 @@ contract VaultEngine is IVaultEngine, Auth {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IVaultEngine
+    uint256 public debt;
+
+    /// @inheritdoc IVaultEngine
+    uint256 public vice;
+
+    /// @inheritdoc IVaultEngine
+    uint256 public Line;
+
+    /// @inheritdoc IVaultEngine
+    uint256 public live;
+
+    /// @inheritdoc IVaultEngine
     mapping(address owner => mapping(address operator => uint256 permission)) public can;
 
     /// @inheritdoc IVaultEngine
@@ -39,18 +51,6 @@ contract VaultEngine is IVaultEngine, Auth {
 
     /// @inheritdoc IVaultEngine
     mapping(address debtSink => uint256 balance) public sin;
-
-    /// @inheritdoc IVaultEngine
-    uint256 public debt;
-
-    /// @inheritdoc IVaultEngine
-    uint256 public vice;
-
-    /// @inheritdoc IVaultEngine
-    uint256 public Line;
-
-    /// @inheritdoc IVaultEngine
-    uint256 public live;
 
     /* ========================== CONSTRUCTOR ========================== */
 

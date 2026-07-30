@@ -39,13 +39,13 @@ contract DutchAuction is IDutchAuction, Auth {
     ILiquidationTrigger public dog;
 
     /// @inheritdoc IDutchAuction
-    address public vow;
-
-    /// @inheritdoc IDutchAuction
     IOracleSecurityModule public pip;
 
     /// @inheritdoc IDutchAuction
     IPriceCurve public calc;
+
+    /// @inheritdoc IDutchAuction
+    address public vow;
 
     /// @inheritdoc IDutchAuction
     uint256 public buf;
@@ -66,13 +66,13 @@ contract DutchAuction is IDutchAuction, Auth {
     uint256 public kicks;
 
     /// @inheritdoc IDutchAuction
-    uint256[] public active;
-
-    /// @inheritdoc IDutchAuction
     uint256 public live;
 
     /// @dev Reentrancy guard flag.
     uint256 private _locked;
+
+    /// @inheritdoc IDutchAuction
+    uint256[] public active;
 
     /* ========================== MODIFIERS ========================== */
 

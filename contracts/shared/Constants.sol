@@ -18,17 +18,17 @@ uint256 constant _RAD = 10 ** 45;
 bytes32 constant _USDR_ILK = "USDR";
 
 // keccak256("WARD_ROLE")
-/// @dev Core authorization role. Replaces the legacy `wards` mapping; a holder may `rely`/`deny`.
+/// @dev Core authorization role. A holder may `rely`/`deny`.
 bytes32 constant _WARD_ROLE = 0xbafcd51963b0d7b3a3da265619edae46625d8c081f4c6ac796f4531050ac941f;
 
 // keccak256("RECORDER_ROLE")
-/// @dev Grants the right to record reserve movements (held by the Peg Stability Modules).
+/// @dev Grants the right to record reserve movements.
 bytes32 constant _RECORDER_ROLE = 0xf996da754c790e95d5c7ca3330cfcad529487fe9d1d8edb7afc65076fdf9adb4;
 
 // keccak256("COMMITTER_ROLE")
-/// @dev Grants the right to update the committed escrow (held by the Solvency Engine).
+/// @dev Grants the right to update the committed escrow.
 bytes32 constant _COMMITTER_ROLE = 0x0b60b5d7f7e737e4561eecda7c6a01e19e626c495c26e6f45e5b255f76a20106;
 
 // keccak256("READER_ROLE")
-/// @dev Grants price read access to the Oracle Security Module (the legacy `bud` whitelist).
+/// @dev Grants price read access to the Oracle Security Module.
 bytes32 constant _READER_ROLE = 0xc757f485a2bb9eadbad5c86f7618c2a7a2ecb41b29f8610fb0e8bea3ed5ab6cf;

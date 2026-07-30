@@ -30,9 +30,6 @@ contract PriceConverter is IPriceConverter, Auth {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IPriceConverter
-    mapping(bytes32 ilkId => IlkOracle oracle) public ilks;
-
-    /// @inheritdoc IPriceConverter
     IVaultEngine public immutable VAULT_ENGINE;
 
     /// @inheritdoc IPriceConverter
@@ -40,6 +37,9 @@ contract PriceConverter is IPriceConverter, Auth {
 
     /// @inheritdoc IPriceConverter
     uint256 public live;
+
+    /// @inheritdoc IPriceConverter
+    mapping(bytes32 ilkId => IlkOracle oracle) public ilks;
 
     /* ========================== CONSTRUCTOR ========================== */
 

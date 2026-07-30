@@ -28,9 +28,6 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc ILiquidationTrigger
-    mapping(bytes32 ilkId => IlkLiquidation liquidation) public ilks;
-
-    /// @inheritdoc ILiquidationTrigger
     IVaultEngine public immutable VAULT_ENGINE;
 
     /// @inheritdoc ILiquidationTrigger
@@ -50,6 +47,9 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
 
     /// @inheritdoc ILiquidationTrigger
     uint256 public live;
+
+    /// @inheritdoc ILiquidationTrigger
+    mapping(bytes32 ilkId => IlkLiquidation liquidation) public ilks;
 
     /* ========================== CONSTRUCTOR ========================== */
 

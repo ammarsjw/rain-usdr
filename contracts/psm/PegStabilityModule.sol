@@ -35,16 +35,16 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IPegStabilityModule
-    IVaultEngine public immutable VAULT_ENGINE;
-
-    /// @inheritdoc IPegStabilityModule
-    ICollateralAdapter public immutable COLLATERAL_ADAPTER;
-
-    /// @inheritdoc IPegStabilityModule
     IUSDR public immutable USDR;
 
     /// @inheritdoc IPegStabilityModule
+    IVaultEngine public immutable VAULT_ENGINE;
+
+    /// @inheritdoc IPegStabilityModule
     IReserveAccounting public immutable RESERVE_ACCOUNTING;
+
+    /// @inheritdoc IPegStabilityModule
+    ICollateralAdapter public immutable COLLATERAL_ADAPTER;
 
     /// @inheritdoc IPegStabilityModule
     mapping(bytes32 ilkId => Ilk ilk) public ilks;

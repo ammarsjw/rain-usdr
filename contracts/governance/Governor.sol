@@ -22,16 +22,10 @@ contract Governor is IGovernor, Auth {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IGovernor
-    mapping(uint256 changeId => Change change) public changes;
-
-    /// @inheritdoc IGovernor
-    uint256 public delay;
-
-    /// @inheritdoc IGovernor
     uint256 public constant PAUSE_MAX = 72 hours;
 
     /// @inheritdoc IGovernor
-    bool public paused;
+    uint256 public delay;
 
     /// @inheritdoc IGovernor
     uint256 public pausedAt;
@@ -41,6 +35,12 @@ contract Governor is IGovernor, Auth {
 
     /// @inheritdoc IGovernor
     uint256 public changeCount;
+
+    /// @inheritdoc IGovernor
+    bool public paused;
+
+    /// @inheritdoc IGovernor
+    mapping(uint256 changeId => Change change) public changes;
 
     /* ========================== CONSTRUCTOR ========================== */
 

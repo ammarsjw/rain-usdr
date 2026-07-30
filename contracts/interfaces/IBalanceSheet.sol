@@ -54,6 +54,24 @@ interface IBalanceSheet {
     /* ========================== FUNCTIONS ========================== */
 
     /**
+     * @notice Returns the Vault Engine this balance sheet reports to.
+     * @return The Vault Engine.
+     */
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the recipient of surplus distributions (the RAIN buyback-and-burn process).
+     * @return The buyback receiver address.
+     */
+    function buybackReceiver() external view returns (address);
+
+    /**
+     * @notice Returns the surplus buffer target.
+     * @return The surplus buffer target [rad].
+     */
+    function hump() external view returns (uint256);
+
+    /**
      * @notice Adjusts the surplus buffer target ("hump").
      * @param what Name of the parameter.
      * @param data New value [rad].
@@ -95,22 +113,4 @@ interface IBalanceSheet {
      * @return excess Amount released [rad].
      */
     function distributeSurplus() external returns (uint256 excess);
-
-    /**
-     * @notice Returns the Vault Engine this balance sheet reports to.
-     * @return The Vault Engine.
-     */
-    function VAULT_ENGINE() external view returns (IVaultEngine);
-
-    /**
-     * @notice Returns the recipient of surplus distributions (the RAIN buyback-and-burn process).
-     * @return The buyback receiver address.
-     */
-    function buybackReceiver() external view returns (address);
-
-    /**
-     * @notice Returns the surplus buffer target.
-     * @return The surplus buffer target [rad].
-     */
-    function hump() external view returns (uint256);
 }

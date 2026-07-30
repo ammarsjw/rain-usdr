@@ -24,6 +24,9 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc ICircuitBreaker
+    uint256 public constant TREND_WINDOW = 3600;
+
+    /// @inheritdoc ICircuitBreaker
     IOracleSecurityModule public immutable PIP;
 
     /// @inheritdoc ICircuitBreaker
@@ -34,9 +37,6 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
 
     /// @inheritdoc ICircuitBreaker
     uint256 public calmBlocks;
-
-    /// @inheritdoc ICircuitBreaker
-    bool public active;
 
     /// @inheritdoc ICircuitBreaker
     uint256 public trendPrice;
@@ -51,7 +51,7 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
     uint256 public lastCheckedBlock;
 
     /// @inheritdoc ICircuitBreaker
-    uint256 public constant TREND_WINDOW = 3600;
+    bool public active;
 
     /* ========================== CONSTRUCTOR ========================== */
 
@@ -63,6 +63,7 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
     constructor(IOracleSecurityModule pip_, bytes32 ilkId_) {
         PIP = pip_;
         ILK_ID = ilkId_;
+
         threshold = _WAD / 4;
         calmBlocks = 3;
     }
