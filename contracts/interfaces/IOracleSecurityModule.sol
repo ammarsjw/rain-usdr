@@ -60,57 +60,7 @@ interface IOracleSecurityModule {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Freezes a collateral's price updates.
-     * @param ilkId Identifier of the collateral type.
-     */
-    function stop(bytes32 ilkId) external;
-
-    /**
-     * @notice Resumes a collateral's price updates.
-     * @param ilkId Identifier of the collateral type.
-     */
-    function start(bytes32 ilkId) external;
-
-    /**
-     * @notice Clears a collateral's stored prices and freezes its updates.
-     * @param ilkId Identifier of the collateral type.
-     */
-    function void(bytes32 ilkId) external;
-
-    /**
-     * @notice Registers a collateral's price source, or switches an existing one. This is how new tokens are added
-     *         to the module: any {IPriceSource} adapter works, whether it wraps a Uniswap time-weighted average or a
-     *         Chainlink feed.
-     * @dev Future updates read from the new source; consumers keep reading the same current price until the next
-     *      poke cycle completes.
-     * @param ilkId Identifier of the collateral type.
-     * @param src_ Address of the price source.
-     */
-    function change(bytes32 ilkId, IPriceSource src_) external;
-
-    /**
-     * @notice Whitelists a contract to read prices.
-     * @param account Address being granted read access.
-     */
-    function kiss(address account) external;
-
-    /**
-     * @notice Revokes a contract's permission to read prices.
-     * @param account Address losing read access.
-     */
-    function diss(address account) external;
-
-    /**
-     * @notice Advances a collateral's price: the next price becomes current and a fresh price is read from the
-     *         source to become the new next.
-     * @dev Public — anyone may call — but the 30 minute minimum is always enforced.
-     * @param ilkId Identifier of the collateral type.
-     */
-    function poke(bytes32 ilkId) external;
-
-    /**
-     * @notice Returns the update delay in seconds.
-     * @return The delay in seconds (30 minutes).
+     * @notice Returns the update delay in seconds (30 minutes).
      */
     function HOP() external view returns (uint16);
 
@@ -136,6 +86,55 @@ interface IOracleSecurityModule {
     function stopped(bytes32 ilkId) external view returns (uint256);
 
     /**
+     * @notice Freezes a collateral's price updates.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function stop(bytes32 ilkId) external;
+
+    /**
+     * @notice Resumes a collateral's price updates.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function start(bytes32 ilkId) external;
+
+    /**
+     * @notice Clears a collateral's stored prices and freezes its updates.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function void(bytes32 ilkId) external;
+
+    /**
+     * @notice Registers a collateral's price source, or switches an existing one. This is how new tokens are added
+     *         to the module. Any {IPriceSource} adapter works, whether it wraps a Uniswap time-weighted average or a
+     *         Chainlink feed.
+     * @dev Future updates read from the new source. Consumers keep reading the same current price until the next
+     *      poke cycle completes.
+     * @param ilkId Identifier of the collateral type.
+     * @param src_ Address of the price source.
+     */
+    function change(bytes32 ilkId, IPriceSource src_) external;
+
+    /**
+     * @notice Whitelists a contract to read prices.
+     * @param account Address being granted read access.
+     */
+    function kiss(address account) external;
+
+    /**
+     * @notice Revokes a contract's permission to read prices.
+     * @param account Address losing read access.
+     */
+    function diss(address account) external;
+
+    /**
+     * @notice Advances a collateral's price: the next price becomes current and a fresh price is read from the
+     *         source to become the new next.
+     * @dev Public, anyone may call, but the 30 minute minimum is always enforced.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function poke(bytes32 ilkId) external;
+
+    /**
      * @notice Returns a collateral's current (delayed) price with a validity flag.
      * @param ilkId Identifier of the collateral type.
      * @return The price, encoded as bytes32.
@@ -144,7 +143,7 @@ interface IOracleSecurityModule {
     function peek(bytes32 ilkId) external view returns (bytes32, bool);
 
     /**
-     * @notice Previews a collateral's next price — the early-warning window for spotting manipulation.
+     * @notice Previews a collateral's next price, the early-warning window for spotting manipulation.
      * @param ilkId Identifier of the collateral type.
      * @return The next price, encoded as bytes32.
      * @return Whether the price is valid.

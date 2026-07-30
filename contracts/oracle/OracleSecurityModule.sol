@@ -2,7 +2,8 @@
 
 pragma solidity 0.8.30;
 
-import { Auth } from "../extensions/Auth.sol";
+import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
+
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceSource } from "../interfaces/IPriceSource.sol";
 import { _READER_ROLE, _WARD_ROLE } from "../shared/Constants.sol";
@@ -17,13 +18,12 @@ import { _revert } from "../shared/Globals.sol";
  *         one (which the system uses) and the next one (which becomes current after the delay). A single deployed
  *         instance serves every priced collateral: tokens are registered dynamically, each with its own price
  *         source.
- * @dev Based on MakerDAO's OSM, generalized from one-instance-per-collateral to a single multi-collateral module
- *      keyed by ilk identifier. The per-ilk price source is any {IPriceSource} implementation — a dedicated Uniswap
- *      time-weighted average wrapper, a Chainlink feed wrapper, or any future adapter — so the module never needs to
- *      know what kind of oracle backs a token. Sources are switchable by governance per ilk without any other
- *      contract changing.
+ * @dev A single multi-collateral module keyed by ilk identifier. The per-ilk price source is any {IPriceSource}
+ *      implementation, such as a dedicated Uniswap time-weighted average wrapper, a Chainlink feed wrapper, or any
+ *      future adapter, so the module never needs to know what kind of oracle backs a token. Sources are switchable
+ *      by governance per ilk without any other contract changing.
  */
-contract OracleSecurityModule is IOracleSecurityModule, Auth {
+contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IOracleSecurityModule
@@ -47,6 +47,16 @@ contract OracleSecurityModule is IOracleSecurityModule, Auth {
         uint256 stopped;
         Feed cur;
         Feed nxt;
+    }
+
+    /* ========================== CONSTRUCTOR ========================== */
+
+    /**
+     * @notice Authorizes the deployer.
+     */
+    constructor() {
+        _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+        _grantRole(_WARD_ROLE, msg.sender);
     }
 
     /* ========================== FUNCTIONS ========================== */

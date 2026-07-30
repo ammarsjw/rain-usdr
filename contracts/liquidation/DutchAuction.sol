@@ -2,9 +2,10 @@
 
 pragma solidity 0.8.30;
 
+import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 
-import { Auth } from "../extensions/Auth.sol";
 import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
 import { IDutchAuctionCallee } from "../interfaces/IDutchAuctionCallee.sol";
 import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
@@ -18,12 +19,12 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title DutchAuction
  * @author Rain Team
- * @notice The auction house. Runs each liquidation as a Dutch auction: the collateral starts at a price above
+ * @notice The auction house. Runs each liquidation as a Dutch auction. The collateral starts at a price above
  *         market and falls over time until a keeper buys it. It settles instantly, needs no locked capital from
  *         bidders, and supports flash-loan-style buying where the keeper buys and resells in one transaction.
- * @dev Based on MakerDAO's Clipper (Liquidation 2.0). One instance per collateral type.
+ * @dev One instance per collateral type.
  */
-contract DutchAuction is IDutchAuction, Auth {
+contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IDutchAuction
@@ -68,24 +69,8 @@ contract DutchAuction is IDutchAuction, Auth {
     /// @inheritdoc IDutchAuction
     uint256 public live;
 
-    /// @dev Reentrancy guard flag.
-    uint256 private _locked;
-
     /// @inheritdoc IDutchAuction
     uint256[] public active;
-
-    /* ========================== MODIFIERS ========================== */
-
-    /**
-     * @dev Reentrancy guard.
-     */
-    modifier lock() {
-        require(_locked == 0, "DutchAuction/system-locked");
-
-        _locked = 1;
-        _;
-        _locked = 0;
-    }
 
     /* ========================== CONSTRUCTOR ========================== */
 
@@ -95,6 +80,9 @@ contract DutchAuction is IDutchAuction, Auth {
      * @param ilkId_ Identifier of the collateral type.
      */
     constructor(IVaultEngine vaultEngine_, bytes32 ilkId_) {
+        _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+        _grantRole(_WARD_ROLE, msg.sender);
+
         VAULT_ENGINE = vaultEngine_;
         ILK_ID = ilkId_;
         buf = _RAY;
@@ -151,7 +139,7 @@ contract DutchAuction is IDutchAuction, Auth {
         uint256 lot,
         address usr,
         address kpr
-    ) external onlyRole(_WARD_ROLE) lock returns (uint256 id) {
+    ) external onlyRole(_WARD_ROLE) nonReentrant returns (uint256 id) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -186,7 +174,7 @@ contract DutchAuction is IDutchAuction, Auth {
     /**
      * @inheritdoc IDutchAuction
      */
-    function redo(uint256 id, address kpr) external lock {
+    function redo(uint256 id, address kpr) external nonReentrant {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -225,7 +213,7 @@ contract DutchAuction is IDutchAuction, Auth {
     /**
      * @inheritdoc IDutchAuction
      */
-    function take(uint256 id, uint256 amt, uint256 max, address who, bytes calldata data) external lock {
+    function take(uint256 id, uint256 amt, uint256 max, address who, bytes calldata data) external nonReentrant {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -304,7 +292,7 @@ contract DutchAuction is IDutchAuction, Auth {
     /**
      * @inheritdoc IDutchAuction
      */
-    function yank(uint256 id) external onlyRole(_WARD_ROLE) lock {
+    function yank(uint256 id) external onlyRole(_WARD_ROLE) nonReentrant {
         require(sales[id].usr != address(0), "DutchAuction/not-running-auction");
 
         // The remaining debt goes back to the balance sheet and the remaining collateral returns to the vault owner.

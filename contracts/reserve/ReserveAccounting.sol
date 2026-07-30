@@ -2,7 +2,8 @@
 
 pragma solidity 0.8.30;
 
-import { Auth } from "../extensions/Auth.sol";
+import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
+
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { _COMMITTER_ROLE, _RECORDER_ROLE, _WARD_ROLE } from "../shared/Constants.sol";
 
@@ -13,10 +14,10 @@ import { _COMMITTER_ROLE, _RECORDER_ROLE, _WARD_ROLE } from "../shared/Constants
  *         and USDC held), how much is committed to guaranteed obligations (the settlement
  *         escrow), and how much is free (the slack). This is where the reserve is split so
  *         that the same dollar is never promised twice.
- * @dev Custom to USDR. Only the Solvency Engine may update the committed escrow, and only the
- *      Peg Stability Modules may record reserve movements.
+ * @dev Only the Solvency Engine may update the committed escrow, and only the Peg Stability Modules may record
+ *      reserve movements.
  */
-contract ReserveAccounting is IReserveAccounting, Auth {
+contract ReserveAccounting is IReserveAccounting, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IReserveAccounting
@@ -24,6 +25,16 @@ contract ReserveAccounting is IReserveAccounting, Auth {
 
     /// @inheritdoc IReserveAccounting
     uint256 public committedEscrow;
+
+    /* ========================== CONSTRUCTOR ========================== */
+
+    /**
+     * @notice Authorizes the deployer.
+     */
+    constructor() {
+        _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+        _grantRole(_WARD_ROLE, msg.sender);
+    }
 
     /* ========================== FUNCTIONS ========================== */
 
@@ -85,7 +96,7 @@ contract ReserveAccounting is IReserveAccounting, Auth {
      * @inheritdoc IReserveAccounting
      */
     function updateCommittedEscrow(uint256 wad) external onlyRole(_COMMITTER_ROLE) {
-        // The committed amount must not exceed the total reserve — this is the solvency guarantee expressed at the
+        // The committed amount must not exceed the total reserve. This is the solvency guarantee expressed at the
         // accounting level.
         require(wad <= totalReserve, "ReserveAccounting/escrow-exceeds-reserve");
 

@@ -3,6 +3,7 @@ const hardhat = require("hardhat");
 const { configure } = require("./helpers/config/config");
 const { verifyContract } = require("./helpers/libraries/auxiliary");
 const { deployContract } = require("./helpers/libraries/workflows");
+const { WARD_ROLE } = require("./helpers/shared/constants");
 const { LOG_TYPE } = require("./helpers/shared/types");
 const { updateEnv } = require("./helpers/utils/env");
 const { logTag, wait } = require("./helpers/utils/tools");
@@ -40,7 +41,7 @@ const deployGovernance = async () => {
     // Setting launch risk parameters: ceilings and minimum vault size.
     await (
         await vaultEngineInstance["file(bytes32,uint256)"](
-            hardhat.ethers.encodeBytes32String("Line"),
+            hardhat.ethers.encodeBytes32String("globalLine"),
             1100000n * RAD
         )
     ).wait();
@@ -74,7 +75,7 @@ const deployGovernance = async () => {
     ).wait();
 
     // Handing risk parameter control to the Governor (timelocked changes only).
-    await (await vaultEngineInstance.rely(governorAddress)).wait();
+    await (await vaultEngineInstance.grantRole(WARD_ROLE, governorAddress)).wait();
     console.log("Governance setup complete");
 
     // Updating env.

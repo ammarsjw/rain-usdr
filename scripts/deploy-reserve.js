@@ -3,6 +3,7 @@ const hardhat = require("hardhat");
 const { configure } = require("./helpers/config/config");
 const { verifyContract } = require("./helpers/libraries/auxiliary");
 const { deployContract } = require("./helpers/libraries/workflows");
+const { WARD_ROLE } = require("./helpers/shared/constants");
 const { LOG_TYPE } = require("./helpers/shared/types");
 const { updateEnv } = require("./helpers/utils/env");
 const { logTag, wait } = require("./helpers/utils/tools");
@@ -65,7 +66,7 @@ const deployReserve = async () => {
     await (await solvencyEngineInstance.addVolatileIlk(rainIlk)).wait();
 
     // Authorizing the Balance Sheet to heal and suck on the ledger.
-    await (await vaultEngineInstance.rely(balanceSheetAddress)).wait();
+    await (await vaultEngineInstance.grantRole(WARD_ROLE, balanceSheetAddress)).wait();
     console.log("Reserve setup complete");
 
     // Updating env.

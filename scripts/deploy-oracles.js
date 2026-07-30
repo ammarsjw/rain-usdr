@@ -3,6 +3,7 @@ const hardhat = require("hardhat");
 const { configure } = require("./helpers/config/config");
 const { verifyContract } = require("./helpers/libraries/auxiliary");
 const { deployContract } = require("./helpers/libraries/workflows");
+const { WARD_ROLE } = require("./helpers/shared/constants");
 const { LOG_TYPE } = require("./helpers/shared/types");
 const { updateEnv } = require("./helpers/utils/env");
 const { logTag, wait } = require("./helpers/utils/tools");
@@ -41,7 +42,7 @@ const deployOracles = async () => {
     const priceConverterInstance = await hardhat.ethers.getContractAt(priceConverterName, priceConverterAddress);
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
 
-    // Registering RAIN's price source (Uniswap TWAP wrapper — any IPriceSource adapter works,
+    // Registering RAIN's price source (Uniswap TWAP wrapper, any IPriceSource adapter works,
     // e.g. a Chainlink wrapper for future volatile collaterals like ETH or WBTC). Supported
     // stablecoins are never registered on the OSM: they are marked fixed on the Price
     // Converter and always convert at $1.
@@ -60,7 +61,7 @@ const deployOracles = async () => {
     await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](usdcIlk, hardhat.ethers.encodeBytes32String("fixed"), 1n)).wait();
 
     // Authorizing the Price Converter to push price factors into the ledger.
-    await (await vaultEngineInstance.rely(priceConverterAddress)).wait();
+    await (await vaultEngineInstance.grantRole(WARD_ROLE, priceConverterAddress)).wait();
 
     // Setting the stablecoins' price factors once; fixed ilks never need another poke unless
     // par or mat changes.

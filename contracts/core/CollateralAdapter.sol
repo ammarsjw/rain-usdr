@@ -2,10 +2,10 @@
 
 pragma solidity 0.8.30;
 
+import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import { Auth } from "../extensions/Auth.sol";
 import { ICollateralAdapter } from "../interfaces/ICollateralAdapter.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
@@ -16,34 +16,26 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title CollateralAdapter
  * @author Rain Team
- * @notice The doorway for tokens entering and leaving the system. Bridges real tokens (RAIN, USDT, USDC and USDR
+ * @notice The doorway for tokens entering and leaving the system. Bridges real tokens (RAIN, USDT, USDC, and USDR
  *         itself) and the internal ledger. A single deployed instance serves every token: ilks are registered
- *         dynamically, each carrying its own token and custody or mint/burn behaviour.
- * @dev Merges MakerDAO's GemJoin and DaiJoin into one contract, generalized from one-instance-per-token to a single
- *      ilk-keyed module. Collateral ilks convert token decimals (USDT/USDC use 6, RAIN uses 18) to the internal 18
- *      decimal representation and update the ledger through `slip`; the USDR ilk (registered under {_USDR_ILK}) moves
- *      internal balances (45 decimals) through `move` and mints/burns the ERC-20. Merging is safe because only
- *      `_WARD_ROLE` may register ilks and USDR mint authority is granted to this single contract on the token
- *      itself — the collateral code path can never reach `mint`.
+ *         dynamically, each carrying its own token and custody or mint and burn behaviour.
+ * @dev A single ilk-keyed module handles every token. Collateral ilks convert token decimals (USDT and USDC use 6,
+ *      RAIN uses 18) to the internal 18 decimal representation and update the ledger through `slip`. The USDR ilk,
+ *      registered under {_USDR_ILK}, moves internal balances (45 decimals) through `move` and mints or burns the
+ *      ERC-20. Merging is safe because only `_WARD_ROLE` may register ilks and USDR mint authority is granted to
+ *      this single contract on the token itself, so the collateral code path can never reach `mint`.
  */
-contract CollateralAdapter is ICollateralAdapter, Auth {
+contract CollateralAdapter is ICollateralAdapter, AccessControl {
     using SafeERC20 for IERC20Metadata;
-
-    /* ========================== STATE VARIABLES ========================== */
-
-    /// @inheritdoc ICollateralAdapter
-    IVaultEngine public immutable VAULT_ENGINE;
-
-    /// @inheritdoc ICollateralAdapter
-    mapping(bytes32 ilkId => Ilk ilk) public ilks;
 
     /* ========================== TYPES ========================== */
 
     /**
      * @notice Configuration and state of a registered ilk.
-     * @param token The token this ilk bridges — held in custody, or minted/burned for USDR.
+     * @param token The token this ilk bridges, held in custody, or minted and burned for USDR.
      * @param dec Decimals of the token.
-     * @param isUsdr Whether this ilk is the USDR ilk (`move` + mint/burn) or a collateral ilk (`slip` + custody).
+     * @param isUsdr Whether this ilk is the USDR ilk (`move` plus mint and burn) or a collateral ilk (`slip` plus
+     *        custody).
      * @param live Ilk liveness flag. `1` while live, `0` after shutdown.
      */
     struct Ilk {
@@ -53,13 +45,24 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
         uint256 live;
     }
 
+    /* ========================== STATE VARIABLES ========================== */
+
+    /// @inheritdoc ICollateralAdapter
+    IVaultEngine public immutable VAULT_ENGINE;
+
+    /// @inheritdoc ICollateralAdapter
+    mapping(bytes32 ilkId => Ilk ilk) public ilks;
+
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
-     * @notice Initializes the adapter with the core ledger.
+     * @notice Initializes the adapter with the core ledger and authorizes the deployer.
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
+        _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+        _grantRole(_WARD_ROLE, msg.sender);
+
         VAULT_ENGINE = vaultEngine_;
     }
 
@@ -104,7 +107,7 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
             VAULT_ENGINE.move(address(this), user, _RAY * amount);
             IUSDR(address(ilk.token)).burn(msg.sender, amount);
         } else {
-            // Deposits are blocked after shutdown; withdrawals continue to work.
+            // Deposits are blocked after shutdown. Withdrawals continue to work.
             if (ilk.live != 1) {
                 _revert(NotLive.selector);
             }
@@ -135,7 +138,7 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
         }
 
         if (ilk.isUsdr) {
-            // Minting is blocked after shutdown; returning USDR continues to work.
+            // Minting is blocked after shutdown. Returning USDR continues to work.
             if (ilk.live != 1) {
                 _revert(NotLive.selector);
             }

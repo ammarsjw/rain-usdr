@@ -2,7 +2,8 @@
 
 pragma solidity 0.8.30;
 
-import { Auth } from "../extensions/Auth.sol";
+import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
+
 import { IExternalExposure } from "../interfaces/IExternalExposure.sol";
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
@@ -17,11 +18,11 @@ import { _revert } from "../shared/Globals.sol";
  * @notice The guardian. Computes the protocol's worst-case loss under stress and verifies that
  *         the stable reserve exceeds it. If that rule would ever be broken, the protocol refuses
  *         the action that would break it. This single rule is what makes USDR provably solvent.
- * @dev Custom to USDR. The stress scenario marks volatile assets down 50% and assumes only 35%
- *      of normal liquidation market depth. Exposure reported by the prediction market layer is
- *      consumed as a number through a dedicated interface owned by the other team.
+ * @dev The stress scenario marks volatile assets down 50% and assumes only 35% of normal liquidation market depth.
+ *      Exposure reported by the prediction market layer is consumed as a number through a dedicated interface owned
+ *      by the other team.
  */
-contract SolvencyEngine is ISolvencyEngine, Auth {
+contract SolvencyEngine is ISolvencyEngine, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc ISolvencyEngine
@@ -50,6 +51,9 @@ contract SolvencyEngine is ISolvencyEngine, Auth {
      * @param reserveAccounting_ Address of the reserve accounting contract.
      */
     constructor(IVaultEngine vaultEngine_, IReserveAccounting reserveAccounting_) {
+        _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+        _grantRole(_WARD_ROLE, msg.sender);
+
         VAULT_ENGINE = vaultEngine_;
         RESERVE_ACCOUNTING = reserveAccounting_;
         stressMarkdown = _WAD / 2;
@@ -121,10 +125,10 @@ contract SolvencyEngine is ISolvencyEngine, Auth {
 
         for (uint256 i; i < volatileIlksLength; ++i) {
             bytes32 ilkId = volatileIlks[i];
-            (uint256 Art, uint256 rate, uint256 spot, , ) = VAULT_ENGINE.ilks(ilkId);
+            (uint256 globalArt, uint256 rate, uint256 spot, , ) = VAULT_ENGINE.ilks(ilkId);
 
             // Total debt against this collateral [wad].
-            uint256 ilkDebt = (Art * rate) / _RAY;
+            uint256 ilkDebt = (globalArt * rate) / _RAY;
 
             // Stressed recoverable value: the debt's collateral backing, marked down by the stress markdown and the
             // stress liquidation depth.
@@ -134,7 +138,7 @@ contract SolvencyEngine is ISolvencyEngine, Auth {
                 loss += ilkDebt - recoverable;
             }
 
-            // Silencing the unused variable warning; `spot` is intentionally not used because the stress scenario
+            // Silencing the unused variable warning. `spot` is intentionally not used because the stress scenario
             // prices from debt outstanding, not current collateral value.
             spot;
         }

@@ -71,6 +71,49 @@ interface IGovernor {
     /* ========================== FUNCTIONS ========================== */
 
     /**
+     * @notice Returns the maximum pause duration in seconds (72 hours), after which anyone can un-pause.
+     */
+    function PAUSE_MAX() external view returns (uint256);
+
+    /**
+     * @notice Returns the mandatory timelock delay in seconds.
+     */
+    function delay() external view returns (uint256);
+
+    /**
+     * @notice Returns the timestamp when the current pause began.
+     */
+    function pausedAt() external view returns (uint256);
+
+    /**
+     * @notice Returns the scope of the current pause, fixed at the moment of pausing.
+     */
+    function pauseScope() external view returns (bytes32);
+
+    /**
+     * @notice Returns the change id counter, the number of changes scheduled so far.
+     */
+    function changeCount() external view returns (uint256);
+
+    /**
+     * @notice Returns whether the system is currently paused.
+     */
+    function paused() external view returns (bool);
+
+    /**
+     * @notice Returns a scheduled change's details.
+     * @param changeId Identifier of the scheduled change.
+     * @return target Contract to call.
+     * @return data Encoded calldata of the change.
+     * @return eta Earliest execution time.
+     * @return executed Whether the change has already been executed.
+     * @return cancelled Whether the change has been cancelled.
+     */
+    function changes(
+        uint256 changeId
+    ) external view returns (address target, bytes memory data, uint256 eta, bool executed, bool cancelled);
+
+    /**
      * @notice Adjusts the timelock delay ("delay").
      * @param what Name of the parameter.
      * @param data New value in seconds.
@@ -107,56 +150,7 @@ interface IGovernor {
     function pause(bytes32 scope) external;
 
     /**
-     * @notice Lifts the pause. Governance may lift it early; after 72 hours anyone may.
+     * @notice Lifts the pause. Governance may lift it early. After 72 hours anyone may.
      */
     function unpause() external;
-
-    /**
-     * @notice Returns a scheduled change's details.
-     * @param changeId Identifier of the scheduled change.
-     * @return target Contract to call.
-     * @return data Encoded calldata of the change.
-     * @return eta Earliest execution time.
-     * @return executed Whether the change has already been executed.
-     * @return cancelled Whether the change has been cancelled.
-     */
-    function changes(
-        uint256 changeId
-    ) external view returns (address target, bytes memory data, uint256 eta, bool executed, bool cancelled);
-
-    /**
-     * @notice Returns the mandatory timelock delay in seconds.
-     * @return The delay in seconds.
-     */
-    function delay() external view returns (uint256);
-
-    /**
-     * @notice Returns the maximum pause duration in seconds, after which anyone can un-pause.
-     * @return The maximum pause duration in seconds (72 hours).
-     */
-    function PAUSE_MAX() external view returns (uint256);
-
-    /**
-     * @notice Returns whether the system is currently paused.
-     * @return Whether the system is paused.
-     */
-    function paused() external view returns (bool);
-
-    /**
-     * @notice Returns the timestamp when the current pause began.
-     * @return The pause start timestamp.
-     */
-    function pausedAt() external view returns (uint256);
-
-    /**
-     * @notice Returns the scope of the current pause, fixed at the moment of pausing.
-     * @return The pause scope.
-     */
-    function pauseScope() external view returns (bytes32);
-
-    /**
-     * @notice Returns the change id counter.
-     * @return The number of changes scheduled so far.
-     */
-    function changeCount() external view returns (uint256);
 }

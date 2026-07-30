@@ -5,7 +5,8 @@ pragma solidity 0.8.30;
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import { Auth } from "../extensions/Auth.sol";
+import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
+
 import { ICollateralAdapter } from "../interfaces/ICollateralAdapter.sol";
 import { IPegStabilityModule } from "../interfaces/IPegStabilityModule.sol";
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
@@ -18,18 +19,15 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title PegStabilityModule
  * @author Rain Team
- * @notice The on-ramp and off-ramp for stablecoins. Deposit USDT or USDC, get USDR one-for-one.
- *         Return USDR, get stablecoins back — but redemption is best-effort, served only from
- *         the protocol's free reserves after guaranteed obligations are covered. A single
- *         deployed instance serves every stablecoin: ilks are registered dynamically.
- * @dev Based on MakerDAO's PSM, adapted to a shared-reserve model and generalized from
- *      one-instance-per-stablecoin to a single ilk-keyed module riding the (equally singular)
- *      Collateral Adapter. Unlike MakerDAO's PSM, which holds segregated stablecoins and can
- *      always redeem, USDR's reserve is shared: guaranteed obligations always take priority, so
- *      redemption reverts when free slack is too low. This keeps the protocol from promising
- *      the same dollar twice.
+ * @notice The on-ramp and off-ramp for stablecoins. Deposit USDT or USDC, get USDR one-for-one. Return USDR, get
+ *         stablecoins back, but redemption is best-effort, served only from the protocol's free reserves after
+ *         guaranteed obligations are covered. A single deployed instance serves every stablecoin, and ilks are
+ *         registered dynamically.
+ * @dev Uses a shared-reserve model with a single ilk-keyed module riding the equally singular Collateral Adapter.
+ *      USDR's reserve is shared, so guaranteed obligations always take priority and redemption reverts when free
+ *      slack is too low. This keeps the protocol from promising the same dollar twice.
  */
-contract PegStabilityModule is IPegStabilityModule, Auth {
+contract PegStabilityModule is IPegStabilityModule, AccessControl {
     using SafeERC20 for IERC20Metadata;
 
     /* ========================== STATE VARIABLES ========================== */
@@ -57,6 +55,9 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
      * @param reserveAccounting_ Address of the reserve accounting contract.
      */
     constructor(ICollateralAdapter collateralAdapter_, IReserveAccounting reserveAccounting_) {
+        _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+        _grantRole(_WARD_ROLE, msg.sender);
+
         COLLATERAL_ADAPTER = collateralAdapter_;
         RESERVE_ACCOUNTING = reserveAccounting_;
         VAULT_ENGINE = IVaultEngine(address(collateralAdapter_.VAULT_ENGINE()));
@@ -157,7 +158,7 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
         uint256 usdrAmt = stableAmt18 + fee;
 
         // Free-slack check: redemption is best-effort, served only from the reserve minus the amount committed to
-        // guaranteed obligations. If free slack is too low, revert — the user must use the open market instead.
+        // guaranteed obligations. If free slack is too low, revert so the user must use the open market instead.
         require(stableAmt18 <= RESERVE_ACCOUNTING.freeSlack(), "PegStabilityModule/insufficient-free-slack");
 
         USDR.transferFrom(msg.sender, address(this), usdrAmt);

@@ -61,6 +61,30 @@ interface IPriceConverter {
     /* ========================== FUNCTIONS ========================== */
 
     /**
+     * @notice Returns the Vault Engine this converter reports to.
+     */
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the target dollar value of USDR [ray]. Fixed at 1.0.
+     */
+    function par() external view returns (uint256);
+
+    /**
+     * @notice Returns the liveness flag. `1` while live, `0` after shutdown.
+     */
+    function live() external view returns (uint256);
+
+    /**
+     * @notice Returns a collateral type's oracle configuration.
+     * @param ilkId Identifier of the collateral type.
+     * @return pip The collateral's Oracle Security Module. Zero for fixed-price ilks.
+     * @return mat The required collateralization ratio [ray].
+     * @return fixedPrice Whether the ilk is a supported stablecoin pinned to $1.
+     */
+    function ilks(bytes32 ilkId) external view returns (IOracleSecurityModule pip, uint256 mat, bool fixedPrice);
+
+    /**
      * @notice Assigns which oracle a collateral type reads from.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter ("pip").
@@ -77,11 +101,11 @@ interface IPriceConverter {
 
     /**
      * @notice Sets a collateral type's collateralization ratio ("mat") or marks it as a supported stablecoin pinned
-     *         to $1 ("fixed", 1 to set and 0 to clear). Marking an ilk fixed detaches any assigned oracle — the two
-     *         kinds are mutually exclusive.
+     *         to $1 ("fixed", 1 to set and 0 to clear). Marking an ilk fixed detaches any assigned oracle, as the
+     *         two kinds are mutually exclusive.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
-     * @param data New value [ray] for "mat"; 1 or 0 for "fixed".
+     * @param data New value [ray] for "mat", or 1 or 0 for "fixed".
      */
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
 
@@ -92,38 +116,11 @@ interface IPriceConverter {
 
     /**
      * @notice Recalculates a collateral type's price factor and pushes it into the Vault Engine. Fixed-price ilks
-     *         convert at $1 without an oracle lookup; oracle-backed ilks read the latest delayed price from their
+     *         convert at $1 without an oracle lookup. Oracle-backed ilks read the latest delayed price from their
      *         OSM.
-     * @dev Public — anyone can trigger it. Does nothing if the price is invalid; reverts for ilks configured neither
-     *      fixed nor with an oracle.
+     * @dev Public, anyone can trigger it. Does nothing if the price is invalid, and reverts for ilks configured
+     *      neither fixed nor with an oracle.
      * @param ilkId Identifier of the collateral type.
      */
     function poke(bytes32 ilkId) external;
-
-    /**
-     * @notice Returns a collateral type's oracle configuration.
-     * @param ilkId Identifier of the collateral type.
-     * @return pip The collateral's Oracle Security Module. Zero for fixed-price ilks.
-     * @return mat The required collateralization ratio [ray].
-     * @return fixedPrice Whether the ilk is a supported stablecoin pinned to $1.
-     */
-    function ilks(bytes32 ilkId) external view returns (IOracleSecurityModule pip, uint256 mat, bool fixedPrice);
-
-    /**
-     * @notice Returns the Vault Engine this converter reports to.
-     * @return The Vault Engine.
-     */
-    function VAULT_ENGINE() external view returns (IVaultEngine);
-
-    /**
-     * @notice Returns the target dollar value of USDR.
-     * @return The par value [ray]. Fixed at 1.0.
-     */
-    function par() external view returns (uint256);
-
-    /**
-     * @notice Returns the liveness flag.
-     * @return The liveness flag. `1` while live, `0` after shutdown.
-     */
-    function live() external view returns (uint256);
 }

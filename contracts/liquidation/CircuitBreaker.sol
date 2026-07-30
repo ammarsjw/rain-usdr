@@ -2,7 +2,8 @@
 
 pragma solidity 0.8.30;
 
-import { Auth } from "../extensions/Auth.sol";
+import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
+
 import { ICircuitBreaker } from "../interfaces/ICircuitBreaker.sol";
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { _WAD, _WARD_ROLE } from "../shared/Constants.sol";
@@ -12,15 +13,14 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title CircuitBreaker
  * @author Rain Team
- * @notice A defense against price manipulation during liquidation. Watches how far the delayed
- *         price has moved from its recent trend. If the move is too large too fast, it throttles
- *         liquidations — slowing them, never freezing them — so a manipulated price cannot
- *         trigger a wave of unfair liquidations. It never touches ordinary vault operations.
- * @dev Custom to USDR. Activates when the delayed price deviates more than the threshold (25%)
- *      from the one-hour trend; deactivates after the deviation stays below the threshold for
- *      the required number of consecutive calm blocks (3).
+ * @notice A defense against price manipulation during liquidation. Watches how far the delayed price has moved from
+ *         its recent trend. If the move is too large too fast, it throttles liquidations, slowing them but never
+ *         freezing them, so a manipulated price cannot trigger a wave of unfair liquidations. It never touches
+ *         ordinary vault operations.
+ * @dev Activates when the delayed price deviates more than the threshold (25%) from the one-hour trend. Deactivates
+ *      after the deviation stays below the threshold for the required number of consecutive calm blocks (3).
  */
-contract CircuitBreaker is ICircuitBreaker, Auth {
+contract CircuitBreaker is ICircuitBreaker, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc ICircuitBreaker
@@ -61,6 +61,9 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
      * @param ilkId_ Identifier of the collateral type to watch.
      */
     constructor(IOracleSecurityModule pip_, bytes32 ilkId_) {
+        _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+        _grantRole(_WARD_ROLE, msg.sender);
+
         PIP = pip_;
         ILK_ID = ilkId_;
 

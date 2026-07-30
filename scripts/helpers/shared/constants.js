@@ -7,16 +7,12 @@ const BIGINT_HUNDRED = 100n;
 // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
 const TYPE_HASH = "0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f";
 
-// keccak256("Authority")
-const AUTHORITY_ROLE = "0x8b16b0b80f67879a61157c5541d94886825d45098bee58e37e2d2e87b2fe367b";
-
-// keccak256("Owner")
-const OWNER_ROLE = "0x929f3fd6848015f83b9210c89f7744e3941acae1195c8bf9f5798c090dc8f497";
+// keccak256("WARD_ROLE")
+const WARD_ROLE = "0xbafcd51963b0d7b3a3da265619edae46625d8c081f4c6ac796f4531050ac941f";
 
 module.exports = {
     BIGINT_ZERO,
     BIGINT_HUNDRED,
     TYPE_HASH,
-    AUTHORITY_ROLE,
-    OWNER_ROLE
+    WARD_ROLE
 };

@@ -3,8 +3,8 @@
 pragma solidity 0.8.30;
 
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
+import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 
-import { Auth } from "../extensions/Auth.sol";
 import { IBalanceSheet } from "../interfaces/IBalanceSheet.sol";
 import { ICircuitBreaker } from "../interfaces/ICircuitBreaker.sol";
 import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
@@ -18,13 +18,13 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title LiquidationTrigger
  * @author Rain Team
- * @notice The watchdog. When a vault falls below its required collateralization, anyone can
- *         point this contract at it to "bark" — seizing the vault and kicking off a Dutch
- *         auction to sell its collateral and recover the debt.
- * @dev Based on MakerDAO's Dog. Adds a circuit breaker check: when the breaker is active, the
- *      rate of new liquidations is throttled to a fraction of normal.
+ * @notice The watchdog. When a vault falls below its required collateralization, anyone can point this contract at
+ *         it to "bark", seizing the vault and kicking off a Dutch auction to sell its collateral and recover the
+ *         debt.
+ * @dev Adds a circuit breaker check. When the breaker is active, the rate of new liquidations is throttled to a
+ *      fraction of normal.
  */
-contract LiquidationTrigger is ILiquidationTrigger, Auth {
+contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc ILiquidationTrigger
@@ -37,10 +37,10 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
     ICircuitBreaker public circuitBreaker;
 
     /// @inheritdoc ILiquidationTrigger
-    uint256 public Hole;
+    uint256 public globalHole;
 
     /// @inheritdoc ILiquidationTrigger
-    uint256 public Dirt;
+    uint256 public globalDirt;
 
     /// @inheritdoc ILiquidationTrigger
     uint256 public throttle;
@@ -58,6 +58,9 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
+        _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+        _grantRole(_WARD_ROLE, msg.sender);
+
         VAULT_ENGINE = vaultEngine_;
         throttle = _WAD / 5;
         live = 1;
@@ -69,8 +72,8 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
      * @inheritdoc ILiquidationTrigger
      */
     function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
-        if (what == "Hole") {
-            Hole = data;
+        if (what == "globalHole") {
+            globalHole = data;
         } else if (what == "throttle") {
             throttle = data;
         } else {
@@ -156,9 +159,9 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
             require(spot > 0 && ink * spot < art * rate, "LiquidationTrigger/not-unsafe");
 
             // Capacity checks: room must remain under both the per-collateral and global limits.
-            require(Hole > Dirt && milk.hole > milk.dirt, "LiquidationTrigger/liquidation-limit-hit");
+            require(globalHole > globalDirt && milk.hole > milk.dirt, "LiquidationTrigger/liquidation-limit-hit");
 
-            uint256 room = Math.min(Hole - Dirt, milk.hole - milk.dirt);
+            uint256 room = Math.min(globalHole - globalDirt, milk.hole - milk.dirt);
 
             // Circuit breaker check: when the breaker is active, new liquidations are throttled to a fraction of the
             // normal available room per period.
@@ -195,7 +198,7 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
         {
             // The debt to recover is increased by the liquidation penalty (13%).
             uint256 tab = (due * milk.chop) / _WAD;
-            Dirt += tab;
+            globalDirt += tab;
             ilks[ilkId].dirt += tab;
 
             // Starting the Dutch auction. Whoever called bark is eligible for the keeper reward.
@@ -209,7 +212,7 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
      * @inheritdoc ILiquidationTrigger
      */
     function digs(bytes32 ilkId, uint256 rad) external onlyRole(_WARD_ROLE) {
-        Dirt -= rad;
+        globalDirt -= rad;
         ilks[ilkId].dirt -= rad;
 
         emit Digs({ ilkId: ilkId, rad: rad });

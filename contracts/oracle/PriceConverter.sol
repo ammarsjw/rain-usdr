@@ -2,7 +2,8 @@
 
 pragma solidity 0.8.30;
 
-import { Auth } from "../extensions/Auth.sol";
+import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
+
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceConverter } from "../interfaces/IPriceConverter.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
@@ -14,19 +15,18 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title PriceConverter
  * @author Rain Team
- * @notice The link between the oracle and the Vault Engine. Takes the delayed price and divides
- *         it by the required collateralization ratio to produce the price factor — the maximum
- *         USDR mintable per unit of collateral. For RAIN at $1 with a 400% ratio, the factor
- *         is $0.25. Supported stablecoins skip the oracle entirely: they are marked fixed and
- *         always convert at $1, so USDR mints 1:1 against them.
- * @dev Based on MakerDAO's Spot. Every ilk is configured as exactly one of two kinds — fixed
- *      (no oracle, price pinned to $1; the trust decision lives in listing governance) or
- *      oracle-backed (price read from the OSM). The OSM itself never learns about fixed ilks:
- *      being registered on the OSM is what "needs a price lookup" means, and this contract is
- *      the single place that routes between the two kinds. `file("pip")` and `file("fixed")` clear each other so an
- *      ilk can never be both, and `poke` reverts for unconfigured ilks rather than writing a zero spot.
+ * @notice The link between the oracle and the Vault Engine. Takes the delayed price and divides it by the required
+ *         collateralization ratio to produce the price factor, the maximum USDR mintable per unit of collateral.
+ *         For RAIN at $1 with a 400% ratio, the factor is $0.25. Supported stablecoins skip the oracle entirely.
+ *         They are marked fixed and always convert at $1, so USDR mints 1:1 against them.
+ * @dev Every ilk is configured as exactly one of two kinds. A fixed ilk has no oracle and its price is pinned to
+ *      $1, with the trust decision living in listing governance. An oracle-backed ilk reads its price from the OSM.
+ *      The OSM itself never learns about fixed ilks. Being registered on the OSM is what needs a price lookup means,
+ *      and this contract is the single place that routes between the two kinds. `file("pip")` and `file("fixed")`
+ *      clear each other so an ilk can never be both, and `poke` reverts for unconfigured ilks rather than writing a
+ *      zero spot.
  */
-contract PriceConverter is IPriceConverter, Auth {
+contract PriceConverter is IPriceConverter, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IPriceConverter
@@ -48,6 +48,9 @@ contract PriceConverter is IPriceConverter, Auth {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
+        _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+        _grantRole(_WARD_ROLE, msg.sender);
+
         VAULT_ENGINE = vaultEngine_;
         par = _RAY;
         live = 1;
@@ -64,7 +67,7 @@ contract PriceConverter is IPriceConverter, Auth {
         }
 
         if (what == "pip") {
-            // Assigning an oracle makes the ilk oracle-backed; the kinds are mutually exclusive.
+            // Assigning an oracle makes the ilk oracle-backed. The kinds are mutually exclusive.
             ilks[ilkId].pip = IOracleSecurityModule(pip_);
             ilks[ilkId].fixedPrice = false;
         } else {
@@ -102,8 +105,8 @@ contract PriceConverter is IPriceConverter, Auth {
         if (what == "mat") {
             ilks[ilkId].mat = data;
         } else if (what == "fixed") {
-            // Marking an ilk fixed pins it to $1 and detaches any oracle; clearing it leaves
-            // the ilk unconfigured until an oracle is assigned.
+            // Marking an ilk fixed pins it to $1 and detaches any oracle. Clearing it leaves the ilk unconfigured
+            // until an oracle is assigned.
             ilks[ilkId].fixedPrice = data == 1;
             ilks[ilkId].pip = IOracleSecurityModule(address(0));
         } else {

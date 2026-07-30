@@ -3,6 +3,7 @@ const hardhat = require("hardhat");
 const { configure } = require("./helpers/config/config");
 const { verifyContract } = require("./helpers/libraries/auxiliary");
 const { deployContract } = require("./helpers/libraries/workflows");
+const { WARD_ROLE } = require("./helpers/shared/constants");
 const { CONFIG_STATE } = require("./helpers/shared/states");
 const { LOG_TYPE } = require("./helpers/shared/types");
 const { updateEnv } = require("./helpers/utils/env");
@@ -71,8 +72,8 @@ const deployCore = async () => {
     await (await collateralAdapterInstance.init(usdcIlk, usdcAddress)).wait();
 
     // Authorizing the adapter on the ledger and as a token minter.
-    await (await vaultEngineInstance.rely(collateralAdapterAddress)).wait();
-    await (await usdrInstance.rely(collateralAdapterAddress)).wait();
+    await (await vaultEngineInstance.grantRole(WARD_ROLE, collateralAdapterAddress)).wait();
+    await (await usdrInstance.grantRole(WARD_ROLE, collateralAdapterAddress)).wait();
     console.log("Core setup complete");
 
     // Updating env.

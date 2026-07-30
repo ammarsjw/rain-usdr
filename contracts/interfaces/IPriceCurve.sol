@@ -20,6 +20,11 @@ interface IPriceCurve {
     /* ========================== FUNCTIONS ========================== */
 
     /**
+     * @notice Returns the auction lifetime in seconds, how long until the price reaches zero.
+     */
+    function tau() external view returns (uint256);
+
+    /**
      * @notice Adjusts the auction lifetime ("tau").
      * @param what Name of the parameter.
      * @param data New value in seconds.
@@ -33,10 +38,4 @@ interface IPriceCurve {
      * @return The current price [ray]. Zero once the lifetime has fully elapsed.
      */
     function price(uint256 top, uint256 dur) external view returns (uint256);
-
-    /**
-     * @notice Returns the auction lifetime in seconds.
-     * @return The lifetime in seconds — how long until the price reaches zero.
-     */
-    function tau() external view returns (uint256);
 }

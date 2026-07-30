@@ -2,7 +2,8 @@
 
 pragma solidity 0.8.30;
 
-import { Auth } from "../extensions/Auth.sol";
+import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
+
 import { IBalanceSheet } from "../interfaces/IBalanceSheet.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _WARD_ROLE } from "../shared/Constants.sol";
@@ -15,11 +16,10 @@ import { _revert } from "../shared/Globals.sol";
  * @notice The protocol's treasury and debt manager. Receives revenue as surplus, holds a safety
  *         buffer, and absorbs bad debt through an ordered waterfall. When the surplus buffer is
  *         full, the excess goes toward buying back and burning RAIN.
- * @dev Based on MakerDAO's Vow, without surplus/debt auctions: USDR uses a RAIN buyback-and-burn
- *      for surplus and a controlled backstop for bad debt instead. The strict "fill before burn"
- *      rule is enforced in `distributeSurplus`.
+ * @dev Uses no surplus or debt auctions. USDR uses a RAIN buyback-and-burn for surplus and a controlled backstop
+ *      for bad debt instead. The strict "fill before burn" rule is enforced in `distributeSurplus`.
  */
-contract BalanceSheet is IBalanceSheet, Auth {
+contract BalanceSheet is IBalanceSheet, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IBalanceSheet
@@ -38,6 +38,9 @@ contract BalanceSheet is IBalanceSheet, Auth {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
+        _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+        _grantRole(_WARD_ROLE, msg.sender);
+
         VAULT_ENGINE = vaultEngine_;
     }
 
@@ -109,7 +112,7 @@ contract BalanceSheet is IBalanceSheet, Auth {
         require(badDebt == 0, "BalanceSheet/outstanding-bad-debt");
 
         // The strict "fill before burn" rule: the surplus buffer must be at or above its target first. If the
-        // buffer is below target, no distribution happens — all revenue stays.
+        // buffer is below target, no distribution happens and all revenue stays.
         require(surplus > hump, "BalanceSheet/buffer-below-target");
         require(buybackReceiver != address(0), "BalanceSheet/no-buyback-receiver");
 

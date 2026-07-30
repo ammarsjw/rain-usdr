@@ -3,6 +3,7 @@ const hardhat = require("hardhat");
 const { configure } = require("./helpers/config/config");
 const { verifyContract } = require("./helpers/libraries/auxiliary");
 const { deployContract } = require("./helpers/libraries/workflows");
+const { WARD_ROLE } = require("./helpers/shared/constants");
 const { LOG_TYPE } = require("./helpers/shared/types");
 const { updateEnv } = require("./helpers/utils/env");
 const { logTag, wait } = require("./helpers/utils/tools");
@@ -65,7 +66,7 @@ const deployLiquidation = async () => {
     // Liquidation trigger: global cap $100,000, RAIN cap $50,000, penalty 13%.
     await (
         await liquidationTriggerInstance["file(bytes32,uint256)"](
-            hardhat.ethers.encodeBytes32String("Hole"),
+            hardhat.ethers.encodeBytes32String("globalHole"),
             100000n * RAD
         )
     ).wait();
@@ -153,10 +154,10 @@ const deployLiquidation = async () => {
     await (await osmInstance.kiss(circuitBreakerAddress)).wait();
 
     // Wiring authorizations across the ledger and the stack.
-    await (await vaultEngineInstance.rely(liquidationTriggerAddress)).wait();
-    await (await vaultEngineInstance.rely(dutchAuctionAddress)).wait();
-    await (await liquidationTriggerInstance.rely(dutchAuctionAddress)).wait();
-    await (await dutchAuctionInstance.rely(liquidationTriggerAddress)).wait();
+    await (await vaultEngineInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
+    await (await vaultEngineInstance.grantRole(WARD_ROLE, dutchAuctionAddress)).wait();
+    await (await liquidationTriggerInstance.grantRole(WARD_ROLE, dutchAuctionAddress)).wait();
+    await (await dutchAuctionInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
     console.log("Liquidation setup complete");
 
     // Updating env.

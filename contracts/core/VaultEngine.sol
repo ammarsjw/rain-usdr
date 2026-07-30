@@ -2,7 +2,8 @@
 
 pragma solidity 0.8.30;
 
-import { Auth } from "../extensions/Auth.sol";
+import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
+
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { Math } from "../libraries/Math.sol";
 import { _RAY, _WARD_ROLE } from "../shared/Constants.sol";
@@ -16,10 +17,10 @@ import { _revert } from "../shared/Globals.sol";
  * @notice The immutable core ledger. Master record of every piece of collateral and every unit of debt in the
  *         system. Enforces the fundamental rule that no vault can mint more USDR than its collateral allows. Its
  *         rules can never be changed after deployment.
- * @dev Based on MakerDAO's Vat. USDR charges no stability fee, so each ilk's `rate` is initialized to `RAY` (1.0)
- *      and never changes. Internal USDR balances are tracked in `rad` (45 decimals).
+ * @dev USDR charges no stability fee, so each ilk's `rate` is initialized to `RAY` (1.0) and never changes. Internal
+ *      USDR balances are tracked in `rad` (45 decimals).
  */
-contract VaultEngine is IVaultEngine, Auth {
+contract VaultEngine is IVaultEngine, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IVaultEngine
@@ -29,7 +30,7 @@ contract VaultEngine is IVaultEngine, Auth {
     uint256 public vice;
 
     /// @inheritdoc IVaultEngine
-    uint256 public Line;
+    uint256 public globalLine;
 
     /// @inheritdoc IVaultEngine
     uint256 public live;
@@ -58,6 +59,9 @@ contract VaultEngine is IVaultEngine, Auth {
      * @notice Authorizes the deployer and marks the ledger live.
      */
     constructor() {
+        _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+        _grantRole(_WARD_ROLE, msg.sender);
+
         live = 1;
     }
 
@@ -100,8 +104,8 @@ contract VaultEngine is IVaultEngine, Auth {
             _revert(NotLive.selector);
         }
 
-        if (what == "Line") {
-            Line = data;
+        if (what == "globalLine") {
+            globalLine = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -189,7 +193,7 @@ contract VaultEngine is IVaultEngine, Auth {
 
         urn.ink = Math.add(urn.ink, dink);
         urn.art = Math.add(urn.art, dart);
-        ilk.Art = Math.add(ilk.Art, dart);
+        ilk.globalArt = Math.add(ilk.globalArt, dart);
 
         int256 dtab = Math.mul(ilk.rate, dart);
         uint256 tab = ilk.rate * urn.art;
@@ -197,7 +201,10 @@ contract VaultEngine is IVaultEngine, Auth {
 
         // Ceiling check: either debt is being repaid, or both the ilk ceiling and the global ceiling must hold
         // after the change.
-        require(dart <= 0 || (ilk.Art * ilk.rate <= ilk.line && debt <= Line), "VaultEngine/ceiling-exceeded");
+        require(
+            dart <= 0 || (ilk.globalArt * ilk.rate <= ilk.line && debt <= globalLine),
+            "VaultEngine/ceiling-exceeded"
+        );
         // Safety check: the vault must be either safer than before, or safe after the change. Uses the delayed
         // oracle price factor already stored in the system.
         require(Math.both(dart <= 0, dink >= 0) || tab <= urn.ink * ilk.spot, "VaultEngine/not-safe");
@@ -236,7 +243,7 @@ contract VaultEngine is IVaultEngine, Auth {
 
         urn.ink = Math.add(urn.ink, dink);
         urn.art = Math.add(urn.art, dart);
-        ilk.Art = Math.add(ilk.Art, dart);
+        ilk.globalArt = Math.add(ilk.globalArt, dart);
 
         int256 dtab = Math.mul(ilk.rate, dart);
 

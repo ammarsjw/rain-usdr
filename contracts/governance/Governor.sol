@@ -2,7 +2,8 @@
 
 pragma solidity 0.8.30;
 
-import { Auth } from "../extensions/Auth.sol";
+import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
+
 import { IGovernor } from "../interfaces/IGovernor.sol";
 import { _WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, NotAuthorized, UnrecognizedParameter } from "../shared/Errors.sol";
@@ -13,12 +14,10 @@ import { _revert } from "../shared/Globals.sol";
  * @author Rain Team
  * @notice The controlled way to change the protocol's adjustable settings. Every change waits
  *         out a mandatory delay before it can take effect, giving the community time to review.
- *         Also holds the emergency pause. It can never touch the immutable core — only the risk
- *         parameters.
- * @dev Based on MakerDAO's Spell and Pause. The pause auto-expires after 72 hours and its scope
- *      is fixed at the moment of pausing.
+ *         Also holds the emergency pause. It can never touch the immutable core, only the risk parameters.
+ * @dev The pause auto-expires after 72 hours and its scope is fixed at the moment of pausing.
  */
-contract Governor is IGovernor, Auth {
+contract Governor is IGovernor, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IGovernor
@@ -49,6 +48,9 @@ contract Governor is IGovernor, Auth {
      * @param delay_ The mandatory delay in seconds.
      */
     constructor(uint256 delay_) {
+        _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+        _grantRole(_WARD_ROLE, msg.sender);
+
         delay = delay_;
     }
 
@@ -149,7 +151,7 @@ contract Governor is IGovernor, Auth {
     function unpause() external {
         require(paused, "Governor/not-paused");
 
-        // Once 72 hours have passed since the pause began, anyone can lift it — no governance action required.
+        // Once 72 hours have passed since the pause began, anyone can lift it with no governance action required.
         // Before that, only governance can lift it early.
         if (block.timestamp < pausedAt + PAUSE_MAX) {
             if (!hasRole(_WARD_ROLE, msg.sender)) {

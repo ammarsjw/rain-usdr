@@ -90,7 +90,59 @@ interface ILiquidationTrigger {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Adjusts a global parameter: "Hole" (global cap) or "throttle".
+     * @notice Returns the Vault Engine this trigger reports to.
+     */
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the Balance Sheet that receives seized debt.
+     */
+    function balanceSheet() external view returns (IBalanceSheet);
+
+    /**
+     * @notice Returns the circuit breaker that throttles liquidations during abnormal price moves.
+     */
+    function circuitBreaker() external view returns (ICircuitBreaker);
+
+    /**
+     * @notice Returns the maximum active liquidation size across all collateral types [rad].
+     */
+    function globalHole() external view returns (uint256);
+
+    /**
+     * @notice Returns the amount currently being auctioned across all collateral types [rad].
+     */
+    function globalDirt() external view returns (uint256);
+
+    /**
+     * @notice Returns the throttled liquidation rate while the breaker is active [wad].
+     */
+    function throttle() external view returns (uint256);
+
+    /**
+     * @notice Returns the liveness flag. `1` while live, `0` after shutdown.
+     */
+    function live() external view returns (uint256);
+
+    /**
+     * @notice Returns the liquidation settings for a collateral type.
+     * @param ilkId Identifier of the collateral type.
+     * @return clip The Dutch auction contract for this collateral.
+     * @return chop The liquidation penalty [wad].
+     * @return hole The maximum active liquidation size for this collateral [rad].
+     * @return dirt The amount currently being auctioned for this collateral [rad].
+     */
+    function ilks(bytes32 ilkId) external view returns (address clip, uint256 chop, uint256 hole, uint256 dirt);
+
+    /**
+     * @notice Returns the liquidation penalty for a collateral type.
+     * @param ilkId Identifier of the collateral type.
+     * @return The penalty [wad].
+     */
+    function chop(bytes32 ilkId) external view returns (uint256);
+
+    /**
+     * @notice Adjusts a global parameter: "globalHole" (global cap) or "throttle".
      * @param what Name of the parameter.
      * @param data New value.
      */
@@ -141,63 +193,4 @@ interface ILiquidationTrigger {
      * @param rad Amount of capacity to free [rad].
      */
     function digs(bytes32 ilkId, uint256 rad) external;
-
-    /**
-     * @notice Returns the liquidation settings for a collateral type.
-     * @param ilkId Identifier of the collateral type.
-     * @return clip The Dutch auction contract for this collateral.
-     * @return chop The liquidation penalty [wad].
-     * @return hole The maximum active liquidation size for this collateral [rad].
-     * @return dirt The amount currently being auctioned for this collateral [rad].
-     */
-    function ilks(bytes32 ilkId) external view returns (address clip, uint256 chop, uint256 hole, uint256 dirt);
-
-    /**
-     * @notice Returns the liquidation penalty for a collateral type.
-     * @param ilkId Identifier of the collateral type.
-     * @return The penalty [wad].
-     */
-    function chop(bytes32 ilkId) external view returns (uint256);
-
-    /**
-     * @notice Returns the Vault Engine this trigger reports to.
-     * @return The Vault Engine.
-     */
-    function VAULT_ENGINE() external view returns (IVaultEngine);
-
-    /**
-     * @notice Returns the Balance Sheet that receives seized debt.
-     * @return The Balance Sheet.
-     */
-    function balanceSheet() external view returns (IBalanceSheet);
-
-    /**
-     * @notice Returns the circuit breaker that throttles liquidations during abnormal price moves.
-     * @return The circuit breaker.
-     */
-    function circuitBreaker() external view returns (ICircuitBreaker);
-
-    /**
-     * @notice Returns the maximum active liquidation size across all collateral types.
-     * @return The global cap [rad].
-     */
-    function Hole() external view returns (uint256);
-
-    /**
-     * @notice Returns the amount currently being auctioned across all collateral types.
-     * @return The global amount in auction [rad].
-     */
-    function Dirt() external view returns (uint256);
-
-    /**
-     * @notice Returns the throttled liquidation rate while the breaker is active.
-     * @return The throttle rate [wad].
-     */
-    function throttle() external view returns (uint256);
-
-    /**
-     * @notice Returns the liveness flag.
-     * @return The liveness flag. `1` while live, `0` after shutdown.
-     */
-    function live() external view returns (uint256);
 }

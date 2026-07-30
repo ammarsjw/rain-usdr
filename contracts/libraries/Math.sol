@@ -6,8 +6,8 @@ pragma solidity 0.8.30;
  * @title Math
  * @author Rain Team
  * @notice Library containing generic math helpers for mixed signed and unsigned arithmetic. Helpers that already
- *         exist in OpenZeppelin's `Math` library (e.g. `min` and `max` for unsigned integers) are intentionally not
- *         duplicated here — consumers should import them from OpenZeppelin directly.
+ *         exist in OpenZeppelin's `Math` library, for example `min` and `max` for unsigned integers, are
+ *         intentionally not duplicated here. Consumers should import them from OpenZeppelin directly.
  */
 library Math {
     /**

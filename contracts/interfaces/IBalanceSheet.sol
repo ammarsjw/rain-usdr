@@ -55,19 +55,16 @@ interface IBalanceSheet {
 
     /**
      * @notice Returns the Vault Engine this balance sheet reports to.
-     * @return The Vault Engine.
      */
     function VAULT_ENGINE() external view returns (IVaultEngine);
 
     /**
-     * @notice Returns the recipient of surplus distributions (the RAIN buyback-and-burn process).
-     * @return The buyback receiver address.
+     * @notice Returns the recipient of surplus distributions, the RAIN buyback-and-burn process.
      */
     function buybackReceiver() external view returns (address);
 
     /**
-     * @notice Returns the surplus buffer target.
-     * @return The surplus buffer target [rad].
+     * @notice Returns the surplus buffer target [rad].
      */
     function hump() external view returns (uint256);
 
@@ -87,7 +84,7 @@ interface IBalanceSheet {
 
     /**
      * @notice Registers bad debt when an auction fails to fully cover a vault's debt.
-     * @dev Called by the Liquidation Trigger; the debt itself lands on this contract's `sin` balance in the Vault
+     * @dev Called by the Liquidation Trigger. The debt itself lands on this contract's `sin` balance in the Vault
      *      Engine via `grab`.
      * @param tab Amount of uncovered debt registered [rad].
      */
@@ -109,7 +106,7 @@ interface IBalanceSheet {
 
     /**
      * @notice Sends the surplus above the buffer target toward RAIN buyback-and-burn.
-     * @dev Reverts if the buffer is below target — the strict "fill before burn" rule.
+     * @dev Reverts if the buffer is below target, the strict "fill before burn" rule.
      * @return excess Amount released [rad].
      */
     function distributeSurplus() external returns (uint256 excess);

@@ -21,7 +21,7 @@ import { DutchAuction } from "../contracts/liquidation/DutchAuction.sol";
 import { CircuitBreaker } from "../contracts/liquidation/CircuitBreaker.sol";
 import { Governor } from "../contracts/governance/Governor.sol";
 import { IPriceSource } from "../contracts/interfaces/IPriceSource.sol";
-import { _RAD, _RAY, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
+import { _RAD, _RAY, _USDR_ILK, _WAD, _WARD_ROLE } from "../contracts/shared/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 import { MockPriceSource } from "./mocks/MockPriceSource.sol";
@@ -106,12 +106,12 @@ abstract contract BaseTest is Test {
         vaultEngine.init(RAIN_ILK);
         vaultEngine.init(USDT_ILK);
         vaultEngine.init(USDC_ILK);
-        vaultEngine.rely(address(collateralAdapter));
-        vaultEngine.rely(address(priceConverter));
-        vaultEngine.rely(address(liquidationTrigger));
-        vaultEngine.rely(address(dutchAuction));
-        vaultEngine.rely(address(balanceSheet));
-        usdr.rely(address(collateralAdapter));
+        vaultEngine.grantRole(_WARD_ROLE, address(collateralAdapter));
+        vaultEngine.grantRole(_WARD_ROLE, address(priceConverter));
+        vaultEngine.grantRole(_WARD_ROLE, address(liquidationTrigger));
+        vaultEngine.grantRole(_WARD_ROLE, address(dutchAuction));
+        vaultEngine.grantRole(_WARD_ROLE, address(balanceSheet));
+        usdr.grantRole(_WARD_ROLE, address(collateralAdapter));
 
         // Wiring the oracles (RAIN 400%, stables 100%).
         osm.kiss(address(priceConverter));
@@ -133,13 +133,13 @@ abstract contract BaseTest is Test {
 
         // Wiring the liquidation stack (launch parameters from the spec).
         priceCurve.file("tau", 3600);
-        liquidationTrigger.file("Hole", 100_000 * _RAD);
+        liquidationTrigger.file("globalHole", 100_000 * _RAD);
         liquidationTrigger.file("balanceSheet", address(balanceSheet));
         liquidationTrigger.file("circuitBreaker", address(circuitBreaker));
         liquidationTrigger.file(RAIN_ILK, "chop", (_WAD * 113) / 100);
         liquidationTrigger.file(RAIN_ILK, "hole", 50_000 * _RAD);
         liquidationTrigger.file(RAIN_ILK, "clip", address(dutchAuction));
-        liquidationTrigger.rely(address(dutchAuction));
+        liquidationTrigger.grantRole(_WARD_ROLE, address(dutchAuction));
         dutchAuction.file("buf", (_RAY * 105) / 100);
         dutchAuction.file("tail", 1800);
         dutchAuction.file("cusp", (_RAY * 40) / 100);
@@ -148,10 +148,10 @@ abstract contract BaseTest is Test {
         dutchAuction.file("dog", address(liquidationTrigger));
         dutchAuction.file("vow", address(balanceSheet));
         dutchAuction.file("calc", address(priceCurve));
-        dutchAuction.rely(address(liquidationTrigger));
+        dutchAuction.grantRole(_WARD_ROLE, address(liquidationTrigger));
 
         // Setting launch ceilings and minimum vault size.
-        vaultEngine.file("Line", 1_100_000 * _RAD);
+        vaultEngine.file("globalLine", 1_100_000 * _RAD);
         vaultEngine.file(RAIN_ILK, "line", 100_000 * _RAD);
         vaultEngine.file(USDT_ILK, "line", 500_000 * _RAD);
         vaultEngine.file(USDC_ILK, "line", 500_000 * _RAD);
