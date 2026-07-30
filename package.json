@@ -2,6 +2,8 @@
     "name": "rain-usdr",
     "version": "1.0.0-alpha.0",
     "description": "USDR (Rain Dollar) multi-collateral over-collateralized stablecoin",
+    "license": "MIT",
+    "author": "Rain Team",
     "scripts": {
         "build": "forge build",
         "build-force": "forge build --force",
@@ -10,30 +12,30 @@
         "compile": "hardhat compile",
         "compile-force": "hardhat compile --force",
         "deploy-core": "hardhat run scripts/deploy-core.js",
+        "deploy-core-development": "hardhat run scripts/deploy-core.js --network development",
         "deploy-core-fork": "cross-env HARDHAT_FORK=true hardhat run scripts/deploy-core.js --network hardhat",
         "deploy-core-local": "hardhat run scripts/deploy-core.js --network hardhat",
         "deploy-core-staging": "hardhat run scripts/deploy-core.js --network staging",
-        "deploy-core-development": "hardhat run scripts/deploy-core.js --network development",
         "deploy-governance": "hardhat run scripts/deploy-governance.js",
+        "deploy-governance-development": "hardhat run scripts/deploy-governance.js --network development",
         "deploy-governance-fork": "cross-env HARDHAT_FORK=true hardhat run scripts/deploy-governance.js --network hardhat",
         "deploy-governance-local": "hardhat run scripts/deploy-governance.js --network hardhat",
         "deploy-governance-staging": "hardhat run scripts/deploy-governance.js --network staging",
-        "deploy-governance-development": "hardhat run scripts/deploy-governance.js --network development",
         "deploy-liquidation": "hardhat run scripts/deploy-liquidation.js",
+        "deploy-liquidation-development": "hardhat run scripts/deploy-liquidation.js --network development",
         "deploy-liquidation-fork": "cross-env HARDHAT_FORK=true hardhat run scripts/deploy-liquidation.js --network hardhat",
         "deploy-liquidation-local": "hardhat run scripts/deploy-liquidation.js --network hardhat",
         "deploy-liquidation-staging": "hardhat run scripts/deploy-liquidation.js --network staging",
-        "deploy-liquidation-development": "hardhat run scripts/deploy-liquidation.js --network development",
         "deploy-oracles": "hardhat run scripts/deploy-oracles.js",
+        "deploy-oracles-development": "hardhat run scripts/deploy-oracles.js --network development",
         "deploy-oracles-fork": "cross-env HARDHAT_FORK=true hardhat run scripts/deploy-oracles.js --network hardhat",
         "deploy-oracles-local": "hardhat run scripts/deploy-oracles.js --network hardhat",
         "deploy-oracles-staging": "hardhat run scripts/deploy-oracles.js --network staging",
-        "deploy-oracles-development": "hardhat run scripts/deploy-oracles.js --network development",
         "deploy-reserve": "hardhat run scripts/deploy-reserve.js",
+        "deploy-reserve-development": "hardhat run scripts/deploy-reserve.js --network development",
         "deploy-reserve-fork": "cross-env HARDHAT_FORK=true hardhat run scripts/deploy-reserve.js --network hardhat",
         "deploy-reserve-local": "hardhat run scripts/deploy-reserve.js --network hardhat",
         "deploy-reserve-staging": "hardhat run scripts/deploy-reserve.js --network staging",
-        "deploy-reserve-development": "hardhat run scripts/deploy-reserve.js --network development",
         "format": "prettier --check --write .prettierrc *.json *.js {contracts,tests}/**/*.sol scripts/**/*.js",
         "format-lint": "npm run format && npm run lint",
         "lint": "solhint --max-warnings 0 {contracts,tests}/**/*.sol",
@@ -45,23 +47,24 @@
         "test-report": "npm run test -- --gas-report",
         "test-verbose": "npm run test -- -vvvvv"
     },
-    "author": "Rain Team",
-    "license": "MIT",
+    "dependencies": {
+        "@openzeppelin/contracts": "5.4.0"
+    },
     "devDependencies": {
         "@nomicfoundation/hardhat-foundry": "^1.2.0",
-        "@nomicfoundation/hardhat-toolbox": "^6.1.0",
-        "cross-env": "^7.0.3",
-        "dotenv": "^16.4.5",
+        "@nomicfoundation/hardhat-toolbox": "^6.1.2",
+        "cross-env": "^10.1.0",
+        "dotenv": "^17.2.3",
         "hardhat": "^2.28.0",
         "hardhat-contract-sizer": "^2.10.1",
         "hardhat-storage-layout": "^0.1.7",
-        "prettier": "^3.3.3",
-        "prettier-plugin-package": "^1.4.0",
-        "prettier-plugin-solidity": "^1.4.1",
-        "prettier-plugin-sort-imports": "^1.8.6",
-        "solhint": "^6.0.1"
+        "prettier": "^3.9.6",
+        "prettier-plugin-package": "^2.0.0",
+        "prettier-plugin-solidity": "^2.3.1",
+        "solhint": "^6.2.1"
     },
-    "dependencies": {
-        "@openzeppelin/contracts": "5.4.0"
+    "allowScripts": {
+        "keccak@3.0.4": true,
+        "secp256k1@4.0.4": true
     }
 }

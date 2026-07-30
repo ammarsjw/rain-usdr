@@ -53,12 +53,48 @@ const deployOracles = async () => {
 
     // Configuring RAIN as oracle-backed (400%) and the stablecoins as fixed $1 (100%).
     const RAY = 10n ** 27n;
-    await (await priceConverterInstance["file(bytes32,bytes32,address)"](rainIlk, hardhat.ethers.encodeBytes32String("pip"), osmAddress)).wait();
-    await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](rainIlk, hardhat.ethers.encodeBytes32String("mat"), RAY * 4n)).wait();
-    await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](usdtIlk, hardhat.ethers.encodeBytes32String("mat"), RAY)).wait();
-    await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](usdcIlk, hardhat.ethers.encodeBytes32String("mat"), RAY)).wait();
-    await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](usdtIlk, hardhat.ethers.encodeBytes32String("fixed"), 1n)).wait();
-    await (await priceConverterInstance["file(bytes32,bytes32,uint256)"](usdcIlk, hardhat.ethers.encodeBytes32String("fixed"), 1n)).wait();
+    await (
+        await priceConverterInstance["file(bytes32,bytes32,address)"](
+            rainIlk,
+            hardhat.ethers.encodeBytes32String("pip"),
+            osmAddress
+        )
+    ).wait();
+    await (
+        await priceConverterInstance["file(bytes32,bytes32,uint256)"](
+            rainIlk,
+            hardhat.ethers.encodeBytes32String("mat"),
+            RAY * 4n
+        )
+    ).wait();
+    await (
+        await priceConverterInstance["file(bytes32,bytes32,uint256)"](
+            usdtIlk,
+            hardhat.ethers.encodeBytes32String("mat"),
+            RAY
+        )
+    ).wait();
+    await (
+        await priceConverterInstance["file(bytes32,bytes32,uint256)"](
+            usdcIlk,
+            hardhat.ethers.encodeBytes32String("mat"),
+            RAY
+        )
+    ).wait();
+    await (
+        await priceConverterInstance["file(bytes32,bytes32,uint256)"](
+            usdtIlk,
+            hardhat.ethers.encodeBytes32String("fixed"),
+            1n
+        )
+    ).wait();
+    await (
+        await priceConverterInstance["file(bytes32,bytes32,uint256)"](
+            usdcIlk,
+            hardhat.ethers.encodeBytes32String("fixed"),
+            1n
+        )
+    ).wait();
 
     // Authorizing the Price Converter to push price factors into the ledger.
     await (await vaultEngineInstance.grantRole(WARD_ROLE, priceConverterAddress)).wait();
