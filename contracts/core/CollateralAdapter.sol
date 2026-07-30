@@ -28,6 +28,14 @@ import { _revert } from "../shared/Globals.sol";
 contract CollateralAdapter is ICollateralAdapter, AccessControl {
     using SafeERC20 for IERC20Metadata;
 
+    /* ========================== STATE VARIABLES ========================== */
+
+    /// @inheritdoc ICollateralAdapter
+    IVaultEngine public immutable VAULT_ENGINE;
+
+    /// @inheritdoc ICollateralAdapter
+    mapping(bytes32 ilkId => Ilk ilk) public ilks;
+
     /* ========================== TYPES ========================== */
 
     /**
@@ -44,14 +52,6 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
         bool isUsdr;
         uint256 live;
     }
-
-    /* ========================== STATE VARIABLES ========================== */
-
-    /// @inheritdoc ICollateralAdapter
-    IVaultEngine public immutable VAULT_ENGINE;
-
-    /// @inheritdoc ICollateralAdapter
-    mapping(bytes32 ilkId => Ilk ilk) public ilks;
 
     /* ========================== CONSTRUCTOR ========================== */
 
