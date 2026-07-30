@@ -13,11 +13,11 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title BalanceSheet
  * @author Rain Team
- * @notice The protocol's treasury and debt manager. Receives revenue as surplus, holds a safety
- *         buffer, and absorbs bad debt through an ordered waterfall. When the surplus buffer is
- *         full, the excess goes toward buying back and burning RAIN.
- * @dev Uses no surplus or debt auctions. USDR uses a RAIN buyback-and-burn for surplus and a controlled backstop
- *      for bad debt instead. The strict "fill before burn" rule is enforced in `distributeSurplus`.
+ * @notice The protocol's treasury and debt manager. Receives revenue as surplus, holds a safety buffer, and absorbs
+ *         bad debt through an ordered waterfall. When the surplus buffer is full, the excess goes toward buying back
+ *         and burning RAIN.
+ * @dev Uses no surplus or debt auctions. USDR uses a RAIN buyback-and-burn for surplus and a controlled backstop for
+ *      bad debt instead. The strict "fill before burn" rule is enforced in `distributeSurplus`.
  */
 contract BalanceSheet is IBalanceSheet, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -117,8 +117,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             _revert(OutstandingBadDebt.selector);
         }
 
-        // The strict "fill before burn" rule: the surplus buffer must be at or above its target first. If the
-        // buffer is below target, no distribution happens and all revenue stays.
+        // The strict "fill before burn" rule: the surplus buffer must be at or above its target first. If the buffer
+        // is below target, no distribution happens and all revenue stays.
         if (surplus <= hump) {
             _revert(BufferBelowTarget.selector);
         }

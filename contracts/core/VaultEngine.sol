@@ -14,9 +14,9 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title VaultEngine
  * @author Rain Team
- * @notice The immutable core ledger. Master record of every piece of collateral and every unit of debt in the
- *         system. Enforces the fundamental rule that no vault can mint more USDR than its collateral allows. Its
- *         rules can never be changed after deployment.
+ * @notice The immutable core ledger. Master record of every piece of collateral and every unit of debt in the system.
+ *         Enforces the fundamental rule that no vault can mint more USDR than its collateral allows. Its rules can
+ *         never be changed after deployment.
  * @dev USDR charges no stability fee, so each ilk's `rate` is initialized to `RAY` (1.0) and never changes. Internal
  *      USDR balances are tracked in `rad` (45 decimals).
  */
@@ -207,13 +207,13 @@ contract VaultEngine is IVaultEngine, AccessControl {
         uint256 tab = ilk.rate * urn.art;
         debt = Math.add(debt, dtab);
 
-        // Ceiling check: either debt is being repaid, or both the ilk ceiling and the global ceiling must hold
-        // after the change.
+        // Ceiling check: either debt is being repaid, or both the ilk ceiling and the global ceiling must hold after
+        // the change.
         if (dart > 0 && (ilk.globalArt * ilk.rate > ilk.line || debt > globalLine)) {
             _revert(CeilingExceeded.selector);
         }
-        // Safety check: the vault must be either safer than before, or safe after the change. Uses the delayed
-        // oracle price factor already stored in the system.
+        // Safety check: the vault must be either safer than before, or safe after the change. Uses the delayed oracle
+        // price factor already stored in the system.
         if (!Math.both(dart <= 0, dink >= 0) && tab > urn.ink * ilk.spot) {
             _revert(NotSafe.selector);
         }
@@ -295,13 +295,11 @@ contract VaultEngine is IVaultEngine, AccessControl {
         emit Suck({ u: u, v: v, rad: rad });
     }
 
-    /* ========================== INTERNAL FUNCTIONS ========================== */
-
     /**
      * @dev Returns whether `operator` may manage the positions of `owner`.
      * @param owner Owner of the positions.
      * @param operator Account being queried.
-     * @return Whether the operator has management permission.
+     * @return hasPermission Whether the operator has management permission.
      */
     function _wish(address owner, address operator) internal view returns (bool) {
         return owner == operator || can[owner][operator] == 1;

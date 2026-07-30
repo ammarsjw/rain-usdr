@@ -19,16 +19,13 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title DutchAuction
  * @author Rain Team
- * @notice The auction house. Runs each liquidation as a Dutch auction. The collateral starts at a price above
- *         market and falls over time until a keeper buys it. It settles instantly, needs no locked capital from
- *         bidders, and supports flash-loan-style buying where the keeper buys and resells in one transaction.
+ * @notice The auction house. Runs each liquidation as a Dutch auction. The collateral starts at a price above market
+ *         and falls over time until a keeper buys it. It settles instantly, needs no locked capital from bidders, and
+ *         supports flash-loan-style buying where the keeper buys and resells in one transaction.
  * @dev One instance per collateral type.
  */
 contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     /* ========================== STATE VARIABLES ========================== */
-
-    /// @inheritdoc IDutchAuction
-    mapping(uint256 id => Sale sale) public sales;
 
     /// @inheritdoc IDutchAuction
     IVaultEngine public immutable VAULT_ENGINE;
@@ -71,6 +68,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
     /// @inheritdoc IDutchAuction
     uint256[] public active;
+
+    /// @inheritdoc IDutchAuction
+    mapping(uint256 id => Sale sale) public sales;
 
     /* ========================== CONSTRUCTOR ========================== */
 
@@ -239,10 +239,10 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             _revert(AuctionNotRunning.selector);
         }
 
-        uint256 price_;
+        uint256 price;
         {
             bool done;
-            (done, price_) = _status(tic, sales[id].top);
+            (done, price) = _status(tic, sales[id].top);
 
             // The auction must still be running and the price must be greater than zero.
             if (done) {
@@ -251,7 +251,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         }
 
         // The current price must not exceed the keeper's stated maximum price.
-        if (max < price_) {
+        if (max < price) {
             _revert(TooExpensive.selector);
         }
 
@@ -264,12 +264,12 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             uint256 slice = Math.min(lot, amt);
 
             // The keeper pays the current price times the amount.
-            owe = slice * price_;
+            owe = slice * price;
 
             if (owe > tab) {
                 // Never collecting more than the outstanding debt.
                 owe = tab;
-                slice = owe / price_;
+                slice = owe / price;
             } else if (owe < tab && slice < lot) {
                 // A partial purchase must leave a non-dusty remainder.
                 (, , , , uint256 dust) = VAULT_ENGINE.ilks(ILK_ID);
@@ -296,7 +296,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             // Freeing auction capacity for the covered portion.
             dog.digs(ILK_ID, lot == 0 ? tab + owe : owe);
 
-            emit Take({ id: id, max: max, price: price_, owe: owe, tab: tab, lot: lot, usr: usr });
+            emit Take({ id: id, max: max, price: price, owe: owe, tab: tab, lot: lot, usr: usr });
         }
 
         if (lot == 0) {
@@ -344,19 +344,17 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     /**
      * @inheritdoc IDutchAuction
      */
-    function getStatus(uint256 id) external view returns (bool needsRedo, uint256 price_, uint256 lot, uint256 tab) {
+    function getStatus(uint256 id) external view returns (bool needsRedo, uint256 price, uint256 lot, uint256 tab) {
         address usr = sales[id].usr;
         uint96 tic = sales[id].tic;
         bool done;
 
-        (done, price_) = _status(tic, sales[id].top);
+        (done, price) = _status(tic, sales[id].top);
 
         needsRedo = usr != address(0) && done;
         lot = sales[id].lot;
         tab = sales[id].tab;
     }
-
-    /* ========================== INTERNAL FUNCTIONS ========================== */
 
     /**
      * @dev Removes an auction from the active list.
@@ -393,10 +391,10 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      * @param tic Auction start time.
      * @param top Starting price [ray].
      * @return done Whether the auction needs a reset.
-     * @return price_ The current price [ray].
+     * @return price The current price [ray].
      */
-    function _status(uint96 tic, uint256 top) internal view returns (bool done, uint256 price_) {
-        price_ = calc.price(top, block.timestamp - tic);
-        done = (block.timestamp - tic > tail || (price_ * _RAY) / top < cusp);
+    function _status(uint96 tic, uint256 top) internal view returns (bool done, uint256 price) {
+        price = calc.price(top, block.timestamp - tic);
+        done = (block.timestamp - tic > tail || (price * _RAY) / top < cusp);
     }
 }

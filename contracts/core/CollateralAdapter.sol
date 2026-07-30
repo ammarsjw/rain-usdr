@@ -22,8 +22,8 @@ import { _revert } from "../shared/Globals.sol";
  * @dev A single ilk-keyed module handles every token. Collateral ilks convert token decimals (USDT and USDC use 6,
  *      RAIN uses 18) to the internal 18 decimal representation and update the ledger through `slip`. The USDR ilk,
  *      registered under {_USDR_ILK}, moves internal balances (45 decimals) through `move` and mints or burns the
- *      ERC-20. Merging is safe because only `_WARD_ROLE` may register ilks and USDR mint authority is granted to
- *      this single contract on the token itself, so the collateral code path can never reach `mint`.
+ *      ERC-20. Merging is safe because only `_WARD_ROLE` may register ilks and USDR mint authority is granted to this
+ *      single contract on the token itself, so the collateral code path can never reach `mint`.
  */
 contract CollateralAdapter is ICollateralAdapter, AccessControl {
     using SafeERC20 for IERC20Metadata;
@@ -35,23 +35,6 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
 
     /// @inheritdoc ICollateralAdapter
     mapping(bytes32 ilkId => Ilk ilk) public ilks;
-
-    /* ========================== TYPES ========================== */
-
-    /**
-     * @notice Configuration and state of a registered ilk.
-     * @param token The token this ilk bridges, held in custody, or minted and burned for USDR.
-     * @param dec Decimals of the token.
-     * @param isUsdr Whether this ilk is the USDR ilk (`move` plus mint and burn) or a collateral ilk (`slip` plus
-     *        custody).
-     * @param live Ilk liveness flag. `1` while live, `0` after shutdown.
-     */
-    struct Ilk {
-        IERC20Metadata token;
-        uint8 dec;
-        bool isUsdr;
-        uint256 live;
-    }
 
     /* ========================== CONSTRUCTOR ========================== */
 

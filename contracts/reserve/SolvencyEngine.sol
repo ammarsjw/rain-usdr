@@ -15,12 +15,12 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title SolvencyEngine
  * @author Rain Team
- * @notice The guardian. Computes the protocol's worst-case loss under stress and verifies that
- *         the stable reserve exceeds it. If that rule would ever be broken, the protocol refuses
- *         the action that would break it. This single rule is what makes USDR provably solvent.
+ * @notice The guardian. Computes the protocol's worst-case loss under stress and verifies that the stable reserve
+ *         exceeds it. If that rule would ever be broken, the protocol refuses the action that would break it. This
+ *         single rule is what makes USDR provably solvent.
  * @dev The stress scenario marks volatile assets down 50% and assumes only 35% of normal liquidation market depth.
- *      Exposure reported by the prediction market layer is consumed as a number through a dedicated interface owned
- *      by the other team.
+ *      Exposure reported by the prediction market layer is consumed as a number through a dedicated interface owned by
+ *      the other team.
  */
 contract SolvencyEngine is ISolvencyEngine, AccessControl {
     /* ========================== STATE VARIABLES ========================== */

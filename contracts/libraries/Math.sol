@@ -7,9 +7,9 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title Math
  * @author Rain Team
- * @notice Library containing generic math helpers for mixed signed and unsigned arithmetic. Helpers that already
- *         exist in OpenZeppelin's `Math` library, for example `min` and `max` for unsigned integers, are
- *         intentionally not duplicated here. Consumers should import them from OpenZeppelin directly.
+ * @notice Library containing generic math helpers for mixed signed and unsigned arithmetic. Helpers that already exist
+ *         in OpenZeppelin's `Math` library, for example `min` and `max` for unsigned integers, are intentionally not
+ *         duplicated here. Consumers should import them from OpenZeppelin directly.
  */
 library Math {
     /* ========================== ERRORS ========================== */

@@ -13,6 +13,23 @@ import { IVaultEngine } from "./IVaultEngine.sol";
  *         instance. Collateral ilks custody deposits. The USDR ilk mints and burns the token.
  */
 interface ICollateralAdapter {
+    /* ========================== TYPES ========================== */
+
+    /**
+     * @notice Configuration and state of a registered ilk.
+     * @param token The token this ilk bridges, held in custody, or minted and burned for USDR.
+     * @param dec Decimals of the token.
+     * @param isUsdr Whether this ilk is the USDR ilk (`move` plus mint and burn) or a collateral ilk (`slip` plus
+     *        custody).
+     * @param live Ilk liveness flag. `1` while live, `0` after shutdown.
+     */
+    struct Ilk {
+        IERC20Metadata token;
+        uint8 dec;
+        bool isUsdr;
+        uint256 live;
+    }
+
     /* ========================== EVENTS ========================== */
 
     /**

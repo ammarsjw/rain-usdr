@@ -151,14 +151,14 @@ interface IGovernor {
     ) external view returns (address target, bytes memory data, uint256 eta, bool executed, bool cancelled);
 
     /**
-     * @notice Adjusts the timelock delay ("delay").
+     * @notice Adjusts the timelock delay: {delay}.
      * @param what Name of the parameter.
      * @param data New value in seconds.
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Queues a parameter change (or a new collateral addition) to take effect after the timelock delay.
+     * @notice Queues a parameter change or a new collateral addition to take effect after the timelock delay.
      * @param target Contract and setting to change.
      * @param data Encoded calldata of the change.
      * @return id Identifier of the scheduled change.

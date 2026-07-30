@@ -13,15 +13,14 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title OracleSecurityModule
  * @author Rain Team
- * @notice The delayed price feed. Holds prices back by 30 minutes so that if a price is manipulated, there is time
- *         to detect and respond before the system acts on it. Stores two prices per collateral type: the current
- *         one (which the system uses) and the next one (which becomes current after the delay). A single deployed
- *         instance serves every priced collateral: tokens are registered dynamically, each with its own price
- *         source.
+ * @notice The delayed price feed. Holds prices back by 30 minutes so that if a price is manipulated, there is time to
+ *         detect and respond before the system acts on it. Stores two prices per collateral type: the current one
+ *         (which the system uses) and the next one (which becomes current after the delay). A single deployed instance
+ *         serves every priced collateral: tokens are registered dynamically, each with its own price source.
  * @dev A single multi-collateral module keyed by ilk identifier. The per-ilk price source is any {IPriceSource}
  *      implementation, such as a dedicated Uniswap time-weighted average wrapper, a Chainlink feed wrapper, or any
- *      future adapter, so the module never needs to know what kind of oracle backs a token. Sources are switchable
- *      by governance per ilk without any other contract changing.
+ *      future adapter, so the module never needs to know what kind of oracle backs a token. Sources are switchable by
+ *      governance per ilk without any other contract changing.
  */
 contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -31,23 +30,6 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
 
     /// @dev Oracle state per collateral type.
     mapping(bytes32 ilkId => Ilk ilk) internal _ilks;
-
-    /* ========================== TYPES ========================== */
-
-    /// @dev A stored price and its validity flag.
-    struct Feed {
-        uint128 val;
-        uint128 has;
-    }
-
-    /// @dev Per-collateral oracle state.
-    struct Ilk {
-        IPriceSource src;
-        uint64 zzz;
-        uint256 stopped;
-        Feed cur;
-        Feed nxt;
-    }
 
     /* ========================== CONSTRUCTOR ========================== */
 

@@ -18,9 +18,8 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title LiquidationTrigger
  * @author Rain Team
- * @notice The watchdog. When a vault falls below its required collateralization, anyone can point this contract at
- *         it to "bark", seizing the vault and kicking off a Dutch auction to sell its collateral and recover the
- *         debt.
+ * @notice The watchdog. When a vault falls below its required collateralization, anyone can point this contract at it
+ *         to {bark}, seizing the vault and kicking off a Dutch auction to sell its collateral and recover the debt.
  * @dev Adds a circuit breaker check. When the breaker is active, the rate of new liquidations is throttled to a
  *      fraction of normal.
  */

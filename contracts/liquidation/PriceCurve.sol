@@ -12,9 +12,9 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title PriceCurve
  * @author Rain Team
- * @notice A pure calculator. Given an auction's starting price, its start time, and how long it
- *         should run, it returns the current price at any moment. USDR uses a straight-line
- *         decline: the price falls steadily from the start to zero over the auction's lifetime.
+ * @notice A pure calculator. Given an auction's starting price, its start time, and how long it should run, it returns
+ *         the current price at any moment. USDR uses a straight-line decline: the price falls steadily from the start
+ *         to zero over the auction's lifetime.
  * @dev Implements a linear decrease. The price falls in a straight line from the start value to zero over `tau`.
  */
 contract PriceCurve is IPriceCurve, AccessControl {

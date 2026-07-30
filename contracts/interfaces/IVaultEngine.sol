@@ -188,7 +188,7 @@ interface IVaultEngine {
      * @notice Returns whether an operator may manage an owner's positions.
      * @param owner Owner of the positions.
      * @param operator Account being queried.
-     * @return Permission flag. `1` grants permission.
+     * @return flag Permission flag. `1` grants permission.
      */
     function can(address owner, address operator) external view returns (uint256);
 
@@ -218,21 +218,21 @@ interface IVaultEngine {
      * @notice Returns a user's free collateral balance.
      * @param ilkId Identifier of the collateral type.
      * @param user Account being queried.
-     * @return The free collateral balance [wad].
+     * @return collateral The free collateral balance [wad].
      */
     function collateral(bytes32 ilkId, address user) external view returns (uint256);
 
     /**
      * @notice Returns a user's internal USDR balance.
      * @param user Account being queried.
-     * @return The internal USDR balance [rad].
+     * @return usdrBalance The internal USDR balance [rad].
      */
     function usdr(address user) external view returns (uint256);
 
     /**
      * @notice Returns a debt sink's bad debt balance.
      * @param debtSink Account being queried.
-     * @return The bad debt balance [rad].
+     * @return badDebtBalance The bad debt balance [rad].
      */
     function sin(address debtSink) external view returns (uint256);
 
@@ -256,15 +256,15 @@ interface IVaultEngine {
     function init(bytes32 ilkId) external;
 
     /**
-     * @notice Updates a global parameter. Currently only the global debt ceiling ("globalLine").
+     * @notice Updates a global parameter. Currently only the global debt ceiling: {globalLine}.
      * @param what Name of the parameter.
      * @param data New value [rad].
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Updates a per-collateral parameter: "spot", "line" or "dust".
-     * @dev Only governance, or the Price Converter for "spot", can call this.
+     * @notice Updates a per-collateral parameter: {spot}, {line} or {dust}.
+     * @dev Only governance, or the Price Converter for {spot}, can call this.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
      * @param data New value.

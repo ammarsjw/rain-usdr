@@ -170,20 +170,6 @@ interface IDutchAuction {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Returns a live auction's details.
-     * @param id Identifier of the auction.
-     * @return pos Index in the active auctions array.
-     * @return tab USDR debt to recover, including the penalty [rad].
-     * @return lot Collateral for sale [wad].
-     * @return usr Vault owner who receives any leftover collateral.
-     * @return tic Auction start time.
-     * @return top Starting price [ray].
-     */
-    function sales(
-        uint256 id
-    ) external view returns (uint256 pos, uint256 tab, uint256 lot, address usr, uint96 tic, uint256 top);
-
-    /**
      * @notice Returns the Vault Engine this auction house reports to.
      */
     function VAULT_ENGINE() external view returns (IVaultEngine);
@@ -251,19 +237,33 @@ interface IDutchAuction {
     /**
      * @notice Returns the id of an active auction by its position.
      * @param index Position in the active auctions array.
-     * @return The auction id.
+     * @return auctionId The auction id.
      */
     function active(uint256 index) external view returns (uint256);
 
     /**
+     * @notice Returns a live auction's details.
+     * @param id Identifier of the auction.
+     * @return pos Index in the active auctions array.
+     * @return tab USDR debt to recover, including the penalty [rad].
+     * @return lot Collateral for sale [wad].
+     * @return usr Vault owner who receives any leftover collateral.
+     * @return tic Auction start time.
+     * @return top Starting price [ray].
+     */
+    function sales(
+        uint256 id
+    ) external view returns (uint256 pos, uint256 tab, uint256 lot, address usr, uint96 tic, uint256 top);
+
+    /**
      * @notice Returns the number of active auctions.
-     * @return The active auction count.
+     * @return auctionCount The active auction count.
      */
     function count() external view returns (uint256);
 
     /**
      * @notice Returns the ids of all active auctions.
-     * @return Array of active auction ids.
+     * @return auctionIds Array of active auction ids.
      */
     function list() external view returns (uint256[] memory);
 
@@ -278,15 +278,14 @@ interface IDutchAuction {
     function getStatus(uint256 id) external view returns (bool needsRedo, uint256 price_, uint256 lot, uint256 tab);
 
     /**
-     * @notice Adjusts an auction parameter: "buf" (start markup), "tail" (reset time), "cusp" (reset threshold),
-     *         "chip" (keeper reward) or "tip" (flat reward).
+     * @notice Adjusts an auction parameter: {buf}, {tail}, {cusp}, {chip} or {tip}.
      * @param what Name of the parameter.
      * @param data New value.
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency: "pip", "dog", "vow" or "calc".
+     * @notice Sets an address dependency: {pip}, {dog}, {vow} or {calc}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -294,8 +293,8 @@ interface IDutchAuction {
 
     /**
      * @notice Opens a new auction for a seized vault's collateral.
-     * @dev Only the Liquidation Trigger can call this. The starting price is set to the current market price plus
-     *      the markup.
+     * @dev Only the Liquidation Trigger can call this. The starting price is set to the current market price plus the
+     *      markup.
      * @param tab USDR debt to recover, including the penalty [rad].
      * @param lot Collateral for sale [wad].
      * @param usr Vault owner who receives any leftover collateral.

@@ -90,8 +90,7 @@ interface ICircuitBreaker {
     function active() external view returns (bool);
 
     /**
-     * @notice Adjusts the deviation threshold ("threshold") or the number of calm blocks needed to reset
-     *         ("calmBlocks").
+     * @notice Adjusts the deviation threshold: {threshold} or the number of calm blocks needed to reset: {calmBlocks}.
      * @param what Name of the parameter.
      * @param data New value.
      */

@@ -16,15 +16,15 @@ import { _revert } from "../shared/Globals.sol";
  * @title PriceConverter
  * @author Rain Team
  * @notice The link between the oracle and the Vault Engine. Takes the delayed price and divides it by the required
- *         collateralization ratio to produce the price factor, the maximum USDR mintable per unit of collateral.
- *         For RAIN at $1 with a 400% ratio, the factor is $0.25. Supported stablecoins skip the oracle entirely.
- *         They are marked fixed and always convert at $1, so USDR mints 1:1 against them.
- * @dev Every ilk is configured as exactly one of two kinds. A fixed ilk has no oracle and its price is pinned to
- *      $1, with the trust decision living in listing governance. An oracle-backed ilk reads its price from the OSM.
- *      The OSM itself never learns about fixed ilks. Being registered on the OSM is what needs a price lookup means,
- *      and this contract is the single place that routes between the two kinds. `file("pip")` and `file("fixed")`
- *      clear each other so an ilk can never be both, and `poke` reverts for unconfigured ilks rather than writing a
- *      zero spot.
+ *         collateralization ratio to produce the price factor, the maximum USDR mintable per unit of collateral. For
+ *         RAIN at $1 with a 400% ratio, the factor is $0.25. Supported stablecoins skip the oracle entirely. They are
+ *         marked fixed and always convert at $1, so USDR mints 1:1 against them.
+ * @dev Every ilk is configured as exactly one of two kinds. A fixed ilk has no oracle and its price is pinned to $1,
+ *      with the trust decision living in listing governance. An oracle-backed ilk reads its price from the OSM. The
+ *      OSM itself never learns about fixed ilks. Being registered on the OSM is what needs a price lookup means, and
+ *      this contract is the single place that routes between the two kinds. `file("pip")` and `file("fixed")` clear
+ *      each other so an ilk can never be both, and `poke` reverts for unconfigured ilks rather than writing a zero
+ *      spot.
  */
 contract PriceConverter is IPriceConverter, AccessControl {
     /* ========================== STATE VARIABLES ========================== */

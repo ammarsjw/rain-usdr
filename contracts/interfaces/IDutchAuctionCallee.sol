@@ -5,8 +5,8 @@ pragma solidity 0.8.30;
 /**
  * @title IDutchAuctionCallee
  * @author Rain Team
- * @notice Callback interface for flash-loan-style auction buying: the keeper buys the
- *         collateral, resells it elsewhere, and pays for the purchase in a single transaction.
+ * @notice Callback interface for flash-loan-style auction buying: the keeper buys the collateral, resells it
+ *         elsewhere, and pays for the purchase in a single transaction.
  */
 interface IDutchAuctionCallee {
     /**

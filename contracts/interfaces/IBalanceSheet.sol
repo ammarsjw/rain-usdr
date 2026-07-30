@@ -96,14 +96,14 @@ interface IBalanceSheet {
     function hump() external view returns (uint256);
 
     /**
-     * @notice Adjusts the surplus buffer target ("hump").
+     * @notice Adjusts the surplus buffer target: {hump}.
      * @param what Name of the parameter.
      * @param data New value [rad].
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency: "buybackReceiver".
+     * @notice Sets an address dependency: {buybackReceiver}.
      * @param what Name of the parameter.
      * @param data New address.
      */

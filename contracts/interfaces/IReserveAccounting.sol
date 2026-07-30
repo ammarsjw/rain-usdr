@@ -119,7 +119,7 @@ interface IReserveAccounting {
 
     /**
      * @notice Reports how much reserve is currently free for redemption.
-     * @return Total reserve minus committed escrow [wad].
+     * @return slack Total reserve minus committed escrow [wad].
      */
     function freeSlack() external view returns (uint256);
 }

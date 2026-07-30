@@ -11,12 +11,11 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title ReserveAccounting
  * @author Rain Team
- * @notice The bookkeeper for the protocol's stable dollars. Tracks the total reserve (all USDT
- *         and USDC held), how much is committed to guaranteed obligations (the settlement
- *         escrow), and how much is free (the slack). This is where the reserve is split so
- *         that the same dollar is never promised twice.
- * @dev Only the Solvency Engine may update the committed escrow, and only the Peg Stability Modules may record
- *      reserve movements.
+ * @notice The bookkeeper for the protocol's stable dollars. Tracks the total reserve (all USDT and USDC held), how
+ *         much is committed to guaranteed obligations (the settlement escrow), and how much is free (the slack). This
+ *         is where the reserve is split so that the same dollar is never promised twice.
+ * @dev Only the Solvency Engine may update the committed escrow, and only the Peg Stability Modules may record reserve
+ *      movements.
  */
 contract ReserveAccounting is IReserveAccounting, AccessControl {
     /* ========================== STATE VARIABLES ========================== */

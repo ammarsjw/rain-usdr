@@ -3,9 +3,9 @@
 pragma solidity 0.8.30;
 
 /**
- * @dev Indicates a failure with the caller's authorization. For example, missing a required role.
+ * @dev Indicates that an ilk has already been initialized.
  */
-error NotAuthorized();
+error IlkAlreadyInitialized();
 
 /**
  * @dev Indicates a failure with an address, for example, `address(0)`.
@@ -23,9 +23,9 @@ error InvalidAmount();
 error InvalidAssignment();
 
 /**
- * @dev Indicates a failure with an unrecognized parameter name in a `file` call.
+ * @dev Indicates a failure with the caller's authorization. For example, missing a required role.
  */
-error UnrecognizedParameter();
+error NotAuthorized();
 
 /**
  * @dev Indicates that the contract has been shut down and the operation is unavailable.
@@ -33,6 +33,6 @@ error UnrecognizedParameter();
 error NotLive();
 
 /**
- * @dev Indicates that an ilk has already been initialized.
+ * @dev Indicates a failure with an unrecognized parameter name in a `file` call.
  */
-error IlkAlreadyInitialized();
+error UnrecognizedParameter();

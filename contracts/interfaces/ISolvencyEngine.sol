@@ -77,14 +77,14 @@ interface ISolvencyEngine {
     function volatileIlks(uint256 index) external view returns (bytes32);
 
     /**
-     * @notice Adjusts a stress parameter: "stressMarkdown" or "stressDepth".
+     * @notice Adjusts a stress parameter: {stressMarkdown} or {stressDepth}.
      * @param what Name of the parameter.
      * @param data New value [wad].
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency: "externalExposure".
+     * @notice Sets an address dependency: {externalExposure}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -98,8 +98,8 @@ interface ISolvencyEngine {
 
     /**
      * @notice Enforces the master rule: worst-case loss must never exceed the stable reserve.
-     * @dev Reverts with a solvency-breach error if the rule would be broken. On success, updates the committed
-     *      escrow in Reserve Accounting and emits a record of the check.
+     * @dev Reverts with a solvency-breach error if the rule would be broken. On success, updates the committed escrow
+     *      in Reserve Accounting and emits a record of the check.
      * @return loss The worst-case loss under stress [wad].
      * @return reserve The current stable reserve [wad].
      */
@@ -107,8 +107,8 @@ interface ISolvencyEngine {
 
     /**
      * @notice Calculates the most the protocol could lose, assuming a crisis.
-     * @dev Assumes volatile assets marked down 50%, liquidation depth at 35% of normal, and correlated assets
-     *      crashing together, plus any reported prediction market exposure.
+     * @dev Assumes volatile assets marked down 50%, liquidation depth at 35% of normal, and correlated assets crashing
+     *      together, plus any reported prediction market exposure.
      * @return loss The worst-case loss under stress [wad].
      */
     function worstCaseLoss() external view returns (uint256 loss);

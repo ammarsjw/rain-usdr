@@ -5,8 +5,8 @@ pragma solidity 0.8.30;
 /**
  * @title IPriceSource
  * @author Rain Team
- * @notice Interface for a raw price source consumed by the Oracle Security Module. Implemented
- *         by the Uniswap time-weighted average wrapper and, for future assets, Chainlink wrappers.
+ * @notice Interface for a raw price source consumed by the Oracle Security Module. Implemented by the Uniswap
+ *         time-weighted average wrapper and, for future assets, Chainlink wrappers.
  */
 interface IPriceSource {
     /**

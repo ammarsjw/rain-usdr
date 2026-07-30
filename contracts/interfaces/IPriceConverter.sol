@@ -87,25 +87,25 @@ interface IPriceConverter {
     /**
      * @notice Assigns which oracle a collateral type reads from.
      * @param ilkId Identifier of the collateral type.
-     * @param what Name of the parameter ("pip").
+     * @param what Name of the parameter: {pip}.
      * @param pip_ Address of the Oracle Security Module.
      */
     function file(bytes32 ilkId, bytes32 what, address pip_) external;
 
     /**
-     * @notice Updates a global parameter ("par").
+     * @notice Updates a global parameter: {par}.
      * @param what Name of the parameter.
      * @param data New value [ray].
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets a collateral type's collateralization ratio ("mat") or marks it as a supported stablecoin pinned
-     *         to $1 ("fixed", 1 to set and 0 to clear). Marking an ilk fixed detaches any assigned oracle, as the
-     *         two kinds are mutually exclusive.
+     * @notice Sets a collateral type's collateralization ratio: {mat} or marks it as a supported stablecoin pinned to
+     *         $1 ({fixed}, 1 to set and 0 to clear). Marking an ilk fixed detaches any assigned oracle, as the two
+     *         kinds are mutually exclusive.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
-     * @param data New value [ray] for "mat", or 1 or 0 for "fixed".
+     * @param data New value [ray] for {mat}, or 1 or 0 for {fixed}.
      */
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
 
@@ -116,8 +116,7 @@ interface IPriceConverter {
 
     /**
      * @notice Recalculates a collateral type's price factor and pushes it into the Vault Engine. Fixed-price ilks
-     *         convert at $1 without an oracle lookup. Oracle-backed ilks read the latest delayed price from their
-     *         OSM.
+     *         convert at $1 without an oracle lookup. Oracle-backed ilks read the latest delayed price from their OSM.
      * @dev Public, anyone can trigger it. Does nothing if the price is invalid, and reverts for ilks configured
      *      neither fixed nor with an oracle.
      * @param ilkId Identifier of the collateral type.

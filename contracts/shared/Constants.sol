@@ -13,8 +13,8 @@ uint256 constant _RAY = 10 ** 27;
 /// @dev Fixed point scalar with 45 decimals of precision. Used for internal debt units (wad times ray).
 uint256 constant _RAD = 10 ** 45;
 
-/// @dev Reserved ilk identifier for USDR itself in the Collateral Adapter. USDR is not a collateral type in the
-///      Vault Engine, so this id only selects the mint and burn code path.
+/// @dev Reserved ilk identifier for USDR itself in the Collateral Adapter. USDR is not a collateral type in the Vault
+///      Engine, so this id only selects the mint and burn code path.
 bytes32 constant _USDR_ILK = "USDR";
 
 // keccak256("WARD_ROLE")

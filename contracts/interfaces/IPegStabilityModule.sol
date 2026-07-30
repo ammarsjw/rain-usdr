@@ -110,14 +110,14 @@ interface IPegStabilityModule {
 
     /**
      * @notice Registers a stablecoin ilk. This is how new stablecoins are added to the module.
-     * @dev The ilk must already be registered with the Collateral Adapter, and must not be the USDR ilk. The token
-     *      and its decimals are read from the adapter.
+     * @dev The ilk must already be registered with the Collateral Adapter, and must not be the USDR ilk. The token and
+     *      its decimals are read from the adapter.
      * @param ilkId Identifier of the stablecoin's collateral type.
      */
     function init(bytes32 ilkId) external;
 
     /**
-     * @notice Adjusts a stablecoin's mint fee ("tin") or redeem fee ("tout"). Both zero at launch.
+     * @notice Adjusts a stablecoin's mint fee: {tin} or redeem fee: {tout}. Both zero at launch.
      * @param ilkId Identifier of the stablecoin's collateral type.
      * @param what Name of the parameter.
      * @param data New value [wad].

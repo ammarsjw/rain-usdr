@@ -135,13 +135,11 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
         emit Checked({ deviation: deviation, active: active });
     }
 
-    /* ========================== INTERNAL FUNCTIONS ========================== */
-
     /**
      * @dev Returns the relative deviation between two prices [wad].
      * @param current The current price [wad].
      * @param trend The trend anchor price [wad].
-     * @return The relative deviation [wad].
+     * @return deviation The relative deviation [wad].
      */
     function _deviation(uint256 current, uint256 trend) internal pure returns (uint256) {
         if (trend == 0) {

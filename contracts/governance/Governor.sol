@@ -12,9 +12,9 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title Governor
  * @author Rain Team
- * @notice The controlled way to change the protocol's adjustable settings. Every change waits
- *         out a mandatory delay before it can take effect, giving the community time to review.
- *         Also holds the emergency pause. It can never touch the immutable core, only the risk parameters.
+ * @notice The controlled way to change the protocol's adjustable settings. Every change waits out a mandatory delay
+ *         before it can take effect, giving the community time to review. Also holds the emergency pause. It can never
+ *         touch the immutable core, only the risk parameters.
  * @dev The pause auto-expires after 72 hours and its scope is fixed at the moment of pausing.
  */
 contract Governor is IGovernor, AccessControl {
