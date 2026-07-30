@@ -83,8 +83,12 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
      * @inheritdoc IBalanceSheet
      */
     function heal(uint256 rad) external {
-        require(rad <= VAULT_ENGINE.usdr(address(this)), "BalanceSheet/insufficient-surplus");
-        require(rad <= VAULT_ENGINE.sin(address(this)), "BalanceSheet/insufficient-debt");
+        if (rad > VAULT_ENGINE.usdr(address(this))) {
+            _revert(InsufficientSurplus.selector);
+        }
+        if (rad > VAULT_ENGINE.sin(address(this))) {
+            _revert(InsufficientDebt.selector);
+        }
 
         VAULT_ENGINE.heal(rad);
 
@@ -109,12 +113,18 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         uint256 badDebt = VAULT_ENGINE.sin(address(this));
 
         // Bad debt is always absorbed before any distribution.
-        require(badDebt == 0, "BalanceSheet/outstanding-bad-debt");
+        if (badDebt != 0) {
+            _revert(OutstandingBadDebt.selector);
+        }
 
         // The strict "fill before burn" rule: the surplus buffer must be at or above its target first. If the
         // buffer is below target, no distribution happens and all revenue stays.
-        require(surplus > hump, "BalanceSheet/buffer-below-target");
-        require(buybackReceiver != address(0), "BalanceSheet/no-buyback-receiver");
+        if (surplus <= hump) {
+            _revert(BufferBelowTarget.selector);
+        }
+        if (buybackReceiver == address(0)) {
+            _revert(NoBuybackReceiver.selector);
+        }
 
         // Only the amount above the buffer target is released to the RAIN buyback process.
         excess = surplus - hump;

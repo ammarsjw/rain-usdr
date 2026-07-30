@@ -99,19 +99,29 @@ contract Governor is IGovernor, AccessControl {
         Change storage change = changes[id];
 
         // The change must have been scheduled.
-        require(change.target != address(0), "Governor/not-scheduled");
+        if (change.target == address(0)) {
+            _revert(NotScheduled.selector);
+        }
         // The change must not have been cancelled.
-        require(!change.cancelled, "Governor/cancelled");
+        if (change.cancelled) {
+            _revert(ChangeCancelled.selector);
+        }
         // The change must not have already been executed.
-        require(!change.executed, "Governor/already-executed");
+        if (change.executed) {
+            _revert(AlreadyExecuted.selector);
+        }
         // The delay must have fully elapsed.
-        require(block.timestamp >= change.eta, "Governor/delay-not-elapsed");
+        if (block.timestamp < change.eta) {
+            _revert(DelayNotElapsed.selector);
+        }
 
         change.executed = true;
 
         bool success;
         (success, out) = change.target.call(change.data);
-        require(success, "Governor/execution-failed");
+        if (!success) {
+            _revert(ExecutionFailed.selector);
+        }
 
         emit Execute({ id: id });
     }
@@ -122,8 +132,12 @@ contract Governor is IGovernor, AccessControl {
     function cancel(uint256 id) external onlyRole(_WARD_ROLE) {
         Change storage change = changes[id];
 
-        require(change.target != address(0), "Governor/not-scheduled");
-        require(!change.executed, "Governor/already-executed");
+        if (change.target == address(0)) {
+            _revert(NotScheduled.selector);
+        }
+        if (change.executed) {
+            _revert(AlreadyExecuted.selector);
+        }
 
         change.cancelled = true;
 
@@ -135,7 +149,9 @@ contract Governor is IGovernor, AccessControl {
      */
     function pause(bytes32 scope) external onlyRole(_WARD_ROLE) {
         // The system must not already be paused.
-        require(!paused, "Governor/already-paused");
+        if (paused) {
+            _revert(AlreadyPaused.selector);
+        }
 
         // The scope is fixed at the moment of pausing and cannot be widened afterward.
         paused = true;
@@ -149,7 +165,9 @@ contract Governor is IGovernor, AccessControl {
      * @inheritdoc IGovernor
      */
     function unpause() external {
-        require(paused, "Governor/not-paused");
+        if (!paused) {
+            _revert(NotPaused.selector);
+        }
 
         // Once 72 hours have passed since the pause began, anyone can lift it with no governance action required.
         // Before that, only governance can lift it early.

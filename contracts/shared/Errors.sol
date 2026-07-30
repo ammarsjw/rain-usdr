@@ -31,3 +31,8 @@ error UnrecognizedParameter();
  * @dev Indicates that the contract has been shut down and the operation is unavailable.
  */
 error NotLive();
+
+/**
+ * @dev Indicates that an ilk has already been initialized.
+ */
+error IlkAlreadyInitialized();

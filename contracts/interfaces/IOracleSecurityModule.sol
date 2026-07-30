@@ -57,6 +57,18 @@ interface IOracleSecurityModule {
      */
     event Poke(bytes32 indexed ilkId, uint128 current, uint128 next);
 
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates that the update delay has not yet elapsed.
+     */
+    error NotPassed();
+
+    /**
+     * @dev Indicates that no current price is set for the collateral.
+     */
+    error NoCurrentValue();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**

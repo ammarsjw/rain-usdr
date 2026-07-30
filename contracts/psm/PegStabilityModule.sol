@@ -13,7 +13,7 @@ import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _USDR_ILK, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, InvalidAmount, UnrecognizedParameter } from "../shared/Errors.sol";
+import { IlkAlreadyInitialized, InvalidAddress, InvalidAmount, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -77,7 +77,9 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl {
      * @inheritdoc IPegStabilityModule
      */
     function init(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
-        require(address(ilks[ilkId].token) == address(0), "PegStabilityModule/ilk-already-init");
+        if (address(ilks[ilkId].token) != address(0)) {
+            _revert(IlkAlreadyInitialized.selector);
+        }
 
         // The ilk must already be registered with the adapter.
         (IERC20Metadata token, uint8 dec, bool isUsdr, ) = COLLATERAL_ADAPTER.ilks(ilkId);
@@ -159,7 +161,9 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl {
 
         // Free-slack check: redemption is best-effort, served only from the reserve minus the amount committed to
         // guaranteed obligations. If free slack is too low, revert so the user must use the open market instead.
-        require(stableAmt18 <= RESERVE_ACCOUNTING.freeSlack(), "PegStabilityModule/insufficient-free-slack");
+        if (stableAmt18 > RESERVE_ACCOUNTING.freeSlack()) {
+            _revert(InsufficientFreeSlack.selector);
+        }
 
         USDR.transferFrom(msg.sender, address(this), usdrAmt);
         COLLATERAL_ADAPTER.join(_USDR_ILK, address(this), usdrAmt);

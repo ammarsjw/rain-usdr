@@ -68,6 +68,43 @@ interface IGovernor {
      */
     event Unpause();
 
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates that no change has been scheduled for the given id.
+     */
+    error NotScheduled();
+
+    /**
+     * @dev Indicates that the change has been cancelled.
+     */
+    error ChangeCancelled();
+
+    /**
+     * @dev Indicates that the change has already been executed.
+     */
+    error AlreadyExecuted();
+
+    /**
+     * @dev Indicates that the timelock delay has not yet elapsed.
+     */
+    error DelayNotElapsed();
+
+    /**
+     * @dev Indicates that the scheduled call reverted during execution.
+     */
+    error ExecutionFailed();
+
+    /**
+     * @dev Indicates that the system is already paused.
+     */
+    error AlreadyPaused();
+
+    /**
+     * @dev Indicates that the system is not paused.
+     */
+    error NotPaused();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**

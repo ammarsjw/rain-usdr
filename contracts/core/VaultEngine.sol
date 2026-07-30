@@ -7,7 +7,7 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { Math } from "../libraries/Math.sol";
 import { _RAY, _WARD_ROLE } from "../shared/Constants.sol";
-import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { IlkAlreadyInitialized, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -89,7 +89,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @inheritdoc IVaultEngine
      */
     function init(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
-        require(ilks[ilkId].rate == 0, "VaultEngine/ilk-already-init");
+        if (ilks[ilkId].rate != 0) {
+            _revert(IlkAlreadyInitialized.selector);
+        }
 
         ilks[ilkId].rate = _RAY;
 
@@ -156,7 +158,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @inheritdoc IVaultEngine
      */
     function flux(bytes32 ilkId, address from, address to, uint256 wad) external {
-        require(_wish(from, msg.sender), "VaultEngine/not-allowed");
+        if (!_wish(from, msg.sender)) {
+            _revert(NotAllowed.selector);
+        }
 
         collateral[ilkId][from] -= wad;
         collateral[ilkId][to] += wad;
@@ -168,7 +172,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @inheritdoc IVaultEngine
      */
     function move(address from, address to, uint256 rad) external {
-        require(_wish(from, msg.sender), "VaultEngine/not-allowed");
+        if (!_wish(from, msg.sender)) {
+            _revert(NotAllowed.selector);
+        }
 
         usdr[from] -= rad;
         usdr[to] += rad;
@@ -189,7 +195,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
         Ilk memory ilk = ilks[ilkId];
 
         // The collateral type must have been initialized.
-        require(ilk.rate != 0, "VaultEngine/ilk-not-init");
+        if (ilk.rate == 0) {
+            _revert(IlkNotInitialized.selector);
+        }
 
         urn.ink = Math.add(urn.ink, dink);
         urn.art = Math.add(urn.art, dart);
@@ -201,22 +209,31 @@ contract VaultEngine is IVaultEngine, AccessControl {
 
         // Ceiling check: either debt is being repaid, or both the ilk ceiling and the global ceiling must hold
         // after the change.
-        require(
-            dart <= 0 || (ilk.globalArt * ilk.rate <= ilk.line && debt <= globalLine),
-            "VaultEngine/ceiling-exceeded"
-        );
+        if (dart > 0 && (ilk.globalArt * ilk.rate > ilk.line || debt > globalLine)) {
+            _revert(CeilingExceeded.selector);
+        }
         // Safety check: the vault must be either safer than before, or safe after the change. Uses the delayed
         // oracle price factor already stored in the system.
-        require(Math.both(dart <= 0, dink >= 0) || tab <= urn.ink * ilk.spot, "VaultEngine/not-safe");
+        if (!Math.both(dart <= 0, dink >= 0) && tab > urn.ink * ilk.spot) {
+            _revert(NotSafe.selector);
+        }
 
         // Permission checks: positions may only be worsened with the owner's consent, collateral may only be taken
         // with its source's consent, and internal USDR may only be drawn from a consenting destination.
-        require(Math.both(dart <= 0, dink >= 0) || _wish(u, msg.sender), "VaultEngine/not-allowed-u");
-        require(dink <= 0 || _wish(v, msg.sender), "VaultEngine/not-allowed-v");
-        require(dart >= 0 || _wish(w, msg.sender), "VaultEngine/not-allowed-w");
+        if (!Math.both(dart <= 0, dink >= 0) && !_wish(u, msg.sender)) {
+            _revert(NotAllowed.selector);
+        }
+        if (dink > 0 && !_wish(v, msg.sender)) {
+            _revert(NotAllowed.selector);
+        }
+        if (dart < 0 && !_wish(w, msg.sender)) {
+            _revert(NotAllowed.selector);
+        }
 
         // Minimum size check: a vault must either carry zero debt or at least the minimum size.
-        require(urn.art == 0 || tab >= ilk.dust, "VaultEngine/dust");
+        if (urn.art != 0 && tab < ilk.dust) {
+            _revert(DustAmount.selector);
+        }
 
         collateral[ilkId][v] = Math.sub(collateral[ilkId][v], dink);
         usdr[w] = Math.add(usdr[w], dtab);

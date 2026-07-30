@@ -51,6 +51,33 @@ interface IBalanceSheet {
      */
     event DistributeSurplus(uint256 excess);
 
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates that the surplus is too low to cover the requested amount.
+     */
+    error InsufficientSurplus();
+
+    /**
+     * @dev Indicates that the bad debt is too low to cover the requested amount.
+     */
+    error InsufficientDebt();
+
+    /**
+     * @dev Indicates that bad debt must be cleared before distributing surplus.
+     */
+    error OutstandingBadDebt();
+
+    /**
+     * @dev Indicates that the surplus buffer is below its target.
+     */
+    error BufferBelowTarget();
+
+    /**
+     * @dev Indicates that no buyback receiver has been set.
+     */
+    error NoBuybackReceiver();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**

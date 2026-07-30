@@ -55,6 +55,13 @@ interface IReserveAccounting {
      */
     event UpdateCommittedEscrow(uint256 wad, uint256 freeSlack);
 
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates that the committed escrow would exceed the total reserve.
+     */
+    error EscrowExceedsReserve();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**

@@ -2,6 +2,8 @@
 
 pragma solidity 0.8.30;
 
+import { _revert } from "../shared/Globals.sol";
+
 /**
  * @title Math
  * @author Rain Team
@@ -10,6 +12,35 @@ pragma solidity 0.8.30;
  *         intentionally not duplicated here. Consumers should import them from OpenZeppelin directly.
  */
 library Math {
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates an overflow during signed and unsigned addition.
+     */
+    error AddOverflow();
+
+    /**
+     * @dev Indicates an underflow during signed and unsigned addition.
+     */
+    error AddUnderflow();
+
+    /**
+     * @dev Indicates an overflow during signed and unsigned subtraction.
+     */
+    error SubOverflow();
+
+    /**
+     * @dev Indicates an underflow during signed and unsigned subtraction.
+     */
+    error SubUnderflow();
+
+    /**
+     * @dev Indicates an overflow during signed and unsigned multiplication.
+     */
+    error MulOverflow();
+
+    /* ========================== FUNCTIONS ========================== */
+
     /**
      * @dev Adds a signed integer to an unsigned integer, reverting on over/underflow.
      * @param x Unsigned operand.
@@ -20,8 +51,12 @@ library Math {
         unchecked {
             z = x + uint256(y);
         }
-        require(y >= 0 || z <= x, "Math/add-underflow");
-        require(y <= 0 || z >= x, "Math/add-overflow");
+        if (y < 0 && z > x) {
+            _revert(AddUnderflow.selector);
+        }
+        if (y > 0 && z < x) {
+            _revert(AddOverflow.selector);
+        }
     }
 
     /**
@@ -34,8 +69,12 @@ library Math {
         unchecked {
             z = x - uint256(y);
         }
-        require(y <= 0 || z <= x, "Math/sub-underflow");
-        require(y >= 0 || z >= x, "Math/sub-overflow");
+        if (y > 0 && z > x) {
+            _revert(SubUnderflow.selector);
+        }
+        if (y < 0 && z < x) {
+            _revert(SubOverflow.selector);
+        }
     }
 
     /**
@@ -46,8 +85,12 @@ library Math {
      */
     function mul(uint256 x, int256 y) internal pure returns (int256 z) {
         z = int256(x) * y;
-        require(int256(x) >= 0, "Math/mul-overflow");
-        require(y == 0 || z / y == int256(x), "Math/mul-overflow");
+        if (int256(x) < 0) {
+            _revert(MulOverflow.selector);
+        }
+        if (y != 0 && z / y != int256(x)) {
+            _revert(MulOverflow.selector);
+        }
     }
 
     /**

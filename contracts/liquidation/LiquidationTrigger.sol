@@ -103,7 +103,9 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
      */
     function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "chop") {
-            require(data >= _WAD, "LiquidationTrigger/chop-below-one");
+            if (data < _WAD) {
+                _revert(ChopBelowOne.selector);
+            }
 
             ilks[ilkId].chop = data;
         } else if (what == "hole") {
@@ -156,10 +158,14 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             (, rate, spot, , dust) = VAULT_ENGINE.ilks(ilkId);
 
             // Unsafe check: the vault's collateral value must be less than its debt.
-            require(spot > 0 && ink * spot < art * rate, "LiquidationTrigger/not-unsafe");
+            if (spot == 0 || ink * spot >= art * rate) {
+                _revert(NotUnsafe.selector);
+            }
 
             // Capacity checks: room must remain under both the per-collateral and global limits.
-            require(globalHole > globalDirt && milk.hole > milk.dirt, "LiquidationTrigger/liquidation-limit-hit");
+            if (globalHole <= globalDirt || milk.hole <= milk.dirt) {
+                _revert(LiquidationLimitHit.selector);
+            }
 
             uint256 room = Math.min(globalHole - globalDirt, milk.hole - milk.dirt);
 
@@ -179,15 +185,21 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
                     dart = art;
                 } else {
                     // In a partial liquidation, the resulting auction should be non-dusty.
-                    require(dart * rate >= dust, "LiquidationTrigger/dusty-auction-from-partial-liquidation");
+                    if (dart * rate < dust) {
+                        _revert(DustyAuction.selector);
+                    }
                 }
             }
         }
 
         uint256 dink = (ink * dart) / art;
 
-        require(dink > 0, "LiquidationTrigger/null-auction");
-        require(dart <= 2 ** 255 && dink <= 2 ** 255, "LiquidationTrigger/overflow");
+        if (dink == 0) {
+            _revert(NullAuction.selector);
+        }
+        if (dart > 2 ** 255 || dink > 2 ** 255) {
+            _revert(Overflow.selector);
+        }
 
         // Seizing the vault: collateral moves to the auction, debt moves to the balance sheet.
         VAULT_ENGINE.grab(ilkId, urn, milk.clip, address(balanceSheet), -int256(dink), -int256(dart));

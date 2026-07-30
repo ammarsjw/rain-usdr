@@ -140,7 +140,9 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
             _revert(NotLive.selector);
         }
         // At least 30 minutes must have passed since the last update.
-        require(pass(ilkId), "OracleSecurityModule/not-passed");
+        if (!pass(ilkId)) {
+            _revert(NotPassed.selector);
+        }
 
         (bytes32 wut, bool ok) = ilk.src.peek();
 
@@ -197,7 +199,9 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
      */
     function read(bytes32 ilkId) external view onlyRole(_READER_ROLE) returns (bytes32) {
         Feed storage cur = _ilks[ilkId].cur;
-        require(cur.has == 1, "OracleSecurityModule/no-current-value");
+        if (cur.has != 1) {
+            _revert(NoCurrentValue.selector);
+        }
 
         return bytes32(uint256(cur.val));
     }

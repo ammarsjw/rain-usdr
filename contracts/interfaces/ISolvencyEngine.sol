@@ -35,6 +35,13 @@ interface ISolvencyEngine {
      */
     event InvariantChecked(uint256 reserve, uint256 worstCaseLoss, bool passed);
 
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates that the worst-case loss exceeds the stable reserve.
+     */
+    error SolvencyBreach();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**

@@ -135,6 +135,33 @@ interface IVaultEngine {
      */
     event Suck(address indexed u, address indexed v, uint256 rad);
 
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates that a collateral type has not been initialized.
+     */
+    error IlkNotInitialized();
+
+    /**
+     * @dev Indicates that the caller is not permitted to act on the position.
+     */
+    error NotAllowed();
+
+    /**
+     * @dev Indicates that the change would leave a vault unsafe.
+     */
+    error NotSafe();
+
+    /**
+     * @dev Indicates that a debt ceiling would be exceeded.
+     */
+    error CeilingExceeded();
+
+    /**
+     * @dev Indicates that a vault would carry debt below the minimum size.
+     */
+    error DustAmount();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**

@@ -6,6 +6,7 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { _COMMITTER_ROLE, _RECORDER_ROLE, _WARD_ROLE } from "../shared/Constants.sol";
+import { _revert } from "../shared/Globals.sol";
 
 /**
  * @title ReserveAccounting
@@ -98,7 +99,9 @@ contract ReserveAccounting is IReserveAccounting, AccessControl {
     function updateCommittedEscrow(uint256 wad) external onlyRole(_COMMITTER_ROLE) {
         // The committed amount must not exceed the total reserve. This is the solvency guarantee expressed at the
         // accounting level.
-        require(wad <= totalReserve, "ReserveAccounting/escrow-exceeds-reserve");
+        if (wad > totalReserve) {
+            _revert(EscrowExceedsReserve.selector);
+        }
 
         committedEscrow = wad;
 

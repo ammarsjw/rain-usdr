@@ -67,6 +67,13 @@ interface IPegStabilityModule {
      */
     event BuyStable(bytes32 indexed ilkId, address indexed user, uint256 stableAmt, uint256 usdrAmt);
 
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates that free reserves are too low to serve the redemption.
+     */
+    error InsufficientFreeSlack();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**

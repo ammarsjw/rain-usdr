@@ -107,7 +107,9 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
         reserve = RESERVE_ACCOUNTING.totalReserve();
 
         // The master rule: worst-case loss must never exceed the stable reserve.
-        require(loss <= reserve, "SolvencyEngine/solvency-breach");
+        if (loss > reserve) {
+            _revert(SolvencyBreach.selector);
+        }
 
         // Keeping the reserve split accurate.
         RESERVE_ACCOUNTING.updateCommittedEscrow(loss);

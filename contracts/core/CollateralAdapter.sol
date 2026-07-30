@@ -10,7 +10,7 @@ import { ICollateralAdapter } from "../interfaces/ICollateralAdapter.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _USDR_ILK, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, InvalidAmount, NotLive } from "../shared/Errors.sol";
+import { IlkAlreadyInitialized, InvalidAddress, InvalidAmount, NotLive } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -75,7 +75,9 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
         if (address(token_) == address(0)) {
             _revert(InvalidAddress.selector);
         }
-        require(address(ilks[ilkId].token) == address(0), "CollateralAdapter/ilk-already-init");
+        if (address(ilks[ilkId].token) != address(0)) {
+            _revert(IlkAlreadyInitialized.selector);
+        }
 
         ilks[ilkId] = Ilk({ token: token_, dec: token_.decimals(), isUsdr: ilkId == _USDR_ILK, live: 1 });
 

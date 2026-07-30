@@ -87,6 +87,38 @@ interface ILiquidationTrigger {
      */
     event Digs(bytes32 indexed ilkId, uint256 rad);
 
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates that a liquidation penalty below one was supplied.
+     */
+    error ChopBelowOne();
+
+    /**
+     * @dev Indicates that the vault is not unsafe and cannot be liquidated.
+     */
+    error NotUnsafe();
+
+    /**
+     * @dev Indicates that the liquidation limit has been reached.
+     */
+    error LiquidationLimitHit();
+
+    /**
+     * @dev Indicates that a partial liquidation would leave a dusty auction.
+     */
+    error DustyAuction();
+
+    /**
+     * @dev Indicates that the liquidation would produce a null auction.
+     */
+    error NullAuction();
+
+    /**
+     * @dev Indicates that a liquidation amount overflowed the signed range.
+     */
+    error Overflow();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**

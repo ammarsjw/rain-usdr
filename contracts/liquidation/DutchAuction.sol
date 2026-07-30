@@ -143,9 +143,15 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         if (live != 1) {
             _revert(NotLive.selector);
         }
-        require(tab > 0, "DutchAuction/zero-tab");
-        require(lot > 0, "DutchAuction/zero-lot");
-        require(usr != address(0), "DutchAuction/zero-usr");
+        if (tab == 0) {
+            _revert(ZeroTab.selector);
+        }
+        if (lot == 0) {
+            _revert(ZeroLot.selector);
+        }
+        if (usr == address(0)) {
+            _revert(ZeroUser.selector);
+        }
 
         id = ++kicks;
         active.push(id);
@@ -158,7 +164,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         // The starting price is the current market price plus the markup (5%).
         uint256 top = (_getFeedPrice() * buf) / _RAY;
-        require(top > 0, "DutchAuction/zero-top-price");
+        if (top == 0) {
+            _revert(ZeroTopPrice.selector);
+        }
         sales[id].top = top;
 
         // Incentive to kick the auction: the keeper reward is created as backed-later debt.
@@ -183,12 +191,16 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         uint96 tic = sales[id].tic;
         uint256 top = sales[id].top;
 
-        require(usr != address(0), "DutchAuction/not-running-auction");
+        if (usr == address(0)) {
+            _revert(AuctionNotRunning.selector);
+        }
 
         // At least one reset condition must hold: the auction has run past its reset time, or its price has dropped
         // below the reset threshold of the starting price.
         (bool done, ) = _status(tic, top);
-        require(done, "DutchAuction/cannot-reset");
+        if (!done) {
+            _revert(CannotReset.selector);
+        }
 
         uint256 tab = sales[id].tab;
         uint256 lot = sales[id].lot;
@@ -197,7 +209,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         // The starting price is refreshed to the current market price plus the markup.
         uint256 feedPrice = _getFeedPrice();
         top = (feedPrice * buf) / _RAY;
-        require(top > 0, "DutchAuction/zero-top-price");
+        if (top == 0) {
+            _revert(ZeroTopPrice.selector);
+        }
         sales[id].top = top;
 
         // Whoever triggers the reset earns the keeper reward for doing so.
@@ -221,7 +235,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         address usr = sales[id].usr;
         uint96 tic = sales[id].tic;
 
-        require(usr != address(0), "DutchAuction/not-running-auction");
+        if (usr == address(0)) {
+            _revert(AuctionNotRunning.selector);
+        }
 
         uint256 price_;
         {
@@ -229,11 +245,15 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             (done, price_) = _status(tic, sales[id].top);
 
             // The auction must still be running and the price must be greater than zero.
-            require(!done, "DutchAuction/needs-reset");
+            if (done) {
+                _revert(NeedsReset.selector);
+            }
         }
 
         // The current price must not exceed the keeper's stated maximum price.
-        require(max >= price_, "DutchAuction/too-expensive");
+        if (max < price_) {
+            _revert(TooExpensive.selector);
+        }
 
         uint256 lot = sales[id].lot;
         uint256 tab = sales[id].tab;
@@ -254,7 +274,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
                 // A partial purchase must leave a non-dusty remainder.
                 (, , , , uint256 dust) = VAULT_ENGINE.ilks(ILK_ID);
 
-                require(tab - owe >= dust, "DutchAuction/no-partial-purchase");
+                if (tab - owe < dust) {
+                    _revert(NoPartialPurchase.selector);
+                }
             }
 
             tab -= owe;
@@ -293,7 +315,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      * @inheritdoc IDutchAuction
      */
     function yank(uint256 id) external onlyRole(_WARD_ROLE) nonReentrant {
-        require(sales[id].usr != address(0), "DutchAuction/not-running-auction");
+        if (sales[id].usr == address(0)) {
+            _revert(AuctionNotRunning.selector);
+        }
 
         // The remaining debt goes back to the balance sheet and the remaining collateral returns to the vault owner.
         dog.digs(ILK_ID, sales[id].tab);
@@ -357,7 +381,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      */
     function _getFeedPrice() internal view returns (uint256 feedPrice) {
         (bytes32 val, bool has) = pip.peek(ILK_ID);
-        require(has, "DutchAuction/invalid-price");
+        if (!has) {
+            _revert(InvalidPrice.selector);
+        }
 
         feedPrice = (uint256(val) * _RAY) / _WAD;
     }

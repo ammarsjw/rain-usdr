@@ -115,6 +115,58 @@ interface IDutchAuction {
      */
     event Yank(uint256 indexed id);
 
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates that the auction debt is zero.
+     */
+    error ZeroTab();
+
+    /**
+     * @dev Indicates that the auction collateral is zero.
+     */
+    error ZeroLot();
+
+    /**
+     * @dev Indicates that the vault owner is the zero address.
+     */
+    error ZeroUser();
+
+    /**
+     * @dev Indicates that the computed starting price is zero.
+     */
+    error ZeroTopPrice();
+
+    /**
+     * @dev Indicates that the auction is not running.
+     */
+    error AuctionNotRunning();
+
+    /**
+     * @dev Indicates that the auction cannot be reset yet.
+     */
+    error CannotReset();
+
+    /**
+     * @dev Indicates that the auction needs a reset before it can be taken.
+     */
+    error NeedsReset();
+
+    /**
+     * @dev Indicates that the current price exceeds the keeper's stated maximum.
+     */
+    error TooExpensive();
+
+    /**
+     * @dev Indicates that a partial purchase would leave a dusty remainder.
+     */
+    error NoPartialPurchase();
+
+    /**
+     * @dev Indicates that the oracle price is invalid.
+     */
+    error InvalidPrice();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**
