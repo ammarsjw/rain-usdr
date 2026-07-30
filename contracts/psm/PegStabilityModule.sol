@@ -5,13 +5,13 @@ pragma solidity 0.8.30;
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+import { Auth } from "../extensions/Auth.sol";
 import { ICollateralAdapter } from "../interfaces/ICollateralAdapter.sol";
 import { IPegStabilityModule } from "../interfaces/IPegStabilityModule.sol";
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { Auth } from "../extensions/Auth.sol";
-import { USDR_ILK, WAD, WARD_ROLE } from "../shared/Constants.sol";
+import { _USDR_ILK, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, InvalidAmount, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -32,38 +32,21 @@ import { _revert } from "../shared/Globals.sol";
 contract PegStabilityModule is IPegStabilityModule, Auth {
     using SafeERC20 for IERC20Metadata;
 
-    /* ========================== TYPES ========================== */
-
-    /**
-     * @notice Configuration of a registered stablecoin ilk.
-     * @param token The stablecoin (USDT or USDC).
-     * @param to18ConversionFactor Decimal conversion factor between the stablecoin and 18
-     *        decimals.
-     * @param tin Mint fee [wad]. Zero at launch.
-     * @param tout Redeem fee [wad]. Zero at launch.
-     */
-    struct Ilk {
-        IERC20Metadata token;
-        uint256 to18ConversionFactor;
-        uint256 tin;
-        uint256 tout;
-    }
-
     /* ========================== STATE VARIABLES ========================== */
 
-    /// @notice The Vault Engine (core ledger).
-    IVaultEngine public immutable vaultEngine;
+    /// @inheritdoc IPegStabilityModule
+    IVaultEngine public immutable VAULT_ENGINE;
 
-    /// @notice The token adapter (single instance; bridges both stablecoins and USDR).
-    ICollateralAdapter public immutable collateralAdapter;
+    /// @inheritdoc IPegStabilityModule
+    ICollateralAdapter public immutable COLLATERAL_ADAPTER;
 
-    /// @notice The USDR token.
-    IUSDR public immutable usdr;
+    /// @inheritdoc IPegStabilityModule
+    IUSDR public immutable USDR;
 
-    /// @notice The reserve accounting contract that reports free slack.
-    IReserveAccounting public immutable reserveAccounting;
+    /// @inheritdoc IPegStabilityModule
+    IReserveAccounting public immutable RESERVE_ACCOUNTING;
 
-    /// @notice Configuration per stablecoin ilk.
+    /// @inheritdoc IPegStabilityModule
     mapping(bytes32 ilkId => Ilk ilk) public ilks;
 
     /* ========================== CONSTRUCTOR ========================== */
@@ -74,17 +57,17 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
      * @param reserveAccounting_ Address of the reserve accounting contract.
      */
     constructor(ICollateralAdapter collateralAdapter_, IReserveAccounting reserveAccounting_) {
-        collateralAdapter = collateralAdapter_;
-        reserveAccounting = reserveAccounting_;
-        vaultEngine = IVaultEngine(address(collateralAdapter_.vaultEngine()));
+        COLLATERAL_ADAPTER = collateralAdapter_;
+        RESERVE_ACCOUNTING = reserveAccounting_;
+        VAULT_ENGINE = IVaultEngine(address(collateralAdapter_.VAULT_ENGINE()));
 
-        (IERC20Metadata usdrToken, , , ) = collateralAdapter_.ilks(USDR_ILK);
+        (IERC20Metadata usdrToken, , , ) = collateralAdapter_.ilks(_USDR_ILK);
         if (address(usdrToken) == address(0)) {
             _revert(InvalidAddress.selector);
         }
-        usdr = IUSDR(address(usdrToken));
+        USDR = IUSDR(address(usdrToken));
 
-        vaultEngine.hope(address(collateralAdapter_));
+        VAULT_ENGINE.hope(address(collateralAdapter_));
     }
 
     /* ========================== FUNCTIONS ========================== */
@@ -92,11 +75,11 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
     /**
      * @inheritdoc IPegStabilityModule
      */
-    function init(bytes32 ilkId) external onlyRole(WARD_ROLE) {
+    function init(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
         require(address(ilks[ilkId].token) == address(0), "PegStabilityModule/ilk-already-init");
 
         // The ilk must already be registered with the adapter.
-        (IERC20Metadata token, uint8 dec, bool isUsdr, ) = collateralAdapter.ilks(ilkId);
+        (IERC20Metadata token, uint8 dec, bool isUsdr, ) = COLLATERAL_ADAPTER.ilks(ilkId);
         if (address(token) == address(0) || isUsdr) {
             _revert(InvalidAddress.selector);
         }
@@ -109,7 +92,7 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
     /**
      * @inheritdoc IPegStabilityModule
      */
-    function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (address(ilks[ilkId].token) == address(0)) {
             _revert(InvalidAddress.selector);
         }
@@ -139,19 +122,19 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
         }
 
         uint256 stableAmt18 = stableAmt * ilk.to18ConversionFactor;
-        uint256 fee = (stableAmt18 * ilk.tin) / WAD;
+        uint256 fee = (stableAmt18 * ilk.tin) / _WAD;
         uint256 usdrAmt = stableAmt18 - fee;
 
-        // Moving the stablecoins into the protocol's stable reserve. The ceiling check happens
-        // inside the Vault Engine's frob.
+        // Moving the stablecoins into the protocol's stable reserve. The ceiling check happens inside the Vault
+        // Engine's frob.
         ilk.token.safeTransferFrom(msg.sender, address(this), stableAmt);
-        ilk.token.forceApprove(address(collateralAdapter), stableAmt);
-        collateralAdapter.join(ilkId, address(this), stableAmt);
-        vaultEngine.frob(ilkId, address(this), address(this), address(this), int256(stableAmt18), int256(stableAmt18));
-        collateralAdapter.exit(USDR_ILK, user, usdrAmt);
+        ilk.token.forceApprove(address(COLLATERAL_ADAPTER), stableAmt);
+        COLLATERAL_ADAPTER.join(ilkId, address(this), stableAmt);
+        VAULT_ENGINE.frob(ilkId, address(this), address(this), address(this), int256(stableAmt18), int256(stableAmt18));
+        COLLATERAL_ADAPTER.exit(_USDR_ILK, user, usdrAmt);
 
         // Registering the reserve increase.
-        reserveAccounting.recordIncrease(stableAmt18);
+        RESERVE_ACCOUNTING.recordIncrease(stableAmt18);
 
         emit SellStable({ ilkId: ilkId, user: user, stableAmt: stableAmt, usdrAmt: usdrAmt });
     }
@@ -170,17 +153,16 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
         }
 
         uint256 stableAmt18 = stableAmt * ilk.to18ConversionFactor;
-        uint256 fee = (stableAmt18 * ilk.tout) / WAD;
+        uint256 fee = (stableAmt18 * ilk.tout) / _WAD;
         uint256 usdrAmt = stableAmt18 + fee;
 
-        // Free-slack check: redemption is best-effort, served only from the reserve minus the
-        // amount committed to guaranteed obligations. If free slack is too low, revert — the
-        // user must use the open market instead.
-        require(stableAmt18 <= reserveAccounting.freeSlack(), "PegStabilityModule/insufficient-free-slack");
+        // Free-slack check: redemption is best-effort, served only from the reserve minus the amount committed to
+        // guaranteed obligations. If free slack is too low, revert — the user must use the open market instead.
+        require(stableAmt18 <= RESERVE_ACCOUNTING.freeSlack(), "PegStabilityModule/insufficient-free-slack");
 
-        usdr.transferFrom(msg.sender, address(this), usdrAmt);
-        collateralAdapter.join(USDR_ILK, address(this), usdrAmt);
-        vaultEngine.frob(
+        USDR.transferFrom(msg.sender, address(this), usdrAmt);
+        COLLATERAL_ADAPTER.join(_USDR_ILK, address(this), usdrAmt);
+        VAULT_ENGINE.frob(
             ilkId,
             address(this),
             address(this),
@@ -188,10 +170,10 @@ contract PegStabilityModule is IPegStabilityModule, Auth {
             -int256(stableAmt18),
             -int256(stableAmt18)
         );
-        collateralAdapter.exit(ilkId, user, stableAmt);
+        COLLATERAL_ADAPTER.exit(ilkId, user, stableAmt);
 
         // Registering the reserve decrease.
-        reserveAccounting.recordDecrease(stableAmt18);
+        RESERVE_ACCOUNTING.recordDecrease(stableAmt18);
 
         emit BuyStable({ ilkId: ilkId, user: user, stableAmt: stableAmt, usdrAmt: usdrAmt });
     }

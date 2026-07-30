@@ -10,7 +10,11 @@ pragma solidity 0.8.30;
 interface IPriceCurve {
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when a parameter is updated.
+    /**
+     * @dev Emitted when a parameter is updated.
+     * @param what Name of the parameter.
+     * @param data New value in seconds.
+     */
     event File(bytes32 indexed what, uint256 data);
 
     /* ========================== FUNCTIONS ========================== */
@@ -29,4 +33,10 @@ interface IPriceCurve {
      * @return The current price [ray]. Zero once the lifetime has fully elapsed.
      */
     function price(uint256 top, uint256 dur) external view returns (uint256);
+
+    /**
+     * @notice Returns the auction lifetime in seconds.
+     * @return The lifetime in seconds — how long until the price reaches zero.
+     */
+    function tau() external view returns (uint256);
 }

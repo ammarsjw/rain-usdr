@@ -2,6 +2,8 @@
 
 pragma solidity 0.8.30;
 
+import { IVaultEngine } from "./IVaultEngine.sol";
+
 /**
  * @title IBalanceSheet
  * @author Rain Team
@@ -10,22 +12,43 @@ pragma solidity 0.8.30;
 interface IBalanceSheet {
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when a numeric parameter is updated.
+    /**
+     * @dev Emitted when a numeric parameter is updated.
+     * @param what Name of the parameter.
+     * @param data New value [rad].
+     */
     event File(bytes32 indexed what, uint256 data);
 
-    /// @notice Emitted when an address dependency is updated.
+    /**
+     * @dev Emitted when an address dependency is updated.
+     * @param what Name of the parameter.
+     * @param addr New address.
+     */
     event File(bytes32 indexed what, address addr);
 
-    /// @notice Emitted when uncovered debt is registered.
+    /**
+     * @dev Emitted when uncovered debt is registered.
+     * @param tab Amount of uncovered debt registered [rad].
+     */
     event Fess(uint256 tab);
 
-    /// @notice Emitted when surplus and bad debt are cancelled against each other.
+    /**
+     * @dev Emitted when surplus and bad debt are cancelled against each other.
+     * @param rad Amount cancelled [rad].
+     */
     event Heal(uint256 rad);
 
-    /// @notice Emitted when a keeper reward is funded.
+    /**
+     * @dev Emitted when a keeper reward is funded.
+     * @param kpr Keeper being rewarded.
+     * @param rad Reward amount [rad].
+     */
     event Suck(address indexed kpr, uint256 rad);
 
-    /// @notice Emitted when excess surplus is released toward RAIN buyback-and-burn.
+    /**
+     * @dev Emitted when excess surplus is released toward RAIN buyback-and-burn.
+     * @param excess Amount released [rad].
+     */
     event DistributeSurplus(uint256 excess);
 
     /* ========================== FUNCTIONS ========================== */
@@ -46,8 +69,8 @@ interface IBalanceSheet {
 
     /**
      * @notice Registers bad debt when an auction fails to fully cover a vault's debt.
-     * @dev Called by the Liquidation Trigger; the debt itself lands on this contract's `sin`
-     *      balance in the Vault Engine via `grab`.
+     * @dev Called by the Liquidation Trigger; the debt itself lands on this contract's `sin` balance in the Vault
+     *      Engine via `grab`.
      * @param tab Amount of uncovered debt registered [rad].
      */
     function fess(uint256 tab) external;
@@ -72,4 +95,22 @@ interface IBalanceSheet {
      * @return excess Amount released [rad].
      */
     function distributeSurplus() external returns (uint256 excess);
+
+    /**
+     * @notice Returns the Vault Engine this balance sheet reports to.
+     * @return The Vault Engine.
+     */
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the recipient of surplus distributions (the RAIN buyback-and-burn process).
+     * @return The buyback receiver address.
+     */
+    function buybackReceiver() external view returns (address);
+
+    /**
+     * @notice Returns the surplus buffer target.
+     * @return The surplus buffer target [rad].
+     */
+    function hump() external view returns (uint256);
 }

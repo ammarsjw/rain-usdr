@@ -10,40 +10,52 @@ pragma solidity 0.8.30;
 interface IReserveAccounting {
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when a recorder is added.
+    /**
+     * @dev Emitted when a recorder is added.
+     * @param account Address granted recorder rights.
+     */
     event AddRecorder(address indexed account);
 
-    /// @notice Emitted when a recorder is removed.
+    /**
+     * @dev Emitted when a recorder is removed.
+     * @param account Address that lost recorder rights.
+     */
     event RemoveRecorder(address indexed account);
 
-    /// @notice Emitted when a committer is added.
+    /**
+     * @dev Emitted when a committer is added.
+     * @param account Address granted committer rights.
+     */
     event AddCommitter(address indexed account);
 
-    /// @notice Emitted when a committer is removed.
+    /**
+     * @dev Emitted when a committer is removed.
+     * @param account Address that lost committer rights.
+     */
     event RemoveCommitter(address indexed account);
 
-    /// @notice Emitted when stablecoins enter the reserve.
+    /**
+     * @dev Emitted when stablecoins enter the reserve.
+     * @param wad Amount entering [wad].
+     * @param totalReserve The total reserve after the increase [wad].
+     */
     event RecordIncrease(uint256 wad, uint256 totalReserve);
 
-    /// @notice Emitted when stablecoins leave the reserve.
+    /**
+     * @dev Emitted when stablecoins leave the reserve.
+     * @param wad Amount leaving [wad].
+     * @param totalReserve The total reserve after the decrease [wad].
+     */
     event RecordDecrease(uint256 wad, uint256 totalReserve);
 
-    /// @notice Emitted when the settlement escrow is updated.
+    /**
+     * @dev Emitted when the settlement escrow is updated.
+     * @param wad The committed escrow amount [wad].
+     * @param freeSlack The free slack after the update [wad].
+     */
     event UpdateCommittedEscrow(uint256 wad, uint256 freeSlack);
 
     /* ========================== FUNCTIONS ========================== */
-
-    /**
-     * @notice Returns the total stable reserve (all USDT and USDC held).
-     * @return The total reserve [wad].
-     */
-    function totalReserve() external view returns (uint256);
-
-    /**
-     * @notice Returns the amount committed to guaranteed obligations.
-     * @return The settlement escrow [wad].
-     */
-    function committedEscrow() external view returns (uint256);
 
     /**
      * @notice Allows a contract (a Peg Stability Module) to record reserve movements.
@@ -83,11 +95,22 @@ interface IReserveAccounting {
 
     /**
      * @notice Sets how much of the reserve is committed to guaranteed obligations.
-     * @dev Reverts if the committed amount would exceed the total reserve. Only the Solvency
-     *      Engine can call this.
+     * @dev Reverts if the committed amount would exceed the total reserve. Only the Solvency Engine can call this.
      * @param wad The current worst-case loss [wad].
      */
     function updateCommittedEscrow(uint256 wad) external;
+
+    /**
+     * @notice Returns the total stable reserve (all USDT and USDC held).
+     * @return The total reserve [wad].
+     */
+    function totalReserve() external view returns (uint256);
+
+    /**
+     * @notice Returns the amount committed to guaranteed obligations.
+     * @return The settlement escrow [wad].
+     */
+    function committedEscrow() external view returns (uint256);
 
     /**
      * @notice Reports how much reserve is currently free for redemption.

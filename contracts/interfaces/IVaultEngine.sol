@@ -38,90 +38,104 @@ interface IVaultEngine {
 
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when an owner permits an operator to manage its positions.
+    /**
+     * @dev Emitted when an owner permits an operator to manage its positions.
+     * @param owner Account granting permission.
+     * @param operator Account being granted permission.
+     */
     event Hope(address indexed owner, address indexed operator);
 
-    /// @notice Emitted when an owner revokes an operator's management permission.
+    /**
+     * @dev Emitted when an owner revokes an operator's management permission.
+     * @param owner Account revoking permission.
+     * @param operator Account losing permission.
+     */
     event Nope(address indexed owner, address indexed operator);
 
-    /// @notice Emitted when a new collateral type is registered.
+    /**
+     * @dev Emitted when a new collateral type is registered.
+     * @param ilkId Identifier of the collateral type.
+     */
     event Init(bytes32 indexed ilkId);
 
-    /// @notice Emitted when a global parameter is updated.
+    /**
+     * @dev Emitted when a global parameter is updated.
+     * @param what Name of the parameter.
+     * @param data New value [rad].
+     */
     event File(bytes32 indexed what, uint256 data);
 
-    /// @notice Emitted when a per-collateral parameter is updated.
+    /**
+     * @dev Emitted when a per-collateral parameter is updated.
+     * @param ilkId Identifier of the collateral type.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
     event File(bytes32 indexed ilkId, bytes32 indexed what, uint256 data);
 
-    /// @notice Emitted when the ledger is shut down.
-    event Cage();
-
-    /// @notice Emitted when a user's free collateral balance is adjusted.
+    /**
+     * @dev Emitted when a user's free collateral balance is adjusted.
+     * @param ilkId Identifier of the collateral type.
+     * @param user Account whose balance is adjusted.
+     * @param wad Signed change in balance [wad].
+     */
     event Slip(bytes32 indexed ilkId, address indexed user, int256 wad);
 
-    /// @notice Emitted when free collateral moves between users.
+    /**
+     * @dev Emitted when free collateral moves between users.
+     * @param ilkId Identifier of the collateral type.
+     * @param from Source account.
+     * @param to Destination account.
+     * @param wad Amount moved [wad].
+     */
     event Flux(bytes32 indexed ilkId, address indexed from, address indexed to, uint256 wad);
 
-    /// @notice Emitted when internal USDR moves between users.
+    /**
+     * @dev Emitted when internal USDR moves between users.
+     * @param from Source account.
+     * @param to Destination account.
+     * @param rad Amount moved [rad].
+     */
     event Move(address indexed from, address indexed to, uint256 rad);
 
-    /// @notice Emitted when a vault is modified.
+    /**
+     * @dev Emitted when a vault is modified.
+     * @param ilkId Identifier of the collateral type.
+     * @param u Vault owner.
+     * @param v Source or destination of collateral.
+     * @param w Source or destination of internal USDR.
+     * @param dink Signed change in locked collateral [wad].
+     * @param dart Signed change in normalized debt [wad].
+     */
     event Frob(bytes32 indexed ilkId, address indexed u, address v, address w, int256 dink, int256 dart);
 
-    /// @notice Emitted when a vault is seized during liquidation.
+    /**
+     * @dev Emitted when a vault is seized during liquidation.
+     * @param ilkId Identifier of the collateral type.
+     * @param u Vault being seized.
+     * @param v Recipient of the seized collateral.
+     * @param w Debt sink that receives the bad debt.
+     * @param dink Signed change in locked collateral [wad].
+     * @param dart Signed change in normalized debt [wad].
+     */
     event Grab(bytes32 indexed ilkId, address indexed u, address v, address w, int256 dink, int256 dart);
 
-    /// @notice Emitted when surplus and bad debt are cancelled against each other.
+    /**
+     * @dev Emitted when surplus and bad debt are cancelled against each other.
+     * @param account Account whose balances are netted.
+     * @param rad Amount cancelled [rad].
+     */
     event Heal(address indexed account, uint256 rad);
 
-    /// @notice Emitted when backed-later debt is created.
+    /**
+     * @dev Emitted when backed-later debt is created.
+     * @param u Account debited with bad debt.
+     * @param v Account credited with internal USDR.
+     * @param rad Amount created [rad].
+     */
     event Suck(address indexed u, address indexed v, uint256 rad);
 
     /* ========================== FUNCTIONS ========================== */
-
-    /**
-     * @notice Returns a collateral type's settings and totals.
-     * @param ilkId Identifier of the collateral type.
-     * @return Art Total normalized debt issued against this collateral [wad].
-     * @return rate Debt multiplier [ray].
-     * @return spot Maximum USDR mintable per unit of collateral [ray].
-     * @return line Debt ceiling for this collateral type [rad].
-     * @return dust Minimum vault debt size [rad].
-     */
-    function ilks(
-        bytes32 ilkId
-    ) external view returns (uint256 Art, uint256 rate, uint256 spot, uint256 line, uint256 dust);
-
-    /**
-     * @notice Returns a vault's locked collateral and normalized debt.
-     * @param ilkId Identifier of the collateral type.
-     * @param vaultOwner Owner of the vault.
-     * @return ink Locked collateral [wad].
-     * @return art Normalized debt [wad].
-     */
-    function urns(bytes32 ilkId, address vaultOwner) external view returns (uint256 ink, uint256 art);
-
-    /**
-     * @notice Returns a user's free collateral balance.
-     * @param ilkId Identifier of the collateral type.
-     * @param user Account being queried.
-     * @return The free collateral balance [wad].
-     */
-    function collateral(bytes32 ilkId, address user) external view returns (uint256);
-
-    /**
-     * @notice Returns a user's internal USDR balance.
-     * @param user Account being queried.
-     * @return The internal USDR balance [rad].
-     */
-    function usdr(address user) external view returns (uint256);
-
-    /**
-     * @notice Returns a debt sink's bad debt balance.
-     * @param debtSink Account being queried.
-     * @return The bad debt balance [rad].
-     */
-    function sin(address debtSink) external view returns (uint256);
 
     /**
      * @notice Permits an operator to manage the caller's positions.
@@ -191,8 +205,8 @@ interface IVaultEngine {
 
     /**
      * @notice The core vault operation: lock or free collateral and mint or repay USDR.
-     * @dev Enforces the over-collateralization rule, debt ceilings, the minimum vault size and
-     *      caller permissions. Uses the delayed oracle price factor already stored in the system.
+     * @dev Enforces the over-collateralization rule, debt ceilings, the minimum vault size and caller permissions.
+     *      Uses the delayed oracle price factor already stored in the system.
      * @param ilkId Identifier of the collateral type.
      * @param u Vault owner.
      * @param v Source or destination of collateral.
@@ -228,4 +242,80 @@ interface IVaultEngine {
      * @param rad Amount to create [rad].
      */
     function suck(address u, address v, uint256 rad) external;
+
+    /**
+     * @notice Returns whether an operator may manage an owner's positions.
+     * @param owner Owner of the positions.
+     * @param operator Account being queried.
+     * @return Permission flag. `1` grants permission.
+     */
+    function can(address owner, address operator) external view returns (uint256);
+
+    /**
+     * @notice Returns a collateral type's settings and totals.
+     * @param ilkId Identifier of the collateral type.
+     * @return Art Total normalized debt issued against this collateral [wad].
+     * @return rate Debt multiplier [ray].
+     * @return spot Maximum USDR mintable per unit of collateral [ray].
+     * @return line Debt ceiling for this collateral type [rad].
+     * @return dust Minimum vault debt size [rad].
+     */
+    function ilks(
+        bytes32 ilkId
+    ) external view returns (uint256 Art, uint256 rate, uint256 spot, uint256 line, uint256 dust);
+
+    /**
+     * @notice Returns a vault's locked collateral and normalized debt.
+     * @param ilkId Identifier of the collateral type.
+     * @param vaultOwner Owner of the vault.
+     * @return ink Locked collateral [wad].
+     * @return art Normalized debt [wad].
+     */
+    function urns(bytes32 ilkId, address vaultOwner) external view returns (uint256 ink, uint256 art);
+
+    /**
+     * @notice Returns a user's free collateral balance.
+     * @param ilkId Identifier of the collateral type.
+     * @param user Account being queried.
+     * @return The free collateral balance [wad].
+     */
+    function collateral(bytes32 ilkId, address user) external view returns (uint256);
+
+    /**
+     * @notice Returns a user's internal USDR balance.
+     * @param user Account being queried.
+     * @return The internal USDR balance [rad].
+     */
+    function usdr(address user) external view returns (uint256);
+
+    /**
+     * @notice Returns a debt sink's bad debt balance.
+     * @param debtSink Account being queried.
+     * @return The bad debt balance [rad].
+     */
+    function sin(address debtSink) external view returns (uint256);
+
+    /**
+     * @notice Returns the total USDR issued.
+     * @return The total USDR issued [rad].
+     */
+    function debt() external view returns (uint256);
+
+    /**
+     * @notice Returns the total bad debt.
+     * @return The total bad debt [rad].
+     */
+    function vice() external view returns (uint256);
+
+    /**
+     * @notice Returns the global debt ceiling.
+     * @return The global debt ceiling [rad].
+     */
+    function Line() external view returns (uint256);
+
+    /**
+     * @notice Returns the system liveness flag.
+     * @return The liveness flag. `1` while live, `0` after shutdown.
+     */
+    function live() external view returns (uint256);
 }

@@ -21,7 +21,7 @@ import { DutchAuction } from "../contracts/liquidation/DutchAuction.sol";
 import { CircuitBreaker } from "../contracts/liquidation/CircuitBreaker.sol";
 import { Governor } from "../contracts/governance/Governor.sol";
 import { IPriceSource } from "../contracts/interfaces/IPriceSource.sol";
-import { RAD, RAY, USDR_ILK, WAD } from "../contracts/shared/Constants.sol";
+import { _RAD, _RAY, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 import { MockPriceSource } from "./mocks/MockPriceSource.sol";
@@ -69,13 +69,13 @@ abstract contract BaseTest is Test {
         rain = new MockERC20("Rain", "RAIN", 18);
         usdt = new MockERC20("Tether USD", "USDT", 6);
         usdc = new MockERC20("USD Coin", "USDC", 6);
-        rainPriceSource = new MockPriceSource(1 * WAD);
+        rainPriceSource = new MockPriceSource(1 * _WAD);
 
         // Deploying the core.
         usdr = new USDR();
         vaultEngine = new VaultEngine();
         collateralAdapter = new CollateralAdapter(vaultEngine);
-        collateralAdapter.init(USDR_ILK, IERC20Metadata(address(usdr)));
+        collateralAdapter.init(_USDR_ILK, IERC20Metadata(address(usdr)));
         collateralAdapter.init(RAIN_ILK, IERC20Metadata(address(rain)));
         collateralAdapter.init(USDT_ILK, IERC20Metadata(address(usdt)));
         collateralAdapter.init(USDC_ILK, IERC20Metadata(address(usdc)));
@@ -118,9 +118,9 @@ abstract contract BaseTest is Test {
         osm.kiss(address(dutchAuction));
         osm.kiss(address(circuitBreaker));
         priceConverter.file(RAIN_ILK, "pip", address(osm));
-        priceConverter.file(RAIN_ILK, "mat", 4 * RAY);
-        priceConverter.file(USDT_ILK, "mat", RAY);
-        priceConverter.file(USDC_ILK, "mat", RAY);
+        priceConverter.file(RAIN_ILK, "mat", 4 * _RAY);
+        priceConverter.file(USDT_ILK, "mat", _RAY);
+        priceConverter.file(USDC_ILK, "mat", _RAY);
         priceConverter.file(USDT_ILK, "fixed", 1);
         priceConverter.file(USDC_ILK, "fixed", 1);
         priceConverter.poke(USDT_ILK);
@@ -133,17 +133,17 @@ abstract contract BaseTest is Test {
 
         // Wiring the liquidation stack (launch parameters from the spec).
         priceCurve.file("tau", 3600);
-        liquidationTrigger.file("Hole", 100_000 * RAD);
+        liquidationTrigger.file("Hole", 100_000 * _RAD);
         liquidationTrigger.file("balanceSheet", address(balanceSheet));
         liquidationTrigger.file("circuitBreaker", address(circuitBreaker));
-        liquidationTrigger.file(RAIN_ILK, "chop", (WAD * 113) / 100);
-        liquidationTrigger.file(RAIN_ILK, "hole", 50_000 * RAD);
+        liquidationTrigger.file(RAIN_ILK, "chop", (_WAD * 113) / 100);
+        liquidationTrigger.file(RAIN_ILK, "hole", 50_000 * _RAD);
         liquidationTrigger.file(RAIN_ILK, "clip", address(dutchAuction));
         liquidationTrigger.rely(address(dutchAuction));
-        dutchAuction.file("buf", (RAY * 105) / 100);
+        dutchAuction.file("buf", (_RAY * 105) / 100);
         dutchAuction.file("tail", 1800);
-        dutchAuction.file("cusp", (RAY * 40) / 100);
-        dutchAuction.file("chip", (WAD * 2) / 100);
+        dutchAuction.file("cusp", (_RAY * 40) / 100);
+        dutchAuction.file("chip", (_WAD * 2) / 100);
         dutchAuction.file("pip", address(osm));
         dutchAuction.file("dog", address(liquidationTrigger));
         dutchAuction.file("vow", address(balanceSheet));
@@ -151,10 +151,10 @@ abstract contract BaseTest is Test {
         dutchAuction.rely(address(liquidationTrigger));
 
         // Setting launch ceilings and minimum vault size.
-        vaultEngine.file("Line", 1_100_000 * RAD);
-        vaultEngine.file(RAIN_ILK, "line", 100_000 * RAD);
-        vaultEngine.file(USDT_ILK, "line", 500_000 * RAD);
-        vaultEngine.file(USDC_ILK, "line", 500_000 * RAD);
-        vaultEngine.file(RAIN_ILK, "dust", 100 * RAD);
+        vaultEngine.file("Line", 1_100_000 * _RAD);
+        vaultEngine.file(RAIN_ILK, "line", 100_000 * _RAD);
+        vaultEngine.file(USDT_ILK, "line", 500_000 * _RAD);
+        vaultEngine.file(USDC_ILK, "line", 500_000 * _RAD);
+        vaultEngine.file(RAIN_ILK, "dust", 100 * _RAD);
     }
 }

@@ -2,12 +2,13 @@
 
 pragma solidity 0.8.30;
 
+import { Auth } from "../extensions/Auth.sol";
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceConverter } from "../interfaces/IPriceConverter.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { Auth } from "../extensions/Auth.sol";
-import { RAY, WAD, WARD_ROLE } from "../shared/Constants.sol";
+import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -22,37 +23,22 @@ import { _revert } from "../shared/Globals.sol";
  *      (no oracle, price pinned to $1; the trust decision lives in listing governance) or
  *      oracle-backed (price read from the OSM). The OSM itself never learns about fixed ilks:
  *      being registered on the OSM is what "needs a price lookup" means, and this contract is
- *      the single place that routes between the two kinds. `file("pip")` and `file("fixed")`
- *      clear each other so an ilk can never be both, and `poke` reverts for unconfigured ilks
- *      rather than writing a zero spot.
+ *      the single place that routes between the two kinds. `file("pip")` and `file("fixed")` clear each other so an
+ *      ilk can never be both, and `poke` reverts for unconfigured ilks rather than writing a zero spot.
  */
 contract PriceConverter is IPriceConverter, Auth {
-    /* ========================== TYPES ========================== */
-
-    /**
-     * @notice Oracle configuration for a collateral type.
-     * @param pip The collateral's Oracle Security Module. Zero for fixed-price ilks.
-     * @param mat The required collateralization ratio [ray]. 400% = 4 * RAY.
-     * @param fixedPrice Whether the ilk is a supported stablecoin pinned to $1 (no oracle).
-     */
-    struct IlkOracle {
-        IOracleSecurityModule pip;
-        uint256 mat;
-        bool fixedPrice;
-    }
-
     /* ========================== STATE VARIABLES ========================== */
 
-    /// @notice Oracle configuration per collateral type.
+    /// @inheritdoc IPriceConverter
     mapping(bytes32 ilkId => IlkOracle oracle) public ilks;
 
-    /// @notice The Vault Engine (core ledger).
-    IVaultEngine public immutable vaultEngine;
+    /// @inheritdoc IPriceConverter
+    IVaultEngine public immutable VAULT_ENGINE;
 
-    /// @notice The target dollar value of USDR [ray]. Fixed at 1.0 (par).
+    /// @inheritdoc IPriceConverter
     uint256 public par;
 
-    /// @notice Liveness flag. `1` while live, `0` after shutdown.
+    /// @inheritdoc IPriceConverter
     uint256 public live;
 
     /* ========================== CONSTRUCTOR ========================== */
@@ -62,8 +48,8 @@ contract PriceConverter is IPriceConverter, Auth {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
-        vaultEngine = vaultEngine_;
-        par = RAY;
+        VAULT_ENGINE = vaultEngine_;
+        par = _RAY;
         live = 1;
     }
 
@@ -72,7 +58,7 @@ contract PriceConverter is IPriceConverter, Auth {
     /**
      * @inheritdoc IPriceConverter
      */
-    function file(bytes32 ilkId, bytes32 what, address pip_) external onlyRole(WARD_ROLE) {
+    function file(bytes32 ilkId, bytes32 what, address pip_) external onlyRole(_WARD_ROLE) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -91,7 +77,7 @@ contract PriceConverter is IPriceConverter, Auth {
     /**
      * @inheritdoc IPriceConverter
      */
-    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -108,7 +94,7 @@ contract PriceConverter is IPriceConverter, Auth {
     /**
      * @inheritdoc IPriceConverter
      */
-    function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -130,7 +116,7 @@ contract PriceConverter is IPriceConverter, Auth {
     /**
      * @inheritdoc IPriceConverter
      */
-    function cage() external onlyRole(WARD_ROLE) {
+    function cage() external onlyRole(_WARD_ROLE) {
         live = 0;
 
         emit Cage();
@@ -147,7 +133,7 @@ contract PriceConverter is IPriceConverter, Auth {
 
         if (ilk.fixedPrice) {
             // Supported stablecoin: the price is pinned to $1, no oracle lookup.
-            val = bytes32(WAD);
+            val = bytes32(_WAD);
             has = true;
         } else {
             // Oracle-backed collateral: the ilk must have an oracle assigned.
@@ -159,9 +145,9 @@ contract PriceConverter is IPriceConverter, Auth {
         }
 
         // If the price is invalid, do nothing (the price factor stays untouched).
-        uint256 spot = has ? ((((uint256(val) * (10 ** 9)) * RAY) / par) * RAY) / ilk.mat : 0;
+        uint256 spot = has ? ((((uint256(val) * (10 ** 9)) * _RAY) / par) * _RAY) / ilk.mat : 0;
 
-        vaultEngine.file(ilkId, "spot", spot);
+        VAULT_ENGINE.file(ilkId, "spot", spot);
 
         emit Poke({ ilkId: ilkId, val: val, spot: spot });
     }

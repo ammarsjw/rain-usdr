@@ -5,27 +5,27 @@ pragma solidity 0.8.30;
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { ERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 
-import { IUSDR } from "../interfaces/IUSDR.sol";
 import { Auth } from "../extensions/Auth.sol";
-import { WARD_ROLE } from "../shared/Constants.sol";
+import { IUSDR } from "../interfaces/IUSDR.sol";
+import { _WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, InvalidAmount } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
  * @title USDR
  * @author Rain Team
- * @notice The Rain Dollar stablecoin. A standard, transferable digital dollar that can only be
- *         minted or burned by authorized system contracts (the Vault Engine adapter and the
- *         Peg Stability Module). No administrator can create USDR out of nothing.
- * @dev Based on MakerDAO's Dai token. Minter authorization is governed by the `WARD_ROLE` of the
- *      shared AccessControl-based Auth base.
+ * @notice The Rain Dollar stablecoin. A standard, transferable digital dollar that can only be minted or burned by
+ *         authorized system contracts (the Vault Engine adapter and the Peg Stability Module). No administrator can
+ *         create USDR out of nothing.
+ * @dev Based on MakerDAO's Dai token. Minter authorization is governed by the `_WARD_ROLE` of the shared
+ *      AccessControl-based Auth base.
  */
 contract USDR is IUSDR, ERC20, ERC20Permit, Auth {
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
-     * @notice Initializes the token and authorizes the deployer, which transfers authorization
-     *         to the Vault Engine adapter and the Peg Stability Module during deployment.
+     * @notice Initializes the token and authorizes the deployer, which transfers authorization to the Vault Engine
+     *         adapter and the Peg Stability Module during deployment.
      */
     constructor() ERC20("Rain Dollar", "USDR") ERC20Permit("Rain Dollar") {}
 
@@ -34,7 +34,7 @@ contract USDR is IUSDR, ERC20, ERC20Permit, Auth {
     /**
      * @inheritdoc IUSDR
      */
-    function mint(address to, uint256 amount) external onlyRole(WARD_ROLE) {
+    function mint(address to, uint256 amount) external onlyRole(_WARD_ROLE) {
         if (to == address(0)) {
             _revert(InvalidAddress.selector);
         }
@@ -49,7 +49,7 @@ contract USDR is IUSDR, ERC20, ERC20Permit, Auth {
      * @inheritdoc IUSDR
      */
     function burn(address from, uint256 amount) external {
-        if (from != msg.sender && !hasRole(WARD_ROLE, msg.sender)) {
+        if (from != msg.sender && !hasRole(_WARD_ROLE, msg.sender)) {
             _spendAllowance(from, msg.sender, amount);
         }
 

@@ -2,40 +2,83 @@
 
 pragma solidity 0.8.30;
 
+import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+
+import { ICollateralAdapter } from "./ICollateralAdapter.sol";
+import { IReserveAccounting } from "./IReserveAccounting.sol";
+import { IUSDR } from "./IUSDR.sol";
+import { IVaultEngine } from "./IVaultEngine.sol";
+
 /**
  * @title IPegStabilityModule
  * @author Rain Team
- * @notice Interface for the module that swaps stablecoins for USDR at 1:1, serving every
- *         stablecoin from a single deployed instance.
+ * @notice Interface for the module that swaps stablecoins for USDR at 1:1, serving every stablecoin from a single
+ *         deployed instance.
  */
 interface IPegStabilityModule {
+    /* ========================== TYPES ========================== */
+
+    /**
+     * @notice Configuration of a registered stablecoin ilk.
+     * @param token The stablecoin (USDT or USDC).
+     * @param to18ConversionFactor Decimal conversion factor between the stablecoin and 18 decimals.
+     * @param tin Mint fee [wad]. Zero at launch.
+     * @param tout Redeem fee [wad]. Zero at launch.
+     */
+    struct Ilk {
+        IERC20Metadata token;
+        uint256 to18ConversionFactor;
+        uint256 tin;
+        uint256 tout;
+    }
+
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when a stablecoin ilk is registered.
+    /**
+     * @dev Emitted when a stablecoin ilk is registered.
+     * @param ilkId Identifier of the stablecoin's collateral type.
+     * @param token Address of the stablecoin.
+     */
     event Init(bytes32 indexed ilkId, address indexed token);
 
-    /// @notice Emitted when a fee parameter is updated.
+    /**
+     * @dev Emitted when a fee parameter is updated.
+     * @param ilkId Identifier of the stablecoin's collateral type.
+     * @param what Name of the parameter.
+     * @param data New value [wad].
+     */
     event File(bytes32 indexed ilkId, bytes32 indexed what, uint256 data);
 
-    /// @notice Emitted when a user converts stablecoins into USDR.
+    /**
+     * @dev Emitted when a user converts stablecoins into USDR.
+     * @param ilkId Identifier of the stablecoin's collateral type.
+     * @param user Account that receives the USDR.
+     * @param stableAmt Stablecoin amount, in the token's native decimals.
+     * @param usdrAmt USDR amount received.
+     */
     event SellStable(bytes32 indexed ilkId, address indexed user, uint256 stableAmt, uint256 usdrAmt);
 
-    /// @notice Emitted when a user redeems USDR for stablecoins.
+    /**
+     * @dev Emitted when a user redeems USDR for stablecoins.
+     * @param ilkId Identifier of the stablecoin's collateral type.
+     * @param user Account that receives the stablecoins.
+     * @param stableAmt Stablecoin amount, in the token's native decimals.
+     * @param usdrAmt USDR amount spent.
+     */
     event BuyStable(bytes32 indexed ilkId, address indexed user, uint256 stableAmt, uint256 usdrAmt);
 
     /* ========================== FUNCTIONS ========================== */
 
     /**
      * @notice Registers a stablecoin ilk. This is how new stablecoins are added to the module.
-     * @dev The ilk must already be registered with the Collateral Adapter, and must not be the
-     *      USDR ilk. The token and its decimals are read from the adapter.
+     * @dev The ilk must already be registered with the Collateral Adapter, and must not be the USDR ilk. The token
+     *      and its decimals are read from the adapter.
      * @param ilkId Identifier of the stablecoin's collateral type.
      */
     function init(bytes32 ilkId) external;
 
     /**
-     * @notice Adjusts a stablecoin's mint fee ("tin") or redeem fee ("tout"). Both zero at
-     *         launch.
+     * @notice Adjusts a stablecoin's mint fee ("tin") or redeem fee ("tout"). Both zero at launch.
      * @param ilkId Identifier of the stablecoin's collateral type.
      * @param what Name of the parameter.
      * @param data New value [wad].
@@ -59,4 +102,40 @@ interface IPegStabilityModule {
      * @param stableAmt Stablecoin amount, in the token's native decimals.
      */
     function buyStable(bytes32 ilkId, address user, uint256 stableAmt) external;
+
+    /**
+     * @notice Returns the Vault Engine this module reports to.
+     * @return The Vault Engine.
+     */
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the token adapter (single instance; bridges both stablecoins and USDR).
+     * @return The token adapter.
+     */
+    function COLLATERAL_ADAPTER() external view returns (ICollateralAdapter);
+
+    /**
+     * @notice Returns the USDR token.
+     * @return The USDR token.
+     */
+    function USDR() external view returns (IUSDR);
+
+    /**
+     * @notice Returns the reserve accounting contract that reports free slack.
+     * @return The reserve accounting contract.
+     */
+    function RESERVE_ACCOUNTING() external view returns (IReserveAccounting);
+
+    /**
+     * @notice Returns the configuration of a stablecoin ilk.
+     * @param ilkId Identifier of the stablecoin's collateral type.
+     * @return token The stablecoin.
+     * @return to18ConversionFactor Decimal conversion factor between the stablecoin and 18 decimals.
+     * @return tin Mint fee [wad].
+     * @return tout Redeem fee [wad].
+     */
+    function ilks(
+        bytes32 ilkId
+    ) external view returns (IERC20Metadata token, uint256 to18ConversionFactor, uint256 tin, uint256 tout);
 }

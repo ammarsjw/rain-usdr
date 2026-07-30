@@ -2,10 +2,10 @@
 
 pragma solidity 0.8.30;
 
+import { Auth } from "../extensions/Auth.sol";
 import { IBalanceSheet } from "../interfaces/IBalanceSheet.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { Auth } from "../extensions/Auth.sol";
-import { WARD_ROLE } from "../shared/Constants.sol";
+import { _WARD_ROLE } from "../shared/Constants.sol";
 import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -22,13 +22,13 @@ import { _revert } from "../shared/Globals.sol";
 contract BalanceSheet is IBalanceSheet, Auth {
     /* ========================== STATE VARIABLES ========================== */
 
-    /// @notice The Vault Engine (core ledger).
-    IVaultEngine public immutable vaultEngine;
+    /// @inheritdoc IBalanceSheet
+    IVaultEngine public immutable VAULT_ENGINE;
 
-    /// @notice Recipient of surplus distributions (the RAIN buyback-and-burn process).
+    /// @inheritdoc IBalanceSheet
     address public buybackReceiver;
 
-    /// @notice The surplus buffer target [rad]. 10% of reserves with a $500,000 floor at launch.
+    /// @inheritdoc IBalanceSheet
     uint256 public hump;
 
     /* ========================== CONSTRUCTOR ========================== */
@@ -38,7 +38,7 @@ contract BalanceSheet is IBalanceSheet, Auth {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
-        vaultEngine = vaultEngine_;
+        VAULT_ENGINE = vaultEngine_;
     }
 
     /* ========================== FUNCTIONS ========================== */
@@ -46,7 +46,7 @@ contract BalanceSheet is IBalanceSheet, Auth {
     /**
      * @inheritdoc IBalanceSheet
      */
-    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "hump") {
             hump = data;
         } else {
@@ -59,7 +59,7 @@ contract BalanceSheet is IBalanceSheet, Auth {
     /**
      * @inheritdoc IBalanceSheet
      */
-    function file(bytes32 what, address data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
         if (what == "buybackReceiver") {
             buybackReceiver = data;
         } else {
@@ -72,7 +72,7 @@ contract BalanceSheet is IBalanceSheet, Auth {
     /**
      * @inheritdoc IBalanceSheet
      */
-    function fess(uint256 tab) external onlyRole(WARD_ROLE) {
+    function fess(uint256 tab) external onlyRole(_WARD_ROLE) {
         emit Fess({ tab: tab });
     }
 
@@ -80,10 +80,10 @@ contract BalanceSheet is IBalanceSheet, Auth {
      * @inheritdoc IBalanceSheet
      */
     function heal(uint256 rad) external {
-        require(rad <= vaultEngine.usdr(address(this)), "BalanceSheet/insufficient-surplus");
-        require(rad <= vaultEngine.sin(address(this)), "BalanceSheet/insufficient-debt");
+        require(rad <= VAULT_ENGINE.usdr(address(this)), "BalanceSheet/insufficient-surplus");
+        require(rad <= VAULT_ENGINE.sin(address(this)), "BalanceSheet/insufficient-debt");
 
-        vaultEngine.heal(rad);
+        VAULT_ENGINE.heal(rad);
 
         emit Heal({ rad: rad });
     }
@@ -91,9 +91,9 @@ contract BalanceSheet is IBalanceSheet, Auth {
     /**
      * @inheritdoc IBalanceSheet
      */
-    function suck(address kpr, uint256 rad) external onlyRole(WARD_ROLE) {
+    function suck(address kpr, uint256 rad) external onlyRole(_WARD_ROLE) {
         // Creating the reward as a small piece of bad debt, to be covered later from surplus.
-        vaultEngine.suck(address(this), kpr, rad);
+        VAULT_ENGINE.suck(address(this), kpr, rad);
 
         emit Suck({ kpr: kpr, rad: rad });
     }
@@ -102,21 +102,21 @@ contract BalanceSheet is IBalanceSheet, Auth {
      * @inheritdoc IBalanceSheet
      */
     function distributeSurplus() external returns (uint256 excess) {
-        uint256 surplus = vaultEngine.usdr(address(this));
-        uint256 badDebt = vaultEngine.sin(address(this));
+        uint256 surplus = VAULT_ENGINE.usdr(address(this));
+        uint256 badDebt = VAULT_ENGINE.sin(address(this));
 
         // Bad debt is always absorbed before any distribution.
         require(badDebt == 0, "BalanceSheet/outstanding-bad-debt");
 
-        // The strict "fill before burn" rule: the surplus buffer must be at or above its target
-        // first. If the buffer is below target, no distribution happens — all revenue stays.
+        // The strict "fill before burn" rule: the surplus buffer must be at or above its target first. If the
+        // buffer is below target, no distribution happens — all revenue stays.
         require(surplus > hump, "BalanceSheet/buffer-below-target");
         require(buybackReceiver != address(0), "BalanceSheet/no-buyback-receiver");
 
         // Only the amount above the buffer target is released to the RAIN buyback process.
         excess = surplus - hump;
 
-        vaultEngine.move(address(this), buybackReceiver, excess);
+        VAULT_ENGINE.move(address(this), buybackReceiver, excess);
 
         emit DistributeSurplus({ excess: excess });
     }

@@ -2,9 +2,9 @@
 
 pragma solidity 0.8.30;
 
-import { IGovernor } from "../interfaces/IGovernor.sol";
 import { Auth } from "../extensions/Auth.sol";
-import { WARD_ROLE } from "../shared/Constants.sol";
+import { IGovernor } from "../interfaces/IGovernor.sol";
+import { _WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, NotAuthorized, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -19,45 +19,27 @@ import { _revert } from "../shared/Globals.sol";
  *      is fixed at the moment of pausing.
  */
 contract Governor is IGovernor, Auth {
-    /* ========================== TYPES ========================== */
-
-    /**
-     * @notice A scheduled parameter change.
-     * @param target Contract to call.
-     * @param data Encoded calldata of the change.
-     * @param eta Earliest execution time.
-     * @param executed Whether the change has already been executed.
-     * @param cancelled Whether the change has been cancelled.
-     */
-    struct Change {
-        address target;
-        bytes data;
-        uint256 eta;
-        bool executed;
-        bool cancelled;
-    }
-
     /* ========================== STATE VARIABLES ========================== */
 
-    /// @notice Scheduled changes, keyed by id.
+    /// @inheritdoc IGovernor
     mapping(uint256 changeId => Change change) public changes;
 
-    /// @notice The mandatory timelock delay in seconds.
+    /// @inheritdoc IGovernor
     uint256 public delay;
 
-    /// @notice Maximum pause duration in seconds (72 hours), after which anyone can un-pause.
+    /// @inheritdoc IGovernor
     uint256 public constant PAUSE_MAX = 72 hours;
 
-    /// @notice Whether the system is currently paused.
+    /// @inheritdoc IGovernor
     bool public paused;
 
-    /// @notice Timestamp when the current pause began.
+    /// @inheritdoc IGovernor
     uint256 public pausedAt;
 
-    /// @notice Scope of the current pause, fixed at the moment of pausing.
+    /// @inheritdoc IGovernor
     bytes32 public pauseScope;
 
-    /// @notice Change id counter.
+    /// @inheritdoc IGovernor
     uint256 public changeCount;
 
     /* ========================== CONSTRUCTOR ========================== */
@@ -75,7 +57,7 @@ contract Governor is IGovernor, Auth {
     /**
      * @inheritdoc IGovernor
      */
-    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "delay") {
             delay = data;
         } else {
@@ -88,15 +70,15 @@ contract Governor is IGovernor, Auth {
     /**
      * @inheritdoc IGovernor
      */
-    function schedule(address target, bytes calldata data) external onlyRole(WARD_ROLE) returns (uint256 id) {
+    function schedule(address target, bytes calldata data) external onlyRole(_WARD_ROLE) returns (uint256 id) {
         if (target == address(0)) {
             _revert(InvalidAddress.selector);
         }
 
         id = ++changeCount;
 
-        // The change is queued with an execution time of now plus the required delay. Its
-        // details are public immediately, visible on the dashboard.
+        // The change is queued with an execution time of now plus the required delay. Its details are public
+        // immediately, visible on the dashboard.
         changes[id] = Change({
             target: target,
             data: data,
@@ -135,7 +117,7 @@ contract Governor is IGovernor, Auth {
     /**
      * @inheritdoc IGovernor
      */
-    function cancel(uint256 id) external onlyRole(WARD_ROLE) {
+    function cancel(uint256 id) external onlyRole(_WARD_ROLE) {
         Change storage change = changes[id];
 
         require(change.target != address(0), "Governor/not-scheduled");
@@ -149,7 +131,7 @@ contract Governor is IGovernor, Auth {
     /**
      * @inheritdoc IGovernor
      */
-    function pause(bytes32 scope) external onlyRole(WARD_ROLE) {
+    function pause(bytes32 scope) external onlyRole(_WARD_ROLE) {
         // The system must not already be paused.
         require(!paused, "Governor/already-paused");
 
@@ -167,10 +149,10 @@ contract Governor is IGovernor, Auth {
     function unpause() external {
         require(paused, "Governor/not-paused");
 
-        // Once 72 hours have passed since the pause began, anyone can lift it — no governance
-        // action required. Before that, only governance can lift it early.
+        // Once 72 hours have passed since the pause began, anyone can lift it — no governance action required.
+        // Before that, only governance can lift it early.
         if (block.timestamp < pausedAt + PAUSE_MAX) {
-            if (!hasRole(WARD_ROLE, msg.sender)) {
+            if (!hasRole(_WARD_ROLE, msg.sender)) {
                 _revert(NotAuthorized.selector);
             }
         }

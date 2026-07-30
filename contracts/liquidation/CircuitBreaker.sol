@@ -2,10 +2,10 @@
 
 pragma solidity 0.8.30;
 
+import { Auth } from "../extensions/Auth.sol";
 import { ICircuitBreaker } from "../interfaces/ICircuitBreaker.sol";
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
-import { Auth } from "../extensions/Auth.sol";
-import { WAD, WARD_ROLE } from "../shared/Constants.sol";
+import { _WAD, _WARD_ROLE } from "../shared/Constants.sol";
 import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -23,34 +23,34 @@ import { _revert } from "../shared/Globals.sol";
 contract CircuitBreaker is ICircuitBreaker, Auth {
     /* ========================== STATE VARIABLES ========================== */
 
-    /// @notice The Oracle Security Module being watched.
-    IOracleSecurityModule public immutable pip;
+    /// @inheritdoc ICircuitBreaker
+    IOracleSecurityModule public immutable PIP;
 
-    /// @notice Identifier of the collateral type whose price is being watched.
-    bytes32 public immutable ilkId;
+    /// @inheritdoc ICircuitBreaker
+    bytes32 public immutable ILK_ID;
 
-    /// @notice Deviation threshold that activates the breaker [wad]. 25% = 0.25 * WAD.
+    /// @inheritdoc ICircuitBreaker
     uint256 public threshold;
 
-    /// @notice Consecutive calm blocks required to deactivate the breaker.
+    /// @inheritdoc ICircuitBreaker
     uint256 public calmBlocks;
 
-    /// @notice Whether the breaker is currently active.
+    /// @inheritdoc ICircuitBreaker
     bool public active;
 
-    /// @notice The one-hour trend anchor price [wad].
+    /// @inheritdoc ICircuitBreaker
     uint256 public trendPrice;
 
-    /// @notice Timestamp when the trend anchor was recorded.
+    /// @inheritdoc ICircuitBreaker
     uint256 public trendTimestamp;
 
-    /// @notice Number of consecutive calm blocks observed while active.
+    /// @inheritdoc ICircuitBreaker
     uint256 public calmCount;
 
-    /// @notice Last block in which the breaker was checked.
+    /// @inheritdoc ICircuitBreaker
     uint256 public lastCheckedBlock;
 
-    /// @notice Trend window in seconds (one hour).
+    /// @inheritdoc ICircuitBreaker
     uint256 public constant TREND_WINDOW = 3600;
 
     /* ========================== CONSTRUCTOR ========================== */
@@ -61,9 +61,9 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
      * @param ilkId_ Identifier of the collateral type to watch.
      */
     constructor(IOracleSecurityModule pip_, bytes32 ilkId_) {
-        pip = pip_;
-        ilkId = ilkId_;
-        threshold = WAD / 4;
+        PIP = pip_;
+        ILK_ID = ilkId_;
+        threshold = _WAD / 4;
         calmBlocks = 3;
     }
 
@@ -72,7 +72,7 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
     /**
      * @inheritdoc ICircuitBreaker
      */
-    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "threshold") {
             threshold = data;
         } else if (what == "calmBlocks") {
@@ -88,7 +88,7 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
      * @inheritdoc ICircuitBreaker
      */
     function check() external {
-        (bytes32 val, bool has) = pip.peek(ilkId);
+        (bytes32 val, bool has) = PIP.peek(ILK_ID);
 
         if (!has) {
             return;
@@ -131,7 +131,14 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
         emit Checked({ deviation: deviation, active: active });
     }
 
-    /// @dev Returns the relative deviation between two prices [wad].
+    /* ========================== INTERNAL FUNCTIONS ========================== */
+
+    /**
+     * @dev Returns the relative deviation between two prices [wad].
+     * @param current The current price [wad].
+     * @param trend The trend anchor price [wad].
+     * @return The relative deviation [wad].
+     */
     function _deviation(uint256 current, uint256 trend) internal pure returns (uint256) {
         if (trend == 0) {
             return 0;
@@ -139,6 +146,6 @@ contract CircuitBreaker is ICircuitBreaker, Auth {
 
         uint256 diff = current > trend ? current - trend : trend - current;
 
-        return (diff * WAD) / trend;
+        return (diff * _WAD) / trend;
     }
 }

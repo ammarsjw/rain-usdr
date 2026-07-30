@@ -2,14 +2,17 @@
 
 pragma solidity 0.8.30;
 
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
+
+import { Auth } from "../extensions/Auth.sol";
 import { IBalanceSheet } from "../interfaces/IBalanceSheet.sol";
 import { ICircuitBreaker } from "../interfaces/ICircuitBreaker.sol";
 import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
 import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { Auth } from "../extensions/Auth.sol";
-import { WAD, WARD_ROLE } from "../shared/Constants.sol";
+import { _WAD, _WARD_ROLE } from "../shared/Constants.sol";
 import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -22,46 +25,30 @@ import { _revert } from "../shared/Globals.sol";
  *      rate of new liquidations is throttled to a fraction of normal.
  */
 contract LiquidationTrigger is ILiquidationTrigger, Auth {
-    /* ========================== TYPES ========================== */
-
-    /**
-     * @notice Liquidation settings for a collateral type.
-     * @param clip The Dutch auction contract for this collateral.
-     * @param chop The liquidation penalty [wad]. 13% = 1.13 * WAD.
-     * @param hole The maximum active liquidation size for this collateral [rad].
-     * @param dirt The amount currently being auctioned for this collateral [rad].
-     */
-    struct IlkLiquidation {
-        address clip;
-        uint256 chop;
-        uint256 hole;
-        uint256 dirt;
-    }
-
     /* ========================== STATE VARIABLES ========================== */
 
-    /// @notice Liquidation settings per collateral type.
+    /// @inheritdoc ILiquidationTrigger
     mapping(bytes32 ilkId => IlkLiquidation liquidation) public ilks;
 
-    /// @notice The Vault Engine (core ledger).
-    IVaultEngine public immutable vaultEngine;
+    /// @inheritdoc ILiquidationTrigger
+    IVaultEngine public immutable VAULT_ENGINE;
 
-    /// @notice The Balance Sheet that receives seized debt.
+    /// @inheritdoc ILiquidationTrigger
     IBalanceSheet public balanceSheet;
 
-    /// @notice The circuit breaker that throttles liquidations during abnormal price moves.
+    /// @inheritdoc ILiquidationTrigger
     ICircuitBreaker public circuitBreaker;
 
-    /// @notice The maximum active liquidation size across all collateral types [rad].
+    /// @inheritdoc ILiquidationTrigger
     uint256 public Hole;
 
-    /// @notice The amount currently being auctioned across all collateral types [rad].
+    /// @inheritdoc ILiquidationTrigger
     uint256 public Dirt;
 
-    /// @notice Throttled liquidation rate while the breaker is active [wad]. 20% = 0.2 * WAD.
+    /// @inheritdoc ILiquidationTrigger
     uint256 public throttle;
 
-    /// @notice Liveness flag. `1` while live, `0` after shutdown.
+    /// @inheritdoc ILiquidationTrigger
     uint256 public live;
 
     /* ========================== CONSTRUCTOR ========================== */
@@ -71,8 +58,8 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
-        vaultEngine = vaultEngine_;
-        throttle = WAD / 5;
+        VAULT_ENGINE = vaultEngine_;
+        throttle = _WAD / 5;
         live = 1;
     }
 
@@ -81,7 +68,7 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "Hole") {
             Hole = data;
         } else if (what == "throttle") {
@@ -96,7 +83,7 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function file(bytes32 what, address data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
         if (what == "balanceSheet") {
             balanceSheet = IBalanceSheet(data);
         } else if (what == "circuitBreaker") {
@@ -111,9 +98,9 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "chop") {
-            require(data >= WAD, "LiquidationTrigger/chop-below-one");
+            require(data >= _WAD, "LiquidationTrigger/chop-below-one");
 
             ilks[ilkId].chop = data;
         } else if (what == "hole") {
@@ -128,7 +115,7 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function file(bytes32 ilkId, bytes32 what, address clip_) external onlyRole(WARD_ROLE) {
+    function file(bytes32 ilkId, bytes32 what, address clip_) external onlyRole(_WARD_ROLE) {
         if (what == "clip") {
             ilks[ilkId].clip = clip_;
         } else {
@@ -141,17 +128,10 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function cage() external onlyRole(WARD_ROLE) {
+    function cage() external onlyRole(_WARD_ROLE) {
         live = 0;
 
         emit Cage();
-    }
-
-    /**
-     * @inheritdoc ILiquidationTrigger
-     */
-    function chop(bytes32 ilkId) external view returns (uint256) {
-        return ilks[ilkId].chop;
     }
 
     /**
@@ -162,7 +142,7 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
             _revert(NotLive.selector);
         }
 
-        (uint256 ink, uint256 art) = vaultEngine.urns(ilkId, urn);
+        (uint256 ink, uint256 art) = VAULT_ENGINE.urns(ilkId, urn);
         IlkLiquidation memory milk = ilks[ilkId];
         uint256 dart;
         uint256 rate;
@@ -170,7 +150,7 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
 
         {
             uint256 spot;
-            (, rate, spot, , dust) = vaultEngine.ilks(ilkId);
+            (, rate, spot, , dust) = VAULT_ENGINE.ilks(ilkId);
 
             // Unsafe check: the vault's collateral value must be less than its debt.
             require(spot > 0 && ink * spot < art * rate, "LiquidationTrigger/not-unsafe");
@@ -178,16 +158,16 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
             // Capacity checks: room must remain under both the per-collateral and global limits.
             require(Hole > Dirt && milk.hole > milk.dirt, "LiquidationTrigger/liquidation-limit-hit");
 
-            uint256 room = _min(Hole - Dirt, milk.hole - milk.dirt);
+            uint256 room = Math.min(Hole - Dirt, milk.hole - milk.dirt);
 
-            // Circuit breaker check: when the breaker is active, new liquidations are throttled
-            // to a fraction of the normal available room per period.
+            // Circuit breaker check: when the breaker is active, new liquidations are throttled to a fraction of the
+            // normal available room per period.
             if (address(circuitBreaker) != address(0) && circuitBreaker.active()) {
-                room = (room * throttle) / WAD;
+                room = (room * throttle) / _WAD;
             }
 
             // uint256.max()/(RAD*WAD) = 115,792,089,237,316
-            dart = _min(art, ((room / rate) * WAD) / milk.chop);
+            dart = Math.min(art, ((room / rate) * _WAD) / milk.chop);
 
             // Partial liquidation edge case logic.
             if (art > dart) {
@@ -207,14 +187,14 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
         require(dart <= 2 ** 255 && dink <= 2 ** 255, "LiquidationTrigger/overflow");
 
         // Seizing the vault: collateral moves to the auction, debt moves to the balance sheet.
-        vaultEngine.grab(ilkId, urn, milk.clip, address(balanceSheet), -int256(dink), -int256(dart));
+        VAULT_ENGINE.grab(ilkId, urn, milk.clip, address(balanceSheet), -int256(dink), -int256(dart));
 
         uint256 due = dart * rate;
         balanceSheet.fess(due);
 
         {
             // The debt to recover is increased by the liquidation penalty (13%).
-            uint256 tab = (due * milk.chop) / WAD;
+            uint256 tab = (due * milk.chop) / _WAD;
             Dirt += tab;
             ilks[ilkId].dirt += tab;
 
@@ -228,15 +208,17 @@ contract LiquidationTrigger is ILiquidationTrigger, Auth {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function digs(bytes32 ilkId, uint256 rad) external onlyRole(WARD_ROLE) {
+    function digs(bytes32 ilkId, uint256 rad) external onlyRole(_WARD_ROLE) {
         Dirt -= rad;
         ilks[ilkId].dirt -= rad;
 
         emit Digs({ ilkId: ilkId, rad: rad });
     }
 
-    /// @dev Returns the smaller of two numbers.
-    function _min(uint256 x, uint256 y) internal pure returns (uint256) {
-        return x <= y ? x : y;
+    /**
+     * @inheritdoc ILiquidationTrigger
+     */
+    function chop(bytes32 ilkId) external view returns (uint256) {
+        return ilks[ilkId].chop;
     }
 }

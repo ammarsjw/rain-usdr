@@ -2,52 +2,54 @@
 
 pragma solidity 0.8.30;
 
-import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { Auth } from "../extensions/Auth.sol";
-import { WARD_ROLE } from "../shared/Constants.sol";
+import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
+import { Math } from "../libraries/Math.sol";
+import { _RAY, _WARD_ROLE } from "../shared/Constants.sol";
 import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
  * @title VaultEngine
  * @author Rain Team
- * @notice The immutable core ledger. Master record of every piece of collateral and every unit of
- *         debt in the system. Enforces the fundamental rule that no vault can mint more USDR than
- *         its collateral allows. Its rules can never be changed after deployment.
- * @dev Based on MakerDAO's Vat. USDR charges no stability fee, so each ilk's `rate` is initialized
- *      to `RAY` (1.0) and never changes. Internal USDR balances are tracked in `rad` (45 decimals).
+ * @notice The immutable core ledger. Master record of every piece of collateral and every unit of debt in the
+ *         system. Enforces the fundamental rule that no vault can mint more USDR than its collateral allows. Its
+ *         rules can never be changed after deployment.
+ * @dev Based on MakerDAO's Vat. USDR charges no stability fee, so each ilk's `rate` is initialized to `RAY` (1.0)
+ *      and never changes. Internal USDR balances are tracked in `rad` (45 decimals).
  */
 contract VaultEngine is IVaultEngine, Auth {
     /* ========================== STATE VARIABLES ========================== */
 
-    /// @notice Vault management permissions. `can[owner][operator] == 1` lets `operator` manage `owner`'s positions.
+    /// @inheritdoc IVaultEngine
     mapping(address owner => mapping(address operator => uint256 permission)) public can;
 
-    /// @notice Registered collateral types, keyed by identifier (e.g. "RAIN-A", "USDT-A", "USDC-A").
+    /// @inheritdoc IVaultEngine
     mapping(bytes32 ilkId => Ilk collateralType) public ilks;
 
-    /// @notice Vaults, keyed by collateral type and owner.
+    /// @inheritdoc IVaultEngine
     mapping(bytes32 ilkId => mapping(address vaultOwner => Urn vault)) public urns;
 
-    /// @notice Free (unlocked) collateral balances inside the system [wad].
+    /// @inheritdoc IVaultEngine
     mapping(bytes32 ilkId => mapping(address user => uint256 balance)) public collateral;
 
-    /// @notice Internal USDR balances [rad].
+    /// @inheritdoc IVaultEngine
     mapping(address user => uint256 balance) public usdr;
 
-    /// @notice Bad debt (unbacked USDR) per debt sink [rad].
+    /// @inheritdoc IVaultEngine
     mapping(address debtSink => uint256 balance) public sin;
 
-    /// @notice Total USDR issued [rad].
+    /// @inheritdoc IVaultEngine
     uint256 public debt;
 
-    /// @notice Total bad debt [rad].
+    /// @inheritdoc IVaultEngine
     uint256 public vice;
 
-    /// @notice Global debt ceiling [rad].
+    /// @inheritdoc IVaultEngine
     uint256 public Line;
 
-    /// @notice System liveness flag. `1` while live, `0` after shutdown.
+    /// @inheritdoc IVaultEngine
     uint256 public live;
 
     /* ========================== CONSTRUCTOR ========================== */
@@ -79,18 +81,13 @@ contract VaultEngine is IVaultEngine, Auth {
         emit Nope({ owner: msg.sender, operator: operator });
     }
 
-    /// @dev Returns whether `operator` may manage the positions of `owner`.
-    function wish(address owner, address operator) internal view returns (bool) {
-        return owner == operator || can[owner][operator] == 1;
-    }
-
     /**
      * @inheritdoc IVaultEngine
      */
-    function init(bytes32 ilkId) external onlyRole(WARD_ROLE) {
+    function init(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
         require(ilks[ilkId].rate == 0, "VaultEngine/ilk-already-init");
 
-        ilks[ilkId].rate = 10 ** 27;
+        ilks[ilkId].rate = _RAY;
 
         emit Init({ ilkId: ilkId });
     }
@@ -98,7 +95,7 @@ contract VaultEngine is IVaultEngine, Auth {
     /**
      * @inheritdoc IVaultEngine
      */
-    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -115,7 +112,7 @@ contract VaultEngine is IVaultEngine, Auth {
     /**
      * @inheritdoc IVaultEngine
      */
-    function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -136,7 +133,7 @@ contract VaultEngine is IVaultEngine, Auth {
     /**
      * @inheritdoc IVaultEngine
      */
-    function cage() external onlyRole(WARD_ROLE) {
+    function cage() external onlyRole(_WARD_ROLE) {
         live = 0;
 
         emit Cage();
@@ -145,8 +142,8 @@ contract VaultEngine is IVaultEngine, Auth {
     /**
      * @inheritdoc IVaultEngine
      */
-    function slip(bytes32 ilkId, address user, int256 wad) external onlyRole(WARD_ROLE) {
-        collateral[ilkId][user] = _add(collateral[ilkId][user], wad);
+    function slip(bytes32 ilkId, address user, int256 wad) external onlyRole(_WARD_ROLE) {
+        collateral[ilkId][user] = Math.add(collateral[ilkId][user], wad);
 
         emit Slip({ ilkId: ilkId, user: user, wad: wad });
     }
@@ -155,7 +152,7 @@ contract VaultEngine is IVaultEngine, Auth {
      * @inheritdoc IVaultEngine
      */
     function flux(bytes32 ilkId, address from, address to, uint256 wad) external {
-        require(wish(from, msg.sender), "VaultEngine/not-allowed");
+        require(_wish(from, msg.sender), "VaultEngine/not-allowed");
 
         collateral[ilkId][from] -= wad;
         collateral[ilkId][to] += wad;
@@ -167,7 +164,7 @@ contract VaultEngine is IVaultEngine, Auth {
      * @inheritdoc IVaultEngine
      */
     function move(address from, address to, uint256 rad) external {
-        require(wish(from, msg.sender), "VaultEngine/not-allowed");
+        require(_wish(from, msg.sender), "VaultEngine/not-allowed");
 
         usdr[from] -= rad;
         usdr[to] += rad;
@@ -190,33 +187,32 @@ contract VaultEngine is IVaultEngine, Auth {
         // The collateral type must have been initialized.
         require(ilk.rate != 0, "VaultEngine/ilk-not-init");
 
-        urn.ink = _add(urn.ink, dink);
-        urn.art = _add(urn.art, dart);
-        ilk.Art = _add(ilk.Art, dart);
+        urn.ink = Math.add(urn.ink, dink);
+        urn.art = Math.add(urn.art, dart);
+        ilk.Art = Math.add(ilk.Art, dart);
 
-        int256 dtab = _mul(ilk.rate, dart);
+        int256 dtab = Math.mul(ilk.rate, dart);
         uint256 tab = ilk.rate * urn.art;
-        debt = _add(debt, dtab);
+        debt = Math.add(debt, dtab);
 
-        // Ceiling check: either debt is being repaid, or both the ilk ceiling and the global
-        // ceiling must hold after the change.
+        // Ceiling check: either debt is being repaid, or both the ilk ceiling and the global ceiling must hold
+        // after the change.
         require(dart <= 0 || (ilk.Art * ilk.rate <= ilk.line && debt <= Line), "VaultEngine/ceiling-exceeded");
-        // Safety check: the vault must be either safer than before, or safe after the change.
-        // Uses the delayed oracle price factor already stored in the system.
-        require(both(dart <= 0, dink >= 0) || tab <= urn.ink * ilk.spot, "VaultEngine/not-safe");
+        // Safety check: the vault must be either safer than before, or safe after the change. Uses the delayed
+        // oracle price factor already stored in the system.
+        require(Math.both(dart <= 0, dink >= 0) || tab <= urn.ink * ilk.spot, "VaultEngine/not-safe");
 
-        // Permission checks: positions may only be worsened with the owner's consent, collateral
-        // may only be taken with its source's consent, and internal USDR may only be drawn from
-        // a consenting destination.
-        require(both(dart <= 0, dink >= 0) || wish(u, msg.sender), "VaultEngine/not-allowed-u");
-        require(dink <= 0 || wish(v, msg.sender), "VaultEngine/not-allowed-v");
-        require(dart >= 0 || wish(w, msg.sender), "VaultEngine/not-allowed-w");
+        // Permission checks: positions may only be worsened with the owner's consent, collateral may only be taken
+        // with its source's consent, and internal USDR may only be drawn from a consenting destination.
+        require(Math.both(dart <= 0, dink >= 0) || _wish(u, msg.sender), "VaultEngine/not-allowed-u");
+        require(dink <= 0 || _wish(v, msg.sender), "VaultEngine/not-allowed-v");
+        require(dart >= 0 || _wish(w, msg.sender), "VaultEngine/not-allowed-w");
 
         // Minimum size check: a vault must either carry zero debt or at least the minimum size.
         require(urn.art == 0 || tab >= ilk.dust, "VaultEngine/dust");
 
-        collateral[ilkId][v] = _sub(collateral[ilkId][v], dink);
-        usdr[w] = _add(usdr[w], dtab);
+        collateral[ilkId][v] = Math.sub(collateral[ilkId][v], dink);
+        usdr[w] = Math.add(usdr[w], dtab);
 
         urns[ilkId][u] = urn;
         ilks[ilkId] = ilk;
@@ -234,19 +230,19 @@ contract VaultEngine is IVaultEngine, Auth {
         address w,
         int256 dink,
         int256 dart
-    ) external onlyRole(WARD_ROLE) {
+    ) external onlyRole(_WARD_ROLE) {
         Urn storage urn = urns[ilkId][u];
         Ilk storage ilk = ilks[ilkId];
 
-        urn.ink = _add(urn.ink, dink);
-        urn.art = _add(urn.art, dart);
-        ilk.Art = _add(ilk.Art, dart);
+        urn.ink = Math.add(urn.ink, dink);
+        urn.art = Math.add(urn.art, dart);
+        ilk.Art = Math.add(ilk.Art, dart);
 
-        int256 dtab = _mul(ilk.rate, dart);
+        int256 dtab = Math.mul(ilk.rate, dart);
 
-        collateral[ilkId][v] = _sub(collateral[ilkId][v], dink);
-        sin[w] = _sub(sin[w], dtab);
-        vice = _sub(vice, dtab);
+        collateral[ilkId][v] = Math.sub(collateral[ilkId][v], dink);
+        sin[w] = Math.sub(sin[w], dtab);
+        vice = Math.sub(vice, dtab);
 
         emit Grab({ ilkId: ilkId, u: u, v: v, w: w, dink: dink, dart: dart });
     }
@@ -266,7 +262,7 @@ contract VaultEngine is IVaultEngine, Auth {
     /**
      * @inheritdoc IVaultEngine
      */
-    function suck(address u, address v, uint256 rad) external onlyRole(WARD_ROLE) {
+    function suck(address u, address v, uint256 rad) external onlyRole(_WARD_ROLE) {
         sin[u] += rad;
         usdr[v] += rad;
         vice += rad;
@@ -275,35 +271,15 @@ contract VaultEngine is IVaultEngine, Auth {
         emit Suck({ u: u, v: v, rad: rad });
     }
 
-    /// @dev Adds a signed integer to an unsigned integer, reverting on over/underflow.
-    function _add(uint256 x, int256 y) internal pure returns (uint256 z) {
-        unchecked {
-            z = x + uint256(y);
-        }
-        require(y >= 0 || z <= x, "VaultEngine/add-underflow");
-        require(y <= 0 || z >= x, "VaultEngine/add-overflow");
-    }
+    /* ========================== INTERNAL FUNCTIONS ========================== */
 
-    /// @dev Subtracts a signed integer from an unsigned integer, reverting on over/underflow.
-    function _sub(uint256 x, int256 y) internal pure returns (uint256 z) {
-        unchecked {
-            z = x - uint256(y);
-        }
-        require(y <= 0 || z <= x, "VaultEngine/sub-underflow");
-        require(y >= 0 || z >= x, "VaultEngine/sub-overflow");
-    }
-
-    /// @dev Multiplies an unsigned integer by a signed integer, reverting on overflow.
-    function _mul(uint256 x, int256 y) internal pure returns (int256 z) {
-        z = int256(x) * y;
-        require(int256(x) >= 0, "VaultEngine/mul-overflow");
-        require(y == 0 || z / y == int256(x), "VaultEngine/mul-overflow");
-    }
-
-    /// @dev Logical AND without short-circuit branching.
-    function both(bool x, bool y) internal pure returns (bool z) {
-        assembly ("memory-safe") {
-            z := and(x, y)
-        }
+    /**
+     * @dev Returns whether `operator` may manage the positions of `owner`.
+     * @param owner Owner of the positions.
+     * @param operator Account being queried.
+     * @return Whether the operator has management permission.
+     */
+    function _wish(address owner, address operator) internal view returns (bool) {
+        return owner == operator || can[owner][operator] == 1;
     }
 }

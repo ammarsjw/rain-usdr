@@ -9,25 +9,22 @@ import { Auth } from "../extensions/Auth.sol";
 import { ICollateralAdapter } from "../interfaces/ICollateralAdapter.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { RAY, USDR_ILK, WARD_ROLE } from "../shared/Constants.sol";
+import { _RAY, _USDR_ILK, _WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, InvalidAmount, NotLive } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
  * @title CollateralAdapter
  * @author Rain Team
- * @notice The doorway for tokens entering and leaving the system. Bridges real tokens (RAIN,
- *         USDT, USDC — and USDR itself) and the internal ledger. A single deployed instance
- *         serves every token: ilks are registered dynamically, each carrying its own token and
- *         custody or mint/burn behaviour.
- * @dev Merges MakerDAO's GemJoin and DaiJoin into one contract, generalized from
- *      one-instance-per-token to a single ilk-keyed module. Collateral ilks convert token
- *      decimals (USDT/USDC use 6, RAIN uses 18) to the internal 18 decimal representation and
- *      update the ledger through `slip`; the USDR ilk (registered under {USDR_ILK}) moves
- *      internal balances (45 decimals) through `move` and mints/burns the ERC-20. Merging is
- *      safe because only `WARD_ROLE` may register ilks and USDR mint authority is granted to
- *      this single contract on the token itself — the collateral code path can never reach
- *      `mint`.
+ * @notice The doorway for tokens entering and leaving the system. Bridges real tokens (RAIN, USDT, USDC — and USDR
+ *         itself) and the internal ledger. A single deployed instance serves every token: ilks are registered
+ *         dynamically, each carrying its own token and custody or mint/burn behaviour.
+ * @dev Merges MakerDAO's GemJoin and DaiJoin into one contract, generalized from one-instance-per-token to a single
+ *      ilk-keyed module. Collateral ilks convert token decimals (USDT/USDC use 6, RAIN uses 18) to the internal 18
+ *      decimal representation and update the ledger through `slip`; the USDR ilk (registered under {_USDR_ILK}) moves
+ *      internal balances (45 decimals) through `move` and mints/burns the ERC-20. Merging is safe because only
+ *      `_WARD_ROLE` may register ilks and USDR mint authority is granted to this single contract on the token
+ *      itself — the collateral code path can never reach `mint`.
  */
 contract CollateralAdapter is ICollateralAdapter, Auth {
     using SafeERC20 for IERC20Metadata;
@@ -38,8 +35,7 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
      * @notice Configuration and state of a registered ilk.
      * @param token The token this ilk bridges — held in custody, or minted/burned for USDR.
      * @param dec Decimals of the token.
-     * @param isUsdr Whether this ilk is the USDR ilk (`move` + mint/burn) or a collateral ilk
-     *        (`slip` + custody).
+     * @param isUsdr Whether this ilk is the USDR ilk (`move` + mint/burn) or a collateral ilk (`slip` + custody).
      * @param live Ilk liveness flag. `1` while live, `0` after shutdown.
      */
     struct Ilk {
@@ -51,10 +47,10 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
 
     /* ========================== STATE VARIABLES ========================== */
 
-    /// @notice The Vault Engine (core ledger).
-    IVaultEngine public immutable vaultEngine;
+    /// @inheritdoc ICollateralAdapter
+    IVaultEngine public immutable VAULT_ENGINE;
 
-    /// @notice Configuration and state per ilk.
+    /// @inheritdoc ICollateralAdapter
     mapping(bytes32 ilkId => Ilk ilk) public ilks;
 
     /* ========================== CONSTRUCTOR ========================== */
@@ -64,7 +60,7 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
-        vaultEngine = vaultEngine_;
+        VAULT_ENGINE = vaultEngine_;
     }
 
     /* ========================== FUNCTIONS ========================== */
@@ -72,13 +68,13 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
     /**
      * @inheritdoc ICollateralAdapter
      */
-    function init(bytes32 ilkId, IERC20Metadata token_) external onlyRole(WARD_ROLE) {
+    function init(bytes32 ilkId, IERC20Metadata token_) external onlyRole(_WARD_ROLE) {
         if (address(token_) == address(0)) {
             _revert(InvalidAddress.selector);
         }
         require(address(ilks[ilkId].token) == address(0), "CollateralAdapter/ilk-already-init");
 
-        ilks[ilkId] = Ilk({ token: token_, dec: token_.decimals(), isUsdr: ilkId == USDR_ILK, live: 1 });
+        ilks[ilkId] = Ilk({ token: token_, dec: token_.decimals(), isUsdr: ilkId == _USDR_ILK, live: 1 });
 
         emit Init({ ilkId: ilkId, token: address(token_) });
     }
@@ -86,7 +82,7 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
     /**
      * @inheritdoc ICollateralAdapter
      */
-    function cage(bytes32 ilkId) external onlyRole(WARD_ROLE) {
+    function cage(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
         ilks[ilkId].live = 0;
 
         emit Cage({ ilkId: ilkId });
@@ -105,7 +101,7 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
 
         if (ilk.isUsdr) {
             // Returning USDR into the system keeps working after shutdown.
-            vaultEngine.move(address(this), user, RAY * amount);
+            VAULT_ENGINE.move(address(this), user, _RAY * amount);
             IUSDR(address(ilk.token)).burn(msg.sender, amount);
         } else {
             // Deposits are blocked after shutdown; withdrawals continue to work.
@@ -120,7 +116,7 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
                 _revert(InvalidAmount.selector);
             }
 
-            vaultEngine.slip(ilkId, user, int256(wad));
+            VAULT_ENGINE.slip(ilkId, user, int256(wad));
             ilk.token.safeTransferFrom(msg.sender, address(this), amount);
         }
 
@@ -144,7 +140,7 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
                 _revert(NotLive.selector);
             }
 
-            vaultEngine.move(msg.sender, address(this), RAY * amount);
+            VAULT_ENGINE.move(msg.sender, address(this), _RAY * amount);
             IUSDR(address(ilk.token)).mint(user, amount);
         } else {
             // Converting token decimals to the internal 18 decimal representation.
@@ -154,7 +150,7 @@ contract CollateralAdapter is ICollateralAdapter, Auth {
                 _revert(InvalidAmount.selector);
             }
 
-            vaultEngine.slip(ilkId, msg.sender, -int256(wad));
+            VAULT_ENGINE.slip(ilkId, msg.sender, -int256(wad));
             ilk.token.safeTransfer(user, amount);
         }
 

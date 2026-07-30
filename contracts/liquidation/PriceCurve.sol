@@ -2,9 +2,9 @@
 
 pragma solidity 0.8.30;
 
-import { IPriceCurve } from "../interfaces/IPriceCurve.sol";
 import { Auth } from "../extensions/Auth.sol";
-import { WARD_ROLE } from "../shared/Constants.sol";
+import { IPriceCurve } from "../interfaces/IPriceCurve.sol";
+import { _WARD_ROLE } from "../shared/Constants.sol";
 import { UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -19,7 +19,7 @@ import { _revert } from "../shared/Globals.sol";
 contract PriceCurve is IPriceCurve, Auth {
     /* ========================== STATE VARIABLES ========================== */
 
-    /// @notice Auction lifetime in seconds — how long until the price reaches zero.
+    /// @inheritdoc IPriceCurve
     uint256 public tau;
 
     /* ========================== FUNCTIONS ========================== */
@@ -27,7 +27,7 @@ contract PriceCurve is IPriceCurve, Auth {
     /**
      * @inheritdoc IPriceCurve
      */
-    function file(bytes32 what, uint256 data) external onlyRole(WARD_ROLE) {
+    function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "tau") {
             tau = data;
         } else {

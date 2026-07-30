@@ -2,6 +2,10 @@
 
 pragma solidity 0.8.30;
 
+import { IExternalExposure } from "./IExternalExposure.sol";
+import { IReserveAccounting } from "./IReserveAccounting.sol";
+import { IVaultEngine } from "./IVaultEngine.sol";
+
 /**
  * @title ISolvencyEngine
  * @author Rain Team
@@ -10,13 +14,25 @@ pragma solidity 0.8.30;
 interface ISolvencyEngine {
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when a stress parameter or dependency is updated.
+    /**
+     * @dev Emitted when a stress parameter or dependency is updated.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
     event File(bytes32 indexed what, uint256 data);
 
-    /// @notice Emitted when a volatile collateral type is added to the stress calculation.
+    /**
+     * @dev Emitted when a volatile collateral type is added to the stress calculation.
+     * @param ilkId Identifier of the collateral type.
+     */
     event AddVolatileIlk(bytes32 indexed ilkId);
 
-    /// @notice Emitted when the invariant is checked, for the monitoring system.
+    /**
+     * @dev Emitted when the invariant is checked, for the monitoring system.
+     * @param reserve The current stable reserve [wad].
+     * @param worstCaseLoss The worst-case loss under stress [wad].
+     * @param passed Whether the invariant held.
+     */
     event InvariantChecked(uint256 reserve, uint256 worstCaseLoss, bool passed);
 
     /* ========================== FUNCTIONS ========================== */
@@ -42,19 +58,56 @@ interface ISolvencyEngine {
     function addVolatileIlk(bytes32 ilkId) external;
 
     /**
+     * @notice Enforces the master rule: worst-case loss must never exceed the stable reserve.
+     * @dev Reverts with a solvency-breach error if the rule would be broken. On success, updates the committed
+     *      escrow in Reserve Accounting and emits a record of the check.
+     * @return loss The worst-case loss under stress [wad].
+     * @return reserve The current stable reserve [wad].
+     */
+    function checkInvariant() external returns (uint256 loss, uint256 reserve);
+
+    /**
      * @notice Calculates the most the protocol could lose, assuming a crisis.
-     * @dev Assumes volatile assets marked down 50%, liquidation depth at 35% of normal, and
-     *      correlated assets crashing together, plus any reported prediction market exposure.
+     * @dev Assumes volatile assets marked down 50%, liquidation depth at 35% of normal, and correlated assets
+     *      crashing together, plus any reported prediction market exposure.
      * @return loss The worst-case loss under stress [wad].
      */
     function worstCaseLoss() external view returns (uint256 loss);
 
     /**
-     * @notice Enforces the master rule: worst-case loss must never exceed the stable reserve.
-     * @dev Reverts with a solvency-breach error if the rule would be broken. On success,
-     *      updates the committed escrow in Reserve Accounting and emits a record of the check.
-     * @return loss The worst-case loss under stress [wad].
-     * @return reserve The current stable reserve [wad].
+     * @notice Returns the Vault Engine this engine reports to.
+     * @return The Vault Engine.
      */
-    function checkInvariant() external returns (uint256 loss, uint256 reserve);
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the reserve accounting contract.
+     * @return The reserve accounting contract.
+     */
+    function RESERVE_ACCOUNTING() external view returns (IReserveAccounting);
+
+    /**
+     * @notice Returns the prediction market layer's exposure reporter.
+     * @return The external exposure reporter. May be unset at launch.
+     */
+    function externalExposure() external view returns (IExternalExposure);
+
+    /**
+     * @notice Returns a volatile collateral type included in the stress calculation.
+     * @param index Position in the volatile collateral list.
+     * @return The collateral type identifier.
+     */
+    function volatileIlks(uint256 index) external view returns (bytes32);
+
+    /**
+     * @notice Returns the stress markdown applied to volatile asset prices.
+     * @return The stress markdown [wad]. 50% = 0.5 * WAD.
+     */
+    function stressMarkdown() external view returns (uint256);
+
+    /**
+     * @notice Returns the assumed liquidation market depth under stress.
+     * @return The stress depth [wad]. 35% = 0.35 * WAD.
+     */
+    function stressDepth() external view returns (uint256);
 }

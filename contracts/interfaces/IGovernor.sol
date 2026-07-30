@@ -8,24 +8,64 @@ pragma solidity 0.8.30;
  * @notice Interface for the timelocked parameter changer and emergency pause.
  */
 interface IGovernor {
+    /* ========================== TYPES ========================== */
+
+    /**
+     * @notice A scheduled parameter change.
+     * @param target Contract to call.
+     * @param data Encoded calldata of the change.
+     * @param eta Earliest execution time.
+     * @param executed Whether the change has already been executed.
+     * @param cancelled Whether the change has been cancelled.
+     */
+    struct Change {
+        address target;
+        bytes data;
+        uint256 eta;
+        bool executed;
+        bool cancelled;
+    }
+
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when a parameter is updated.
+    /**
+     * @dev Emitted when a parameter is updated.
+     * @param what Name of the parameter.
+     * @param data New value in seconds.
+     */
     event File(bytes32 indexed what, uint256 data);
 
-    /// @notice Emitted when a change is scheduled.
+    /**
+     * @dev Emitted when a change is scheduled.
+     * @param id Identifier of the scheduled change.
+     * @param target Contract to call.
+     * @param data Encoded calldata of the change.
+     * @param eta Earliest execution time.
+     */
     event Schedule(uint256 indexed id, address indexed target, bytes data, uint256 eta);
 
-    /// @notice Emitted when a scheduled change is executed.
+    /**
+     * @dev Emitted when a scheduled change is executed.
+     * @param id Identifier of the executed change.
+     */
     event Execute(uint256 indexed id);
 
-    /// @notice Emitted when a scheduled change is cancelled.
+    /**
+     * @dev Emitted when a scheduled change is cancelled.
+     * @param id Identifier of the cancelled change.
+     */
     event Cancel(uint256 indexed id);
 
-    /// @notice Emitted when the emergency pause begins.
+    /**
+     * @dev Emitted when the emergency pause begins.
+     * @param scope Which operations were paused.
+     * @param pausedAt Timestamp when the pause began.
+     */
     event Pause(bytes32 scope, uint256 pausedAt);
 
-    /// @notice Emitted when the pause is lifted.
+    /**
+     * @dev Emitted when the pause is lifted.
+     */
     event Unpause();
 
     /* ========================== FUNCTIONS ========================== */
@@ -38,8 +78,7 @@ interface IGovernor {
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Queues a parameter change (or a new collateral addition) to take effect after
-     *         the timelock delay.
+     * @notice Queues a parameter change (or a new collateral addition) to take effect after the timelock delay.
      * @param target Contract and setting to change.
      * @param data Encoded calldata of the change.
      * @return id Identifier of the scheduled change.
@@ -62,8 +101,7 @@ interface IGovernor {
 
     /**
      * @notice Halts sensitive operations during an emergency.
-     * @dev The scope is declared up front and cannot be widened afterward. Auto-expires after
-     *      72 hours.
+     * @dev The scope is declared up front and cannot be widened afterward. Auto-expires after 72 hours.
      * @param scope Which operations to pause.
      */
     function pause(bytes32 scope) external;
@@ -72,4 +110,53 @@ interface IGovernor {
      * @notice Lifts the pause. Governance may lift it early; after 72 hours anyone may.
      */
     function unpause() external;
+
+    /**
+     * @notice Returns a scheduled change's details.
+     * @param changeId Identifier of the scheduled change.
+     * @return target Contract to call.
+     * @return data Encoded calldata of the change.
+     * @return eta Earliest execution time.
+     * @return executed Whether the change has already been executed.
+     * @return cancelled Whether the change has been cancelled.
+     */
+    function changes(
+        uint256 changeId
+    ) external view returns (address target, bytes memory data, uint256 eta, bool executed, bool cancelled);
+
+    /**
+     * @notice Returns the mandatory timelock delay in seconds.
+     * @return The delay in seconds.
+     */
+    function delay() external view returns (uint256);
+
+    /**
+     * @notice Returns the maximum pause duration in seconds, after which anyone can un-pause.
+     * @return The maximum pause duration in seconds (72 hours).
+     */
+    function PAUSE_MAX() external view returns (uint256);
+
+    /**
+     * @notice Returns whether the system is currently paused.
+     * @return Whether the system is paused.
+     */
+    function paused() external view returns (bool);
+
+    /**
+     * @notice Returns the timestamp when the current pause began.
+     * @return The pause start timestamp.
+     */
+    function pausedAt() external view returns (uint256);
+
+    /**
+     * @notice Returns the scope of the current pause, fixed at the moment of pausing.
+     * @return The pause scope.
+     */
+    function pauseScope() external view returns (bytes32);
+
+    /**
+     * @notice Returns the change id counter.
+     * @return The number of changes scheduled so far.
+     */
+    function changeCount() external view returns (uint256);
 }

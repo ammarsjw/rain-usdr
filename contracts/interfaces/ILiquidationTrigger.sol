@@ -2,30 +2,74 @@
 
 pragma solidity 0.8.30;
 
+import { IBalanceSheet } from "./IBalanceSheet.sol";
+import { ICircuitBreaker } from "./ICircuitBreaker.sol";
+import { IVaultEngine } from "./IVaultEngine.sol";
+
 /**
  * @title ILiquidationTrigger
  * @author Rain Team
  * @notice Interface for the contract that detects unsafe vaults and starts auctions.
  */
 interface ILiquidationTrigger {
+    /* ========================== TYPES ========================== */
+
+    /**
+     * @notice Liquidation settings for a collateral type.
+     * @param clip The Dutch auction contract for this collateral.
+     * @param chop The liquidation penalty [wad]. 13% = 1.13 * WAD.
+     * @param hole The maximum active liquidation size for this collateral [rad].
+     * @param dirt The amount currently being auctioned for this collateral [rad].
+     */
+    struct IlkLiquidation {
+        address clip;
+        uint256 chop;
+        uint256 hole;
+        uint256 dirt;
+    }
+
     /* ========================== EVENTS ========================== */
 
-    /// @notice Emitted when a global numeric parameter is updated.
+    /**
+     * @dev Emitted when a global numeric parameter is updated.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
     event File(bytes32 indexed what, uint256 data);
 
-    /// @notice Emitted when a global address dependency is updated.
+    /**
+     * @dev Emitted when a global address dependency is updated.
+     * @param what Name of the parameter.
+     * @param addr New address.
+     */
     event File(bytes32 indexed what, address addr);
 
-    /// @notice Emitted when a per-collateral numeric parameter is updated.
+    /**
+     * @dev Emitted when a per-collateral numeric parameter is updated.
+     * @param ilkId Identifier of the collateral type.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
     event File(bytes32 indexed ilkId, bytes32 indexed what, uint256 data);
 
-    /// @notice Emitted when a per-collateral address dependency is updated.
+    /**
+     * @dev Emitted when a per-collateral address dependency is updated.
+     * @param ilkId Identifier of the collateral type.
+     * @param what Name of the parameter.
+     * @param addr New address.
+     */
     event File(bytes32 indexed ilkId, bytes32 indexed what, address addr);
 
-    /// @notice Emitted when the trigger is shut down.
-    event Cage();
-
-    /// @notice Emitted when an unsafe vault is liquidated.
+    /**
+     * @dev Emitted when an unsafe vault is liquidated.
+     * @param ilkId Identifier of the collateral type.
+     * @param urn Vault that was liquidated.
+     * @param ink Collateral seized [wad].
+     * @param art Normalized debt seized [wad].
+     * @param due Debt to recover before the penalty [rad].
+     * @param clip Auction contract the collateral was sent to.
+     * @param id Identifier of the started auction.
+     */
     event Bark(
         bytes32 indexed ilkId,
         address indexed urn,
@@ -36,7 +80,11 @@ interface ILiquidationTrigger {
         uint256 id
     );
 
-    /// @notice Emitted when auction capacity is freed after an auction clears its debt.
+    /**
+     * @dev Emitted when auction capacity is freed after an auction clears its debt.
+     * @param ilkId Identifier of the collateral type.
+     * @param rad Amount of capacity freed [rad].
+     */
     event Digs(bytes32 indexed ilkId, uint256 rad);
 
     /* ========================== FUNCTIONS ========================== */
@@ -77,16 +125,9 @@ interface ILiquidationTrigger {
     function cage() external;
 
     /**
-     * @notice Returns the liquidation penalty for a collateral type.
-     * @param ilkId Identifier of the collateral type.
-     * @return The penalty [wad].
-     */
-    function chop(bytes32 ilkId) external view returns (uint256);
-
-    /**
      * @notice Seizes an under-collateralized vault and starts an auction for its collateral.
-     * @dev Reverts if the vault is safe, if the liquidation caps are hit, or when the circuit
-     *      breaker throttle leaves no room this period.
+     * @dev Reverts if the vault is safe, if the liquidation caps are hit, or when the circuit breaker throttle
+     *      leaves no room this period.
      * @param ilkId Identifier of the collateral type.
      * @param urn Vault to liquidate.
      * @param kpr Keeper eligible for the liquidation reward.
@@ -100,4 +141,63 @@ interface ILiquidationTrigger {
      * @param rad Amount of capacity to free [rad].
      */
     function digs(bytes32 ilkId, uint256 rad) external;
+
+    /**
+     * @notice Returns the liquidation settings for a collateral type.
+     * @param ilkId Identifier of the collateral type.
+     * @return clip The Dutch auction contract for this collateral.
+     * @return chop The liquidation penalty [wad].
+     * @return hole The maximum active liquidation size for this collateral [rad].
+     * @return dirt The amount currently being auctioned for this collateral [rad].
+     */
+    function ilks(bytes32 ilkId) external view returns (address clip, uint256 chop, uint256 hole, uint256 dirt);
+
+    /**
+     * @notice Returns the liquidation penalty for a collateral type.
+     * @param ilkId Identifier of the collateral type.
+     * @return The penalty [wad].
+     */
+    function chop(bytes32 ilkId) external view returns (uint256);
+
+    /**
+     * @notice Returns the Vault Engine this trigger reports to.
+     * @return The Vault Engine.
+     */
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the Balance Sheet that receives seized debt.
+     * @return The Balance Sheet.
+     */
+    function balanceSheet() external view returns (IBalanceSheet);
+
+    /**
+     * @notice Returns the circuit breaker that throttles liquidations during abnormal price moves.
+     * @return The circuit breaker.
+     */
+    function circuitBreaker() external view returns (ICircuitBreaker);
+
+    /**
+     * @notice Returns the maximum active liquidation size across all collateral types.
+     * @return The global cap [rad].
+     */
+    function Hole() external view returns (uint256);
+
+    /**
+     * @notice Returns the amount currently being auctioned across all collateral types.
+     * @return The global amount in auction [rad].
+     */
+    function Dirt() external view returns (uint256);
+
+    /**
+     * @notice Returns the throttled liquidation rate while the breaker is active.
+     * @return The throttle rate [wad].
+     */
+    function throttle() external view returns (uint256);
+
+    /**
+     * @notice Returns the liveness flag.
+     * @return The liveness flag. `1` while live, `0` after shutdown.
+     */
+    function live() external view returns (uint256);
 }

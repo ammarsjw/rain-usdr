@@ -2,9 +2,9 @@
 
 pragma solidity 0.8.30;
 
-import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { Auth } from "../extensions/Auth.sol";
-import { COMMITTER_ROLE, RECORDER_ROLE, WARD_ROLE } from "../shared/Constants.sol";
+import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
+import { _COMMITTER_ROLE, _RECORDER_ROLE, _WARD_ROLE } from "../shared/Constants.sol";
 
 /**
  * @title ReserveAccounting
@@ -19,10 +19,10 @@ import { COMMITTER_ROLE, RECORDER_ROLE, WARD_ROLE } from "../shared/Constants.so
 contract ReserveAccounting is IReserveAccounting, Auth {
     /* ========================== STATE VARIABLES ========================== */
 
-    /// @notice Total stable reserve (all USDT and USDC held) [wad].
+    /// @inheritdoc IReserveAccounting
     uint256 public totalReserve;
 
-    /// @notice Amount committed to guaranteed obligations (the settlement escrow) [wad].
+    /// @inheritdoc IReserveAccounting
     uint256 public committedEscrow;
 
     /* ========================== FUNCTIONS ========================== */
@@ -30,8 +30,8 @@ contract ReserveAccounting is IReserveAccounting, Auth {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function addRecorder(address account) external onlyRole(WARD_ROLE) {
-        _grantRole(RECORDER_ROLE, account);
+    function addRecorder(address account) external onlyRole(_WARD_ROLE) {
+        _grantRole(_RECORDER_ROLE, account);
 
         emit AddRecorder({ account: account });
     }
@@ -39,8 +39,8 @@ contract ReserveAccounting is IReserveAccounting, Auth {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function removeRecorder(address account) external onlyRole(WARD_ROLE) {
-        _revokeRole(RECORDER_ROLE, account);
+    function removeRecorder(address account) external onlyRole(_WARD_ROLE) {
+        _revokeRole(_RECORDER_ROLE, account);
 
         emit RemoveRecorder({ account: account });
     }
@@ -48,8 +48,8 @@ contract ReserveAccounting is IReserveAccounting, Auth {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function addCommitter(address account) external onlyRole(WARD_ROLE) {
-        _grantRole(COMMITTER_ROLE, account);
+    function addCommitter(address account) external onlyRole(_WARD_ROLE) {
+        _grantRole(_COMMITTER_ROLE, account);
 
         emit AddCommitter({ account: account });
     }
@@ -57,8 +57,8 @@ contract ReserveAccounting is IReserveAccounting, Auth {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function removeCommitter(address account) external onlyRole(WARD_ROLE) {
-        _revokeRole(COMMITTER_ROLE, account);
+    function removeCommitter(address account) external onlyRole(_WARD_ROLE) {
+        _revokeRole(_COMMITTER_ROLE, account);
 
         emit RemoveCommitter({ account: account });
     }
@@ -66,7 +66,7 @@ contract ReserveAccounting is IReserveAccounting, Auth {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function recordIncrease(uint256 wad) external onlyRole(RECORDER_ROLE) {
+    function recordIncrease(uint256 wad) external onlyRole(_RECORDER_ROLE) {
         totalReserve += wad;
 
         emit RecordIncrease({ wad: wad, totalReserve: totalReserve });
@@ -75,7 +75,7 @@ contract ReserveAccounting is IReserveAccounting, Auth {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function recordDecrease(uint256 wad) external onlyRole(RECORDER_ROLE) {
+    function recordDecrease(uint256 wad) external onlyRole(_RECORDER_ROLE) {
         totalReserve -= wad;
 
         emit RecordDecrease({ wad: wad, totalReserve: totalReserve });
@@ -84,9 +84,9 @@ contract ReserveAccounting is IReserveAccounting, Auth {
     /**
      * @inheritdoc IReserveAccounting
      */
-    function updateCommittedEscrow(uint256 wad) external onlyRole(COMMITTER_ROLE) {
-        // The committed amount must not exceed the total reserve — this is the solvency
-        // guarantee expressed at the accounting level.
+    function updateCommittedEscrow(uint256 wad) external onlyRole(_COMMITTER_ROLE) {
+        // The committed amount must not exceed the total reserve — this is the solvency guarantee expressed at the
+        // accounting level.
         require(wad <= totalReserve, "ReserveAccounting/escrow-exceeds-reserve");
 
         committedEscrow = wad;
