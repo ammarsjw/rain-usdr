@@ -278,14 +278,14 @@ interface IDutchAuction {
     function getStatus(uint256 id) external view returns (bool needsRedo, uint256 price_, uint256 lot, uint256 tab);
 
     /**
-     * @notice Adjusts an auction parameter: {buf}, {tail}, {cusp}, {chip} or {tip}.
+     * @notice Adjusts an auction parameter {buf}, {tail}, {cusp}, {chip} or {tip}.
      * @param what Name of the parameter.
      * @param data New value.
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency: {pip}, {dog}, {vow} or {calc}.
+     * @notice Sets an address dependency {pip}, {dog}, {vow} or {calc}.
      * @param what Name of the parameter.
      * @param data New address.
      */

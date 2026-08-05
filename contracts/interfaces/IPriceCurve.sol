@@ -25,7 +25,7 @@ interface IPriceCurve {
     function tau() external view returns (uint256);
 
     /**
-     * @notice Adjusts the auction lifetime: {tau}.
+     * @notice Adjusts the auction lifetime {tau}.
      * @param what Name of the parameter.
      * @param data New value in seconds.
      */

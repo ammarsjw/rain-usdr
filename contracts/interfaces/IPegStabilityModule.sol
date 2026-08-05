@@ -117,7 +117,7 @@ interface IPegStabilityModule {
     function init(bytes32 ilkId) external;
 
     /**
-     * @notice Adjusts a stablecoin's mint fee: {tin} or redeem fee: {tout}. Both zero at launch.
+     * @notice Adjusts a stablecoin's mint fee {tin} or redeem fee {tout}. Both zero at launch.
      * @param ilkId Identifier of the stablecoin's collateral type.
      * @param what Name of the parameter.
      * @param data New value [wad].

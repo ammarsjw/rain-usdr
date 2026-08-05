@@ -151,7 +151,7 @@ interface IGovernor {
     ) external view returns (address target, bytes memory data, uint256 eta, bool executed, bool cancelled);
 
     /**
-     * @notice Adjusts the timelock delay: {delay}.
+     * @notice Adjusts the timelock delay {delay}.
      * @param what Name of the parameter.
      * @param data New value in seconds.
      */

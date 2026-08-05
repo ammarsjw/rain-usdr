@@ -174,21 +174,21 @@ interface ILiquidationTrigger {
     function chop(bytes32 ilkId) external view returns (uint256);
 
     /**
-     * @notice Adjusts a global parameter: {globalHole} or {throttle}.
+     * @notice Adjusts a global parameter {globalHole} or {throttle}.
      * @param what Name of the parameter.
      * @param data New value.
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets a global address dependency: {balanceSheet} or {circuitBreaker}.
+     * @notice Sets a global address dependency {balanceSheet} or {circuitBreaker}.
      * @param what Name of the parameter.
      * @param data New address.
      */
     function file(bytes32 what, address data) external;
 
     /**
-     * @notice Adjusts a per-collateral parameter: {chop} or {hole}.
+     * @notice Adjusts a per-collateral parameter {chop} or {hole}.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
      * @param data New value.
@@ -196,7 +196,7 @@ interface ILiquidationTrigger {
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
 
     /**
-     * @notice Assigns the Dutch auction contract for a collateral type: {clip}.
+     * @notice Assigns the Dutch auction contract for a collateral type {clip}.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
      * @param clip_ Address of the Dutch auction contract.

@@ -256,14 +256,14 @@ interface IVaultEngine {
     function init(bytes32 ilkId) external;
 
     /**
-     * @notice Updates a global parameter. Currently only the global debt ceiling: {globalLine}.
+     * @notice Updates a global parameter. Currently only the global debt ceiling {globalLine}.
      * @param what Name of the parameter.
      * @param data New value [rad].
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Updates a per-collateral parameter: {spot}, {line} or {dust}.
+     * @notice Updates a per-collateral parameter {spot}, {line} or {dust}.
      * @dev Only governance, or the Price Converter for {spot}, can call this.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.

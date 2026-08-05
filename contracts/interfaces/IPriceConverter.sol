@@ -87,20 +87,20 @@ interface IPriceConverter {
     /**
      * @notice Assigns which oracle a collateral type reads from.
      * @param ilkId Identifier of the collateral type.
-     * @param what Name of the parameter: {pip}.
+     * @param what Name of the parameter {pip}.
      * @param pip_ Address of the Oracle Security Module.
      */
     function file(bytes32 ilkId, bytes32 what, address pip_) external;
 
     /**
-     * @notice Updates a global parameter: {par}.
+     * @notice Updates a global parameter {par}.
      * @param what Name of the parameter.
      * @param data New value [ray].
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets a collateral type's collateralization ratio: {mat} or marks it as a supported stablecoin pinned to
+     * @notice Sets a collateral type's collateralization ratio {mat} or marks it as a supported stablecoin pinned to
      *         $1 ({fixed}, 1 to set and 0 to clear). Marking an ilk fixed detaches any assigned oracle, as the two
      *         kinds are mutually exclusive.
      * @param ilkId Identifier of the collateral type.

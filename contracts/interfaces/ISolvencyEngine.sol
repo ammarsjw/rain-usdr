@@ -77,14 +77,14 @@ interface ISolvencyEngine {
     function volatileIlks(uint256 index) external view returns (bytes32);
 
     /**
-     * @notice Adjusts a stress parameter: {stressMarkdown} or {stressDepth}.
+     * @notice Adjusts a stress parameter {stressMarkdown} or {stressDepth}.
      * @param what Name of the parameter.
      * @param data New value [wad].
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency: {externalExposure}.
+     * @notice Sets an address dependency {externalExposure}.
      * @param what Name of the parameter.
      * @param data New address.
      */
