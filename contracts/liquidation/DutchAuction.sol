@@ -13,7 +13,7 @@ import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceCurve } from "../interfaces/IPriceCurve.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidBytes, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -80,11 +80,21 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      * @param ilkId_ Identifier of the collateral type.
      */
     constructor(IVaultEngine vaultEngine_, bytes32 ilkId_) {
+        if (address(vaultEngine_) == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
+        if (ilkId_ == bytes32(0)) {
+            _revert(InvalidBytes.selector);
+        }
+
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
 
-        VAULT_ENGINE = vaultEngine_;
         ILK_ID = ilkId_;
+        VAULT_ENGINE = vaultEngine_;
+
         buf = _RAY;
         live = 1;
     }
@@ -143,12 +153,15 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         if (live != 1) {
             _revert(NotLive.selector);
         }
+
         if (tab == 0) {
             _revert(ZeroTab.selector);
         }
+
         if (lot == 0) {
             _revert(ZeroLot.selector);
         }
+
         if (usr == address(0)) {
             _revert(ZeroUser.selector);
         }
@@ -164,13 +177,16 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         // The starting price is the current market price plus the markup (5%).
         uint256 top = (_getFeedPrice() * buf) / _RAY;
+
         if (top == 0) {
             _revert(ZeroTopPrice.selector);
         }
+
         sales[id].top = top;
 
         // Incentive to kick the auction: the keeper reward is created as backed-later debt.
         uint256 coin;
+
         if (tip > 0 || chip > 0) {
             coin = tip + (tab * chip) / _WAD;
             VAULT_ENGINE.suck(vow, kpr, coin);
@@ -198,24 +214,30 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         // At least one reset condition must hold: the auction has run past its reset time, or its price has dropped
         // below the reset threshold of the starting price.
         (bool done, ) = _status(tic, top);
+
         if (!done) {
             _revert(CannotReset.selector);
         }
 
         uint256 tab = sales[id].tab;
         uint256 lot = sales[id].lot;
+
         sales[id].tic = uint96(block.timestamp);
 
         // The starting price is refreshed to the current market price plus the markup.
         uint256 feedPrice = _getFeedPrice();
+
         top = (feedPrice * buf) / _RAY;
+
         if (top == 0) {
             _revert(ZeroTopPrice.selector);
         }
+
         sales[id].top = top;
 
         // Whoever triggers the reset earns the keeper reward for doing so.
         uint256 coin;
+
         if (tip > 0 || chip > 0) {
             coin = tip + (tab * chip) / _WAD;
             VAULT_ENGINE.suck(vow, kpr, coin);
@@ -240,8 +262,10 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         }
 
         uint256 price;
+
         {
             bool done;
+
             (done, price) = _status(tic, sales[id].top);
 
             // The auction must still be running and the price must be greater than zero.
@@ -257,6 +281,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         uint256 lot = sales[id].lot;
         uint256 tab = sales[id].tab;
+
         uint256 owe;
 
         {
@@ -304,6 +329,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         } else if (tab == 0) {
             // All the debt is covered and collateral remains: the leftover is returned to the original vault owner.
             VAULT_ENGINE.flux(ILK_ID, address(this), usr, lot);
+
             _remove(id);
         } else {
             sales[id].tab = tab;
@@ -322,6 +348,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         // The remaining debt goes back to the balance sheet and the remaining collateral returns to the vault owner.
         dog.digs(ILK_ID, sales[id].tab);
         VAULT_ENGINE.flux(ILK_ID, address(this), sales[id].usr, sales[id].lot);
+
         _remove(id);
 
         emit Yank({ id: id });
@@ -347,6 +374,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     function getStatus(uint256 id) external view returns (bool needsRedo, uint256 price, uint256 lot, uint256 tab) {
         address usr = sales[id].usr;
         uint96 tic = sales[id].tic;
+
         bool done;
 
         (done, price) = _status(tic, sales[id].top);
@@ -360,16 +388,17 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      * @dev Removes an auction from the active list.
      * @param id Identifier of the auction to remove.
      */
-    function _remove(uint256 id) internal {
-        uint256 move_ = active[active.length - 1];
+    function _remove(uint256 id) private {
+        uint256 move = active[active.length - 1];
 
-        if (id != move_) {
+        if (id != move) {
             uint256 pos = sales[id].pos;
-            active[pos] = move_;
-            sales[move_].pos = pos;
+            active[pos] = move;
+            sales[move].pos = pos;
         }
 
         active.pop();
+
         delete sales[id];
     }
 
@@ -377,8 +406,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      * @dev Reads the current delayed price from the Oracle Security Module, scaled to ray.
      * @return feedPrice The current delayed price [ray].
      */
-    function _getFeedPrice() internal view returns (uint256 feedPrice) {
+    function _getFeedPrice() private view returns (uint256 feedPrice) {
         (bytes32 val, bool has) = pip.peek(ILK_ID);
+
         if (!has) {
             _revert(InvalidPrice.selector);
         }
@@ -393,7 +423,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      * @return done Whether the auction needs a reset.
      * @return price The current price [ray].
      */
-    function _status(uint96 tic, uint256 top) internal view returns (bool done, uint256 price) {
+    function _status(uint96 tic, uint256 top) private view returns (bool done, uint256 price) {
         price = calc.price(top, block.timestamp - tic);
         done = (block.timestamp - tic > tail || (price * _RAY) / top < cusp);
     }

@@ -25,6 +25,11 @@ error InvalidAmount();
 error InvalidAssignment();
 
 /**
+ * @dev Indicates a failure with a bytes. For example, `bytes32(0)`.
+ */
+error InvalidBytes();
+
+/**
  * @dev Indicates a failure with the caller's authorization. For example, missing a required role.
  */
 error NotAuthorized();

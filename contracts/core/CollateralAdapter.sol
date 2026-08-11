@@ -43,7 +43,12 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
+        if (address(vaultEngine_) == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
 
         VAULT_ENGINE = vaultEngine_;
@@ -54,17 +59,17 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
     /**
      * @inheritdoc ICollateralAdapter
      */
-    function init(bytes32 ilkId, IERC20Metadata token_) external onlyRole(_WARD_ROLE) {
-        if (address(token_) == address(0)) {
+    function init(bytes32 ilkId, IERC20Metadata token) external onlyRole(_WARD_ROLE) {
+        if (address(token) == address(0)) {
             _revert(InvalidAddress.selector);
         }
         if (address(ilks[ilkId].token) != address(0)) {
             _revert(IlkAlreadyInitialized.selector);
         }
 
-        ilks[ilkId] = Ilk({ token: token_, dec: token_.decimals(), isUsdr: ilkId == _USDR_ILK, live: 1 });
+        ilks[ilkId] = Ilk({ token: token, dec: token.decimals(), isUsdr: ilkId == _USDR_ILK, live: 1 });
 
-        emit Init({ ilkId: ilkId, token: address(token_) });
+        emit Init({ ilkId: ilkId, token: address(token) });
     }
 
     /**

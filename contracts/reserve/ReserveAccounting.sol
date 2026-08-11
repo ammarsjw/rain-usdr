@@ -32,47 +32,14 @@ contract ReserveAccounting is IReserveAccounting, AccessControl {
      * @notice Authorizes the deployer.
      */
     constructor() {
+        _setRoleAdmin(_COMMITTER_ROLE, _WARD_ROLE);
+        _setRoleAdmin(_RECORDER_ROLE, _WARD_ROLE);
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
     }
 
     /* ========================== FUNCTIONS ========================== */
-
-    /**
-     * @inheritdoc IReserveAccounting
-     */
-    function addRecorder(address account) external onlyRole(_WARD_ROLE) {
-        _grantRole(_RECORDER_ROLE, account);
-
-        emit AddRecorder({ account: account });
-    }
-
-    /**
-     * @inheritdoc IReserveAccounting
-     */
-    function removeRecorder(address account) external onlyRole(_WARD_ROLE) {
-        _revokeRole(_RECORDER_ROLE, account);
-
-        emit RemoveRecorder({ account: account });
-    }
-
-    /**
-     * @inheritdoc IReserveAccounting
-     */
-    function addCommitter(address account) external onlyRole(_WARD_ROLE) {
-        _grantRole(_COMMITTER_ROLE, account);
-
-        emit AddCommitter({ account: account });
-    }
-
-    /**
-     * @inheritdoc IReserveAccounting
-     */
-    function removeCommitter(address account) external onlyRole(_WARD_ROLE) {
-        _revokeRole(_COMMITTER_ROLE, account);
-
-        emit RemoveCommitter({ account: account });
-    }
 
     /**
      * @inheritdoc IReserveAccounting

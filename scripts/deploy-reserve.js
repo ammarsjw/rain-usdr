@@ -3,7 +3,7 @@ const hardhat = require("hardhat");
 const { configure } = require("./helpers/config/config");
 const { verifyContract } = require("./helpers/libraries/auxiliary");
 const { deployContract } = require("./helpers/libraries/workflows");
-const { WARD_ROLE } = require("./helpers/shared/constants");
+const { COMMITTER_ROLE, RECORDER_ROLE, WARD_ROLE } = require("./helpers/shared/constants");
 const { LOG_TYPE } = require("./helpers/shared/types");
 const { updateEnv } = require("./helpers/utils/env");
 const { logTag, wait } = require("./helpers/utils/tools");
@@ -54,13 +54,13 @@ const deployReserve = async () => {
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
 
     // Allowing the Solvency Engine to commit escrow in Reserve Accounting.
-    await (await reserveAccountingInstance.addCommitter(solvencyEngineAddress)).wait();
+    await (await reserveAccountingInstance.grantRole(COMMITTER_ROLE, solvencyEngineAddress)).wait();
 
     // Registering the stablecoin ilks on the PSM and authorizing it as a reserve recorder.
     const psmInstance = await hardhat.ethers.getContractAt(psmName, psmAddress);
     await (await psmInstance.init(usdtIlk)).wait();
     await (await psmInstance.init(usdcIlk)).wait();
-    await (await reserveAccountingInstance.addRecorder(psmAddress)).wait();
+    await (await reserveAccountingInstance.grantRole(RECORDER_ROLE, psmAddress)).wait();
 
     // Registering RAIN as a volatile collateral in the solvency stress calculation.
     await (await solvencyEngineInstance.addVolatileIlk(rainIlk)).wait();

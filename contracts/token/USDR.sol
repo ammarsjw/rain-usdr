@@ -28,6 +28,7 @@ contract USDR is IUSDR, ERC20, ERC20Permit, AccessControl {
      */
     constructor() ERC20("Rain Dollar", "USDR") ERC20Permit("Rain Dollar") {
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
     }
 

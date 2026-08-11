@@ -32,16 +32,16 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IPegStabilityModule
-    IUSDR public immutable USDR;
-
-    /// @inheritdoc IPegStabilityModule
-    IVaultEngine public immutable VAULT_ENGINE;
+    ICollateralAdapter public immutable COLLATERAL_ADAPTER;
 
     /// @inheritdoc IPegStabilityModule
     IReserveAccounting public immutable RESERVE_ACCOUNTING;
 
     /// @inheritdoc IPegStabilityModule
-    ICollateralAdapter public immutable COLLATERAL_ADAPTER;
+    IVaultEngine public immutable VAULT_ENGINE;
+
+    /// @inheritdoc IPegStabilityModule
+    IUSDR public immutable USDR;
 
     /// @inheritdoc IPegStabilityModule
     mapping(bytes32 ilkId => Ilk ilk) public ilks;
@@ -54,7 +54,12 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl {
      * @param reserveAccounting_ Address of the reserve accounting contract.
      */
     constructor(ICollateralAdapter collateralAdapter_, IReserveAccounting reserveAccounting_) {
+        if (address(collateralAdapter_) == address(0) || address(reserveAccounting_) == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
 
         COLLATERAL_ADAPTER = collateralAdapter_;
@@ -62,9 +67,11 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl {
         VAULT_ENGINE = IVaultEngine(address(collateralAdapter_.VAULT_ENGINE()));
 
         (IERC20Metadata usdrToken, , , ) = collateralAdapter_.ilks(_USDR_ILK);
+
         if (address(usdrToken) == address(0)) {
             _revert(InvalidAddress.selector);
         }
+
         USDR = IUSDR(address(usdrToken));
 
         VAULT_ENGINE.hope(address(collateralAdapter_));
@@ -82,6 +89,7 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl {
 
         // The ilk must already be registered with the adapter.
         (IERC20Metadata token, uint8 dec, bool isUsdr, ) = COLLATERAL_ADAPTER.ilks(ilkId);
+
         if (address(token) == address(0) || isUsdr) {
             _revert(InvalidAddress.selector);
         }
@@ -119,6 +127,7 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl {
         if (address(ilk.token) == address(0)) {
             _revert(InvalidAddress.selector);
         }
+
         if (stableAmt == 0) {
             _revert(InvalidAmount.selector);
         }
@@ -131,6 +140,7 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl {
         // Engine's frob.
         ilk.token.safeTransferFrom(msg.sender, address(this), stableAmt);
         ilk.token.forceApprove(address(COLLATERAL_ADAPTER), stableAmt);
+
         COLLATERAL_ADAPTER.join(ilkId, address(this), stableAmt);
         VAULT_ENGINE.frob(ilkId, address(this), address(this), address(this), int256(stableAmt18), int256(stableAmt18));
         COLLATERAL_ADAPTER.exit(_USDR_ILK, user, usdrAmt);
@@ -150,6 +160,7 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl {
         if (address(ilk.token) == address(0)) {
             _revert(InvalidAddress.selector);
         }
+
         if (stableAmt == 0) {
             _revert(InvalidAmount.selector);
         }

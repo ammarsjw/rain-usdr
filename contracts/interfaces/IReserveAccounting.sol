@@ -11,30 +11,6 @@ interface IReserveAccounting {
     /* ========================== EVENTS ========================== */
 
     /**
-     * @dev Emitted when a recorder is added.
-     * @param account Address granted recorder rights.
-     */
-    event AddRecorder(address indexed account);
-
-    /**
-     * @dev Emitted when a recorder is removed.
-     * @param account Address that lost recorder rights.
-     */
-    event RemoveRecorder(address indexed account);
-
-    /**
-     * @dev Emitted when a committer is added.
-     * @param account Address granted committer rights.
-     */
-    event AddCommitter(address indexed account);
-
-    /**
-     * @dev Emitted when a committer is removed.
-     * @param account Address that lost committer rights.
-     */
-    event RemoveCommitter(address indexed account);
-
-    /**
      * @dev Emitted when stablecoins enter the reserve.
      * @param wad Amount entering [wad].
      * @param totalReserve The total reserve after the increase [wad].
@@ -63,30 +39,6 @@ interface IReserveAccounting {
     error EscrowExceedsReserve();
 
     /* ========================== FUNCTIONS ========================== */
-
-    /**
-     * @notice Allows a contract (a Peg Stability Module) to record reserve movements.
-     * @param account Address being granted recorder rights.
-     */
-    function addRecorder(address account) external;
-
-    /**
-     * @notice Revokes a contract's recorder rights.
-     * @param account Address losing recorder rights.
-     */
-    function removeRecorder(address account) external;
-
-    /**
-     * @notice Allows a contract (the Solvency Engine) to update the committed escrow.
-     * @param account Address being granted committer rights.
-     */
-    function addCommitter(address account) external;
-
-    /**
-     * @notice Revokes a contract's committer rights.
-     * @param account Address losing committer rights.
-     */
-    function removeCommitter(address account) external;
 
     /**
      * @notice Registers stablecoins entering the reserve (from a PSM mint).

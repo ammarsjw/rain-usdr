@@ -3,7 +3,7 @@ const hardhat = require("hardhat");
 const { configure } = require("./helpers/config/config");
 const { verifyContract } = require("./helpers/libraries/auxiliary");
 const { deployContract } = require("./helpers/libraries/workflows");
-const { WARD_ROLE } = require("./helpers/shared/constants");
+const { READER_ROLE, WARD_ROLE } = require("./helpers/shared/constants");
 const { LOG_TYPE } = require("./helpers/shared/types");
 const { updateEnv } = require("./helpers/utils/env");
 const { logTag, wait } = require("./helpers/utils/tools");
@@ -150,8 +150,8 @@ const deployLiquidation = async () => {
 
     // Whitelisting the auction and the breaker to read the OSM.
     const osmInstance = await hardhat.ethers.getContractAt("OracleSecurityModule", osmAddress);
-    await (await osmInstance.kiss(dutchAuctionAddress)).wait();
-    await (await osmInstance.kiss(circuitBreakerAddress)).wait();
+    await (await osmInstance.grantRole(READER_ROLE, dutchAuctionAddress)).wait();
+    await (await osmInstance.grantRole(READER_ROLE, circuitBreakerAddress)).wait();
 
     // Wiring authorizations across the ledger and the stack.
     await (await vaultEngineInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();

@@ -48,10 +48,16 @@ contract PriceConverter is IPriceConverter, AccessControl {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
+        if (address(vaultEngine_) == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
 
         VAULT_ENGINE = vaultEngine_;
+
         par = _RAY;
         live = 1;
     }
@@ -61,20 +67,20 @@ contract PriceConverter is IPriceConverter, AccessControl {
     /**
      * @inheritdoc IPriceConverter
      */
-    function file(bytes32 ilkId, bytes32 what, address pip_) external onlyRole(_WARD_ROLE) {
+    function file(bytes32 ilkId, bytes32 what, address pip) external onlyRole(_WARD_ROLE) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
 
         if (what == "pip") {
             // Assigning an oracle makes the ilk oracle-backed. The kinds are mutually exclusive.
-            ilks[ilkId].pip = IOracleSecurityModule(pip_);
+            ilks[ilkId].pip = IOracleSecurityModule(pip);
             ilks[ilkId].fixedPrice = false;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
 
-        emit File({ ilkId: ilkId, what: what, pip: pip_ });
+        emit File({ ilkId: ilkId, what: what, pip: pip });
     }
 
     /**

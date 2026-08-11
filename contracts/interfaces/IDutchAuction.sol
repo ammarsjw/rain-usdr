@@ -238,11 +238,11 @@ interface IDutchAuction {
      * @notice Returns the status of an auction.
      * @param id Identifier of the auction.
      * @return needsRedo Whether the auction needs a reset.
-     * @return price_ The current price [ray].
+     * @return price The current price [ray].
      * @return lot Collateral remaining [wad].
      * @return tab Debt remaining [rad].
      */
-    function getStatus(uint256 id) external view returns (bool needsRedo, uint256 price_, uint256 lot, uint256 tab);
+    function getStatus(uint256 id) external view returns (bool needsRedo, uint256 price, uint256 lot, uint256 tab);
 
     /**
      * @notice Returns the identifier of the collateral type this auction house serves.

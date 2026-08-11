@@ -6,7 +6,7 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 
 import { IGovernor } from "../interfaces/IGovernor.sol";
 import { _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, NotAuthorized, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, NotAuthorized, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -48,7 +48,12 @@ contract Governor is IGovernor, AccessControl {
      * @param delay_ The mandatory delay in seconds.
      */
     constructor(uint256 delay_) {
+        if (delay_ == 0) {
+            _revert(InvalidAmount.selector);
+        }
+
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
 
         delay = delay_;
@@ -102,14 +107,17 @@ contract Governor is IGovernor, AccessControl {
         if (change.target == address(0)) {
             _revert(NotScheduled.selector);
         }
+
         // The change must not have been cancelled.
         if (change.cancelled) {
             _revert(ChangeCancelled.selector);
         }
+
         // The change must not have already been executed.
         if (change.executed) {
             _revert(AlreadyExecuted.selector);
         }
+
         // The delay must have fully elapsed.
         if (block.timestamp < change.eta) {
             _revert(DelayNotElapsed.selector);
@@ -118,7 +126,9 @@ contract Governor is IGovernor, AccessControl {
         change.executed = true;
 
         bool success;
+
         (success, out) = change.target.call(change.data);
+
         if (!success) {
             _revert(ExecutionFailed.selector);
         }
@@ -135,6 +145,7 @@ contract Governor is IGovernor, AccessControl {
         if (change.target == address(0)) {
             _revert(NotScheduled.selector);
         }
+
         if (change.executed) {
             _revert(AlreadyExecuted.selector);
         }

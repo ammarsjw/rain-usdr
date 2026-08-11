@@ -60,6 +60,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
      */
     constructor() {
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
 
         live = 1;
@@ -205,6 +206,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
 
         int256 dtab = Math.mul(ilk.rate, dart);
         uint256 tab = ilk.rate * urn.art;
+
         debt = Math.add(debt, dtab);
 
         // Ceiling check: either debt is being repaid, or both the ilk ceiling and the global ceiling must hold after
@@ -212,6 +214,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
         if (dart > 0 && (ilk.globalArt * ilk.rate > ilk.line || debt > globalLine)) {
             _revert(CeilingExceeded.selector);
         }
+
         // Safety check: the vault must be either safer than before, or safe after the change. Uses the delayed oracle
         // price factor already stored in the system.
         if (!Math.both(dart <= 0, dink >= 0) && tab > urn.ink * ilk.spot) {
@@ -223,9 +226,11 @@ contract VaultEngine is IVaultEngine, AccessControl {
         if (!Math.both(dart <= 0, dink >= 0) && !_wish(u, msg.sender)) {
             _revert(NotAllowed.selector);
         }
+
         if (dink > 0 && !_wish(v, msg.sender)) {
             _revert(NotAllowed.selector);
         }
+
         if (dart < 0 && !_wish(w, msg.sender)) {
             _revert(NotAllowed.selector);
         }
@@ -301,7 +306,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @param operator Account being queried.
      * @return hasPermission Whether the operator has management permission.
      */
-    function _wish(address owner, address operator) internal view returns (bool) {
+    function _wish(address owner, address operator) private view returns (bool) {
         return owner == operator || can[owner][operator] == 1;
     }
 }

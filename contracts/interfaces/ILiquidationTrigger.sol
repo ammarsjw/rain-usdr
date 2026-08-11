@@ -147,9 +147,9 @@ interface ILiquidationTrigger {
      * @notice Assigns the Dutch auction contract for a collateral type {clip}.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
-     * @param clip_ Address of the Dutch auction contract.
+     * @param clip Address of the Dutch auction contract.
      */
-    function file(bytes32 ilkId, bytes32 what, address clip_) external;
+    function file(bytes32 ilkId, bytes32 what, address clip) external;
 
     /**
      * @notice Shuts the trigger down.

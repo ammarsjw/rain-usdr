@@ -7,7 +7,7 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 import { IBalanceSheet } from "../interfaces/IBalanceSheet.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _WARD_ROLE } from "../shared/Constants.sol";
-import { UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -38,7 +38,12 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
+        if (address(vaultEngine_) == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
 
         VAULT_ENGINE = vaultEngine_;
@@ -86,6 +91,7 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         if (rad > VAULT_ENGINE.usdr(address(this))) {
             _revert(InsufficientSurplus.selector);
         }
+
         if (rad > VAULT_ENGINE.sin(address(this))) {
             _revert(InsufficientDebt.selector);
         }
@@ -122,6 +128,7 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         if (surplus <= hump) {
             _revert(BufferBelowTarget.selector);
         }
+
         if (buybackReceiver == address(0)) {
             _revert(NoBuybackReceiver.selector);
         }

@@ -111,14 +111,9 @@ interface IPegStabilityModule {
     function buyStable(bytes32 ilkId, address user, uint256 stableAmt) external;
 
     /**
-     * @notice Returns the USDR token.
+     * @notice Returns the token adapter, a single instance that bridges both stablecoins and USDR.
      */
-    function USDR() external view returns (IUSDR);
-
-    /**
-     * @notice Returns the Vault Engine this module reports to.
-     */
-    function VAULT_ENGINE() external view returns (IVaultEngine);
+    function COLLATERAL_ADAPTER() external view returns (ICollateralAdapter);
 
     /**
      * @notice Returns the reserve accounting contract that reports free slack.
@@ -126,9 +121,14 @@ interface IPegStabilityModule {
     function RESERVE_ACCOUNTING() external view returns (IReserveAccounting);
 
     /**
-     * @notice Returns the token adapter, a single instance that bridges both stablecoins and USDR.
+     * @notice Returns the Vault Engine this module reports to.
      */
-    function COLLATERAL_ADAPTER() external view returns (ICollateralAdapter);
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the USDR token.
+     */
+    function USDR() external view returns (IUSDR);
 
     /**
      * @notice Returns the configuration of a stablecoin ilk.

@@ -51,9 +51,11 @@ library Math {
         unchecked {
             z = x + uint256(y);
         }
+
         if (y < 0 && z > x) {
             _revert(AddUnderflow.selector);
         }
+
         if (y > 0 && z < x) {
             _revert(AddOverflow.selector);
         }
@@ -69,9 +71,11 @@ library Math {
         unchecked {
             z = x - uint256(y);
         }
+
         if (y > 0 && z > x) {
             _revert(SubUnderflow.selector);
         }
+
         if (y < 0 && z < x) {
             _revert(SubOverflow.selector);
         }
@@ -85,9 +89,11 @@ library Math {
      */
     function mul(uint256 x, int256 y) internal pure returns (int256 z) {
         z = int256(x) * y;
+
         if (int256(x) < 0) {
             _revert(MulOverflow.selector);
         }
+
         if (y != 0 && z / y != int256(x)) {
             _revert(MulOverflow.selector);
         }

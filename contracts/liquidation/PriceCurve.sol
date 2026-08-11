@@ -30,6 +30,7 @@ contract PriceCurve is IPriceCurve, AccessControl {
      */
     constructor() {
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
     }
 

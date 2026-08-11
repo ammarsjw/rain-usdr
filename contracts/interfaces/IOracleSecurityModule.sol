@@ -21,7 +21,7 @@ interface IOracleSecurityModule {
     /// @dev Per-collateral oracle state.
     struct Ilk {
         IPriceSource src;
-        uint64 zzz;
+        uint64 delay;
         uint256 stopped;
         Feed cur;
         Feed nxt;
@@ -53,18 +53,6 @@ interface IOracleSecurityModule {
      * @param src Address of the new price source.
      */
     event Change(bytes32 indexed ilkId, address indexed src);
-
-    /**
-     * @dev Emitted when a reader is whitelisted.
-     * @param account Address granted read access.
-     */
-    event Kiss(address indexed account);
-
-    /**
-     * @dev Emitted when a reader's whitelist entry is revoked.
-     * @param account Address that lost read access.
-     */
-    event Diss(address indexed account);
 
     /**
      * @dev Emitted when a collateral's price advances.
@@ -113,21 +101,9 @@ interface IOracleSecurityModule {
      * @dev Future updates read from the new source. Consumers keep reading the same current price until the next poke
      *      cycle completes.
      * @param ilkId Identifier of the collateral type.
-     * @param src_ Address of the price source.
+     * @param newSrc Address of the new price source.
      */
-    function change(bytes32 ilkId, IPriceSource src_) external;
-
-    /**
-     * @notice Whitelists a contract to read prices.
-     * @param account Address being granted read access.
-     */
-    function kiss(address account) external;
-
-    /**
-     * @notice Revokes a contract's permission to read prices.
-     * @param account Address losing read access.
-     */
-    function diss(address account) external;
+    function change(bytes32 ilkId, IPriceSource newSrc) external;
 
     /**
      * @notice Advances a collateral's price: the next price becomes current and a fresh price is read from the source
@@ -147,9 +123,9 @@ interface IOracleSecurityModule {
     /**
      * @notice Returns the timestamp of the start of a collateral's current delay window.
      * @param ilkId Identifier of the collateral type.
-     * @return zzz The window start timestamp.
+     * @return delay The window start timestamp.
      */
-    function zzz(bytes32 ilkId) external view returns (uint64);
+    function delay(bytes32 ilkId) external view returns (uint64);
 
     /**
      * @notice Returns whether a collateral's price updates are frozen.

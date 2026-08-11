@@ -29,7 +29,7 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     uint16 public constant HOP = 1800;
 
     /// @dev Oracle state per collateral type.
-    mapping(bytes32 ilkId => Ilk ilk) internal _ilks;
+    mapping(bytes32 ilkId => Ilk ilk) private _ilks;
 
     /* ========================== CONSTRUCTOR ========================== */
 
@@ -37,7 +37,9 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
      * @notice Authorizes the deployer.
      */
     constructor() {
+        _setRoleAdmin(_READER_ROLE, _WARD_ROLE);
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
     }
 
@@ -75,36 +77,14 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function change(bytes32 ilkId, IPriceSource src_) external onlyRole(_WARD_ROLE) {
-        if (address(src_) == address(0)) {
+    function change(bytes32 ilkId, IPriceSource newSrc) external onlyRole(_WARD_ROLE) {
+        if (address(newSrc) == address(0)) {
             _revert(InvalidAddress.selector);
         }
 
-        _ilks[ilkId].src = src_;
+        _ilks[ilkId].src = newSrc;
 
-        emit Change({ ilkId: ilkId, src: address(src_) });
-    }
-
-    /**
-     * @inheritdoc IOracleSecurityModule
-     */
-    function kiss(address account) external onlyRole(_WARD_ROLE) {
-        if (account == address(0)) {
-            _revert(InvalidAddress.selector);
-        }
-
-        _grantRole(_READER_ROLE, account);
-
-        emit Kiss({ account: account });
-    }
-
-    /**
-     * @inheritdoc IOracleSecurityModule
-     */
-    function diss(address account) external onlyRole(_WARD_ROLE) {
-        _revokeRole(_READER_ROLE, account);
-
-        emit Diss({ account: account });
+        emit Change({ ilkId: ilkId, src: address(newSrc) });
     }
 
     /**
@@ -117,10 +97,12 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
         if (address(ilk.src) == address(0)) {
             _revert(InvalidAddress.selector);
         }
+
         // The collateral's feed must not be stopped.
         if (ilk.stopped != 0) {
             _revert(NotLive.selector);
         }
+
         // At least 30 minutes must have passed since the last update.
         if (!pass(ilkId)) {
             _revert(NotPassed.selector);
@@ -131,7 +113,7 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
         if (ok) {
             ilk.cur = ilk.nxt;
             ilk.nxt = Feed(uint128(uint256(wut)), 1);
-            ilk.zzz = uint64(block.timestamp - (block.timestamp % HOP));
+            ilk.delay = uint64(block.timestamp - (block.timestamp % HOP));
 
             emit Poke({ ilkId: ilkId, current: ilk.cur.val, next: ilk.nxt.val });
         }
@@ -147,8 +129,8 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     /**
      * @inheritdoc IOracleSecurityModule
      */
-    function zzz(bytes32 ilkId) external view returns (uint64) {
-        return _ilks[ilkId].zzz;
+    function delay(bytes32 ilkId) external view returns (uint64) {
+        return _ilks[ilkId].delay;
     }
 
     /**
@@ -192,6 +174,6 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
      * @inheritdoc IOracleSecurityModule
      */
     function pass(bytes32 ilkId) public view returns (bool) {
-        return block.timestamp >= _ilks[ilkId].zzz + HOP;
+        return block.timestamp >= _ilks[ilkId].delay + HOP;
     }
 }

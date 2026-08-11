@@ -64,9 +64,9 @@ interface IPriceConverter {
      * @notice Assigns which oracle a collateral type reads from.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter {pip}.
-     * @param pip_ Address of the Oracle Security Module.
+     * @param pip Address of the Oracle Security Module.
      */
-    function file(bytes32 ilkId, bytes32 what, address pip_) external;
+    function file(bytes32 ilkId, bytes32 what, address pip) external;
 
     /**
      * @notice Updates a global parameter {par}.

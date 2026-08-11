@@ -67,9 +67,9 @@ interface ICollateralAdapter {
      * @notice Registers an ilk with its token. This is how new tokens are added to the module. Registering under
      *         {_USDR_ILK} marks the ilk as the USDR ilk (mint and burn behaviour).
      * @param ilkId Identifier of the ilk.
-     * @param token_ Address of the token the ilk bridges.
+     * @param token Address of the token the ilk bridges.
      */
-    function init(bytes32 ilkId, IERC20Metadata token_) external;
+    function init(bytes32 ilkId, IERC20Metadata token) external;
 
     /**
      * @notice Shuts an ilk down. Blocks deposits on collateral ilks and minting on the USDR ilk. The opposite

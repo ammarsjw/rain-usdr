@@ -11,7 +11,7 @@ import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
 import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -57,10 +57,16 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
+        if (address(vaultEngine_) == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
 
         VAULT_ENGINE = vaultEngine_;
+
         throttle = _WAD / 5;
         live = 1;
     }
@@ -119,14 +125,14 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function file(bytes32 ilkId, bytes32 what, address clip_) external onlyRole(_WARD_ROLE) {
+    function file(bytes32 ilkId, bytes32 what, address clip) external onlyRole(_WARD_ROLE) {
         if (what == "clip") {
-            ilks[ilkId].clip = clip_;
+            ilks[ilkId].clip = clip;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
 
-        emit File({ ilkId: ilkId, what: what, addr: clip_ });
+        emit File({ ilkId: ilkId, what: what, addr: clip });
     }
 
     /**
@@ -147,13 +153,16 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         }
 
         (uint256 ink, uint256 art) = VAULT_ENGINE.urns(ilkId, urn);
+
         IlkLiquidation memory milk = ilks[ilkId];
+
         uint256 dart;
         uint256 rate;
         uint256 dust;
 
         {
             uint256 spot;
+
             (, rate, spot, , dust) = VAULT_ENGINE.ilks(ilkId);
 
             // Unsafe check: the vault's collateral value must be less than its debt.
@@ -196,6 +205,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         if (dink == 0) {
             _revert(NullAuction.selector);
         }
+
         if (dart > 2 ** 255 || dink > 2 ** 255) {
             _revert(Overflow.selector);
         }
@@ -204,11 +214,13 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         VAULT_ENGINE.grab(ilkId, urn, milk.clip, address(balanceSheet), -int256(dink), -int256(dart));
 
         uint256 due = dart * rate;
+
         balanceSheet.fess(due);
 
         {
             // The debt to recover is increased by the liquidation penalty (13%).
             uint256 tab = (due * milk.chop) / _WAD;
+
             globalDirt += tab;
             ilks[ilkId].dirt += tab;
 

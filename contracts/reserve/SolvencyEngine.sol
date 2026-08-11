@@ -9,7 +9,7 @@ import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -51,11 +51,17 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      * @param reserveAccounting_ Address of the reserve accounting contract.
      */
     constructor(IVaultEngine vaultEngine_, IReserveAccounting reserveAccounting_) {
+        if (address(vaultEngine_) == address(0) || address(reserveAccounting_) == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
 
         VAULT_ENGINE = vaultEngine_;
         RESERVE_ACCOUNTING = reserveAccounting_;
+
         stressMarkdown = _WAD / 2;
         stressDepth = (_WAD * 35) / 100;
     }
@@ -104,6 +110,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      */
     function checkInvariant() external returns (uint256 loss, uint256 reserve) {
         loss = worstCaseLoss();
+
         reserve = RESERVE_ACCOUNTING.totalReserve();
 
         // The master rule: worst-case loss must never exceed the stable reserve.
@@ -127,6 +134,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
 
         for (uint256 i; i < volatileIlksLength; ++i) {
             bytes32 ilkId = volatileIlks[i];
+
             (uint256 globalArt, uint256 rate, uint256 spot, , ) = VAULT_ENGINE.ilks(ilkId);
 
             // Total debt against this collateral [wad].

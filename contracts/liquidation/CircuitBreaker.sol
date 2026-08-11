@@ -7,7 +7,7 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 import { ICircuitBreaker } from "../interfaces/ICircuitBreaker.sol";
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidBytes, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -61,11 +61,20 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
      * @param ilkId_ Identifier of the collateral type to watch.
      */
     constructor(IOracleSecurityModule pip_, bytes32 ilkId_) {
+        if (address(pip_) == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
+        if (ilkId_ == bytes32(0)) {
+            _revert(InvalidBytes.selector);
+        }
+
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
+
         _grantRole(_WARD_ROLE, msg.sender);
 
-        PIP = pip_;
         ILK_ID = ilkId_;
+        PIP = pip_;
 
         threshold = _WAD / 4;
         calmBlocks = 3;
@@ -141,7 +150,7 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
      * @param trend The trend anchor price [wad].
      * @return deviation The relative deviation [wad].
      */
-    function _deviation(uint256 current, uint256 trend) internal pure returns (uint256) {
+    function _deviation(uint256 current, uint256 trend) private pure returns (uint256) {
         if (trend == 0) {
             return 0;
         }
