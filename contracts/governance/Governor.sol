@@ -24,13 +24,13 @@ contract Governor is IGovernor, AccessControl {
     uint256 public constant PAUSE_MAX = 72 hours;
 
     /// @inheritdoc IGovernor
+    bytes32 public pauseScope;
+
+    /// @inheritdoc IGovernor
     uint256 public delay;
 
     /// @inheritdoc IGovernor
     uint256 public pausedAt;
-
-    /// @inheritdoc IGovernor
-    bytes32 public pauseScope;
 
     /// @inheritdoc IGovernor
     uint256 public changeCount;

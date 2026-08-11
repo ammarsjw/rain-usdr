@@ -26,10 +26,10 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
     IVaultEngine public immutable VAULT_ENGINE;
 
     /// @inheritdoc IBalanceSheet
-    address public buybackReceiver;
+    uint256 public hump;
 
     /// @inheritdoc IBalanceSheet
-    uint256 public hump;
+    address public buybackReceiver;
 
     /* ========================== CONSTRUCTOR ========================== */
 

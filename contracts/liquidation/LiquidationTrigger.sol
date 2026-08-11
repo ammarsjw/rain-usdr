@@ -30,12 +30,6 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     IVaultEngine public immutable VAULT_ENGINE;
 
     /// @inheritdoc ILiquidationTrigger
-    IBalanceSheet public balanceSheet;
-
-    /// @inheritdoc ILiquidationTrigger
-    ICircuitBreaker public circuitBreaker;
-
-    /// @inheritdoc ILiquidationTrigger
     uint256 public globalHole;
 
     /// @inheritdoc ILiquidationTrigger
@@ -46,6 +40,12 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
 
     /// @inheritdoc ILiquidationTrigger
     uint256 public live;
+
+    /// @inheritdoc ILiquidationTrigger
+    IBalanceSheet public balanceSheet;
+
+    /// @inheritdoc ILiquidationTrigger
+    ICircuitBreaker public circuitBreaker;
 
     /// @inheritdoc ILiquidationTrigger
     mapping(bytes32 ilkId => IlkLiquidation liquidation) public ilks;

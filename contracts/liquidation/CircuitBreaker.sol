@@ -27,10 +27,10 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
     uint256 public constant TREND_WINDOW = 3600;
 
     /// @inheritdoc ICircuitBreaker
-    IOracleSecurityModule public immutable PIP;
+    bytes32 public immutable ILK_ID;
 
     /// @inheritdoc ICircuitBreaker
-    bytes32 public immutable ILK_ID;
+    IOracleSecurityModule public immutable PIP;
 
     /// @inheritdoc ICircuitBreaker
     uint256 public threshold;

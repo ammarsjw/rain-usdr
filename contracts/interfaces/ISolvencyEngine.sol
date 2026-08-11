@@ -45,38 +45,6 @@ interface ISolvencyEngine {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Returns the Vault Engine this engine reports to.
-     */
-    function VAULT_ENGINE() external view returns (IVaultEngine);
-
-    /**
-     * @notice Returns the reserve accounting contract.
-     */
-    function RESERVE_ACCOUNTING() external view returns (IReserveAccounting);
-
-    /**
-     * @notice Returns the prediction market layer's exposure reporter. May be unset at launch.
-     */
-    function externalExposure() external view returns (IExternalExposure);
-
-    /**
-     * @notice Returns the stress markdown applied to volatile asset prices [wad]. 50% = 0.5 * WAD.
-     */
-    function stressMarkdown() external view returns (uint256);
-
-    /**
-     * @notice Returns the assumed liquidation market depth under stress [wad]. 35% = 0.35 * WAD.
-     */
-    function stressDepth() external view returns (uint256);
-
-    /**
-     * @notice Returns a volatile collateral type included in the stress calculation.
-     * @param index Position in the volatile collateral list.
-     * @return The collateral type identifier.
-     */
-    function volatileIlks(uint256 index) external view returns (bytes32);
-
-    /**
      * @notice Adjusts a stress parameter {stressMarkdown} or {stressDepth}.
      * @param what Name of the parameter.
      * @param data New value [wad].
@@ -112,4 +80,36 @@ interface ISolvencyEngine {
      * @return loss The worst-case loss under stress [wad].
      */
     function worstCaseLoss() external view returns (uint256 loss);
+
+    /**
+     * @notice Returns the Vault Engine this engine reports to.
+     */
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the reserve accounting contract.
+     */
+    function RESERVE_ACCOUNTING() external view returns (IReserveAccounting);
+
+    /**
+     * @notice Returns the stress markdown applied to volatile asset prices [wad]. 50% = 0.5 * WAD.
+     */
+    function stressMarkdown() external view returns (uint256);
+
+    /**
+     * @notice Returns the assumed liquidation market depth under stress [wad]. 35% = 0.35 * WAD.
+     */
+    function stressDepth() external view returns (uint256);
+
+    /**
+     * @notice Returns the prediction market layer's exposure reporter. May be unset at launch.
+     */
+    function externalExposure() external view returns (IExternalExposure);
+
+    /**
+     * @notice Returns a volatile collateral type included in the stress calculation.
+     * @param index Position in the volatile collateral list.
+     * @return The collateral type identifier.
+     */
+    function volatileIlks(uint256 index) external view returns (bytes32);
 }

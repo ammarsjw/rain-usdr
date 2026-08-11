@@ -2,6 +2,8 @@
 
 pragma solidity 0.8.30;
 
+/* ========================== FREE ERRORS ========================== */
+
 /**
  * @dev Indicates that an ilk has already been initialized.
  */

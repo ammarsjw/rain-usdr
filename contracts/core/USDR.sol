@@ -8,7 +8,7 @@ import { ERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/ERC2
 
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, InvalidAmount } from "../shared/Errors.sol";
+import { InvalidAmount } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -37,9 +37,6 @@ contract USDR is IUSDR, ERC20, ERC20Permit, AccessControl {
      * @inheritdoc IUSDR
      */
     function mint(address to, uint256 amount) external onlyRole(_WARD_ROLE) {
-        if (to == address(0)) {
-            _revert(InvalidAddress.selector);
-        }
         if (amount == 0) {
             _revert(InvalidAmount.selector);
         }

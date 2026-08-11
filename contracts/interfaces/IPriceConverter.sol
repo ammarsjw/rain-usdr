@@ -61,30 +61,6 @@ interface IPriceConverter {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Returns the Vault Engine this converter reports to.
-     */
-    function VAULT_ENGINE() external view returns (IVaultEngine);
-
-    /**
-     * @notice Returns the target dollar value of USDR [ray]. Fixed at 1.0.
-     */
-    function par() external view returns (uint256);
-
-    /**
-     * @notice Returns the liveness flag. `1` while live, `0` after shutdown.
-     */
-    function live() external view returns (uint256);
-
-    /**
-     * @notice Returns a collateral type's oracle configuration.
-     * @param ilkId Identifier of the collateral type.
-     * @return pip The collateral's Oracle Security Module. Zero for fixed-price ilks.
-     * @return mat The required collateralization ratio [ray].
-     * @return fixedPrice Whether the ilk is a supported stablecoin pinned to $1.
-     */
-    function ilks(bytes32 ilkId) external view returns (IOracleSecurityModule pip, uint256 mat, bool fixedPrice);
-
-    /**
      * @notice Assigns which oracle a collateral type reads from.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter {pip}.
@@ -122,4 +98,28 @@ interface IPriceConverter {
      * @param ilkId Identifier of the collateral type.
      */
     function poke(bytes32 ilkId) external;
+
+    /**
+     * @notice Returns the Vault Engine this converter reports to.
+     */
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the target dollar value of USDR [ray]. Fixed at 1.0.
+     */
+    function par() external view returns (uint256);
+
+    /**
+     * @notice Returns the liveness flag. `1` while live, `0` after shutdown.
+     */
+    function live() external view returns (uint256);
+
+    /**
+     * @notice Returns a collateral type's oracle configuration.
+     * @param ilkId Identifier of the collateral type.
+     * @return pip The collateral's Oracle Security Module. Zero for fixed-price ilks.
+     * @return mat The required collateralization ratio [ray].
+     * @return fixedPrice Whether the ilk is a supported stablecoin pinned to $1.
+     */
+    function ilks(bytes32 ilkId) external view returns (IOracleSecurityModule pip, uint256 mat, bool fixedPrice);
 }

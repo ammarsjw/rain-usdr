@@ -65,16 +65,6 @@ interface IReserveAccounting {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Returns the total stable reserve (all USDT and USDC held) [wad].
-     */
-    function totalReserve() external view returns (uint256);
-
-    /**
-     * @notice Returns the amount committed to guaranteed obligations, the settlement escrow [wad].
-     */
-    function committedEscrow() external view returns (uint256);
-
-    /**
      * @notice Allows a contract (a Peg Stability Module) to record reserve movements.
      * @param account Address being granted recorder rights.
      */
@@ -122,4 +112,14 @@ interface IReserveAccounting {
      * @return slack Total reserve minus committed escrow [wad].
      */
     function freeSlack() external view returns (uint256);
+
+    /**
+     * @notice Returns the total stable reserve (all USDT and USDC held) [wad].
+     */
+    function totalReserve() external view returns (uint256);
+
+    /**
+     * @notice Returns the amount committed to guaranteed obligations, the settlement escrow [wad].
+     */
+    function committedEscrow() external view returns (uint256);
 }

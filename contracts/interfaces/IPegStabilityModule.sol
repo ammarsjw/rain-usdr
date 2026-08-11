@@ -77,38 +77,6 @@ interface IPegStabilityModule {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Returns the USDR token.
-     */
-    function USDR() external view returns (IUSDR);
-
-    /**
-     * @notice Returns the Vault Engine this module reports to.
-     */
-    function VAULT_ENGINE() external view returns (IVaultEngine);
-
-    /**
-     * @notice Returns the reserve accounting contract that reports free slack.
-     */
-    function RESERVE_ACCOUNTING() external view returns (IReserveAccounting);
-
-    /**
-     * @notice Returns the token adapter, a single instance that bridges both stablecoins and USDR.
-     */
-    function COLLATERAL_ADAPTER() external view returns (ICollateralAdapter);
-
-    /**
-     * @notice Returns the configuration of a stablecoin ilk.
-     * @param ilkId Identifier of the stablecoin's collateral type.
-     * @return token The stablecoin.
-     * @return to18ConversionFactor Decimal conversion factor between the stablecoin and 18 decimals.
-     * @return tin Mint fee [wad].
-     * @return tout Redeem fee [wad].
-     */
-    function ilks(
-        bytes32 ilkId
-    ) external view returns (IERC20Metadata token, uint256 to18ConversionFactor, uint256 tin, uint256 tout);
-
-    /**
      * @notice Registers a stablecoin ilk. This is how new stablecoins are added to the module.
      * @dev The ilk must already be registered with the Collateral Adapter, and must not be the USDR ilk. The token and
      *      its decimals are read from the adapter.
@@ -141,4 +109,36 @@ interface IPegStabilityModule {
      * @param stableAmt Stablecoin amount, in the token's native decimals.
      */
     function buyStable(bytes32 ilkId, address user, uint256 stableAmt) external;
+
+    /**
+     * @notice Returns the USDR token.
+     */
+    function USDR() external view returns (IUSDR);
+
+    /**
+     * @notice Returns the Vault Engine this module reports to.
+     */
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the reserve accounting contract that reports free slack.
+     */
+    function RESERVE_ACCOUNTING() external view returns (IReserveAccounting);
+
+    /**
+     * @notice Returns the token adapter, a single instance that bridges both stablecoins and USDR.
+     */
+    function COLLATERAL_ADAPTER() external view returns (ICollateralAdapter);
+
+    /**
+     * @notice Returns the configuration of a stablecoin ilk.
+     * @param ilkId Identifier of the stablecoin's collateral type.
+     * @return token The stablecoin.
+     * @return to18ConversionFactor Decimal conversion factor between the stablecoin and 18 decimals.
+     * @return tin Mint fee [wad].
+     * @return tout Redeem fee [wad].
+     */
+    function ilks(
+        bytes32 ilkId
+    ) external view returns (IERC20Metadata token, uint256 to18ConversionFactor, uint256 tin, uint256 tout);
 }

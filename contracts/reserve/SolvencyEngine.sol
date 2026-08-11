@@ -32,13 +32,13 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
     IReserveAccounting public immutable RESERVE_ACCOUNTING;
 
     /// @inheritdoc ISolvencyEngine
-    IExternalExposure public externalExposure;
-
-    /// @inheritdoc ISolvencyEngine
     uint256 public stressMarkdown;
 
     /// @inheritdoc ISolvencyEngine
     uint256 public stressDepth;
+
+    /// @inheritdoc ISolvencyEngine
+    IExternalExposure public externalExposure;
 
     /// @inheritdoc ISolvencyEngine
     bytes32[] public volatileIlks;

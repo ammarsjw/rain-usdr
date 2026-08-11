@@ -40,19 +40,33 @@ interface ICircuitBreaker {
     /* ========================== FUNCTIONS ========================== */
 
     /**
+     * @notice Adjusts the deviation threshold {threshold} or the number of calm blocks needed to reset {calmBlocks}.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
+    function file(bytes32 what, uint256 data) external;
+
+    /**
+     * @notice Determines whether prices are moving abnormally and sets the breaker on or off.
+     * @dev Public, anyone can call. Activates above the threshold. Deactivates after the required consecutive calm
+     *      blocks.
+     */
+    function check() external;
+
+    /**
      * @notice Returns the trend window in seconds (one hour).
      */
     function TREND_WINDOW() external view returns (uint256);
 
     /**
-     * @notice Returns the Oracle Security Module being watched.
-     */
-    function PIP() external view returns (IOracleSecurityModule);
-
-    /**
      * @notice Returns the identifier of the collateral type whose price is being watched.
      */
     function ILK_ID() external view returns (bytes32);
+
+    /**
+     * @notice Returns the Oracle Security Module being watched.
+     */
+    function PIP() external view returns (IOracleSecurityModule);
 
     /**
      * @notice Returns the deviation threshold that activates the breaker [wad].
@@ -88,18 +102,4 @@ interface ICircuitBreaker {
      * @notice Reports whether the breaker is currently active, meaning liquidations are being throttled.
      */
     function active() external view returns (bool);
-
-    /**
-     * @notice Adjusts the deviation threshold {threshold} or the number of calm blocks needed to reset {calmBlocks}.
-     * @param what Name of the parameter.
-     * @param data New value.
-     */
-    function file(bytes32 what, uint256 data) external;
-
-    /**
-     * @notice Determines whether prices are moving abnormally and sets the breaker on or off.
-     * @dev Public, anyone can call. Activates above the threshold. Deactivates after the required consecutive calm
-     *      blocks.
-     */
-    function check() external;
 }

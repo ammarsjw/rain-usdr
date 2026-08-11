@@ -170,114 +170,6 @@ interface IDutchAuction {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Returns the Vault Engine this auction house reports to.
-     */
-    function VAULT_ENGINE() external view returns (IVaultEngine);
-
-    /**
-     * @notice Returns the identifier of the collateral type this auction house serves.
-     */
-    function ILK_ID() external view returns (bytes32);
-
-    /**
-     * @notice Returns the liquidation trigger.
-     */
-    function dog() external view returns (ILiquidationTrigger);
-
-    /**
-     * @notice Returns the collateral's Oracle Security Module, used for the starting price.
-     */
-    function pip() external view returns (IOracleSecurityModule);
-
-    /**
-     * @notice Returns the price curve calculator.
-     */
-    function calc() external view returns (IPriceCurve);
-
-    /**
-     * @notice Returns the balance sheet that receives auction proceeds.
-     */
-    function vow() external view returns (address);
-
-    /**
-     * @notice Returns the auction start markup [ray]. 5% = 1.05 * RAY.
-     */
-    function buf() external view returns (uint256);
-
-    /**
-     * @notice Returns the reset time in seconds, after which a stale auction may be reset.
-     */
-    function tail() external view returns (uint256);
-
-    /**
-     * @notice Returns the reset threshold [ray], below which a stale auction may be reset.
-     */
-    function cusp() external view returns (uint256);
-
-    /**
-     * @notice Returns the keeper reward as a fraction of tab [wad]. 2% = 0.02 * WAD.
-     */
-    function chip() external view returns (uint64);
-
-    /**
-     * @notice Returns the flat keeper reward [rad]. Zero for USDR, only the percentage is paid.
-     */
-    function tip() external view returns (uint192);
-
-    /**
-     * @notice Returns the auction id counter, the number of auctions started so far.
-     */
-    function kicks() external view returns (uint256);
-
-    /**
-     * @notice Returns the liveness flag. `1` while live, `0` after shutdown.
-     */
-    function live() external view returns (uint256);
-
-    /**
-     * @notice Returns the id of an active auction by its position.
-     * @param index Position in the active auctions array.
-     * @return auctionId The auction id.
-     */
-    function active(uint256 index) external view returns (uint256);
-
-    /**
-     * @notice Returns a live auction's details.
-     * @param id Identifier of the auction.
-     * @return pos Index in the active auctions array.
-     * @return tab USDR debt to recover, including the penalty [rad].
-     * @return lot Collateral for sale [wad].
-     * @return usr Vault owner who receives any leftover collateral.
-     * @return tic Auction start time.
-     * @return top Starting price [ray].
-     */
-    function sales(
-        uint256 id
-    ) external view returns (uint256 pos, uint256 tab, uint256 lot, address usr, uint96 tic, uint256 top);
-
-    /**
-     * @notice Returns the number of active auctions.
-     * @return auctionCount The active auction count.
-     */
-    function count() external view returns (uint256);
-
-    /**
-     * @notice Returns the ids of all active auctions.
-     * @return auctionIds Array of active auction ids.
-     */
-    function list() external view returns (uint256[] memory);
-
-    /**
-     * @notice Returns the status of an auction.
-     * @param id Identifier of the auction.
-     * @return needsRedo Whether the auction needs a reset.
-     * @return price_ The current price [ray].
-     * @return lot Collateral remaining [wad].
-     * @return tab Debt remaining [rad].
-     */
-    function getStatus(uint256 id) external view returns (bool needsRedo, uint256 price_, uint256 lot, uint256 tab);
-
-    /**
      * @notice Adjusts an auction parameter {buf}, {tail}, {cusp}, {chip} or {tip}.
      * @param what Name of the parameter.
      * @param data New value.
@@ -329,4 +221,112 @@ interface IDutchAuction {
      * @param id Identifier of the auction.
      */
     function yank(uint256 id) external;
+
+    /**
+     * @notice Returns the number of active auctions.
+     * @return auctionCount The active auction count.
+     */
+    function count() external view returns (uint256);
+
+    /**
+     * @notice Returns the ids of all active auctions.
+     * @return auctionIds Array of active auction ids.
+     */
+    function list() external view returns (uint256[] memory);
+
+    /**
+     * @notice Returns the status of an auction.
+     * @param id Identifier of the auction.
+     * @return needsRedo Whether the auction needs a reset.
+     * @return price_ The current price [ray].
+     * @return lot Collateral remaining [wad].
+     * @return tab Debt remaining [rad].
+     */
+    function getStatus(uint256 id) external view returns (bool needsRedo, uint256 price_, uint256 lot, uint256 tab);
+
+    /**
+     * @notice Returns the identifier of the collateral type this auction house serves.
+     */
+    function ILK_ID() external view returns (bytes32);
+
+    /**
+     * @notice Returns the Vault Engine this auction house reports to.
+     */
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the keeper reward as a fraction of tab [wad]. 2% = 0.02 * WAD.
+     */
+    function chip() external view returns (uint64);
+
+    /**
+     * @notice Returns the flat keeper reward [rad]. Zero for USDR, only the percentage is paid.
+     */
+    function tip() external view returns (uint192);
+
+    /**
+     * @notice Returns the auction start markup [ray]. 5% = 1.05 * RAY.
+     */
+    function buf() external view returns (uint256);
+
+    /**
+     * @notice Returns the reset time in seconds, after which a stale auction may be reset.
+     */
+    function tail() external view returns (uint256);
+
+    /**
+     * @notice Returns the reset threshold [ray], below which a stale auction may be reset.
+     */
+    function cusp() external view returns (uint256);
+
+    /**
+     * @notice Returns the auction id counter, the number of auctions started so far.
+     */
+    function kicks() external view returns (uint256);
+
+    /**
+     * @notice Returns the liveness flag. `1` while live, `0` after shutdown.
+     */
+    function live() external view returns (uint256);
+
+    /**
+     * @notice Returns the balance sheet that receives auction proceeds.
+     */
+    function vow() external view returns (address);
+
+    /**
+     * @notice Returns the liquidation trigger.
+     */
+    function dog() external view returns (ILiquidationTrigger);
+
+    /**
+     * @notice Returns the collateral's Oracle Security Module, used for the starting price.
+     */
+    function pip() external view returns (IOracleSecurityModule);
+
+    /**
+     * @notice Returns the price curve calculator.
+     */
+    function calc() external view returns (IPriceCurve);
+
+    /**
+     * @notice Returns the id of an active auction by its position.
+     * @param index Position in the active auctions array.
+     * @return auctionId The auction id.
+     */
+    function active(uint256 index) external view returns (uint256);
+
+    /**
+     * @notice Returns a live auction's details.
+     * @param id Identifier of the auction.
+     * @return pos Index in the active auctions array.
+     * @return tab USDR debt to recover, including the penalty [rad].
+     * @return lot Collateral for sale [wad].
+     * @return usr Vault owner who receives any leftover collateral.
+     * @return tic Auction start time.
+     * @return top Starting price [ray].
+     */
+    function sales(
+        uint256 id
+    ) external view returns (uint256 pos, uint256 tab, uint256 lot, address usr, uint96 tic, uint256 top);
 }

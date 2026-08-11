@@ -64,21 +64,6 @@ interface ICollateralAdapter {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Returns the Vault Engine this adapter reports to.
-     */
-    function VAULT_ENGINE() external view returns (IVaultEngine);
-
-    /**
-     * @notice Returns the configuration and state of an ilk.
-     * @param ilkId Identifier of the ilk.
-     * @return token The token the ilk bridges.
-     * @return dec Decimals of the token.
-     * @return isUsdr Whether the ilk is the USDR ilk.
-     * @return live `1` while live, `0` after shutdown.
-     */
-    function ilks(bytes32 ilkId) external view returns (IERC20Metadata token, uint8 dec, bool isUsdr, uint256 live);
-
-    /**
      * @notice Registers an ilk with its token. This is how new tokens are added to the module. Registering under
      *         {_USDR_ILK} marks the ilk as the USDR ilk (mint and burn behaviour).
      * @param ilkId Identifier of the ilk.
@@ -112,4 +97,19 @@ interface ICollateralAdapter {
      * @param amount Token amount to withdraw, in the token's native decimals.
      */
     function exit(bytes32 ilkId, address user, uint256 amount) external;
+
+    /**
+     * @notice Returns the Vault Engine this adapter reports to.
+     */
+    function VAULT_ENGINE() external view returns (IVaultEngine);
+
+    /**
+     * @notice Returns the configuration and state of an ilk.
+     * @param ilkId Identifier of the ilk.
+     * @return token The token the ilk bridges.
+     * @return dec Decimals of the token.
+     * @return isUsdr Whether the ilk is the USDR ilk.
+     * @return live `1` while live, `0` after shutdown.
+     */
+    function ilks(bytes32 ilkId) external view returns (IERC20Metadata token, uint8 dec, bool isUsdr, uint256 live);
 }

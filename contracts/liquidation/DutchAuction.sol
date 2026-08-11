@@ -28,22 +28,16 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IDutchAuction
-    IVaultEngine public immutable VAULT_ENGINE;
-
-    /// @inheritdoc IDutchAuction
     bytes32 public immutable ILK_ID;
 
     /// @inheritdoc IDutchAuction
-    ILiquidationTrigger public dog;
+    IVaultEngine public immutable VAULT_ENGINE;
 
     /// @inheritdoc IDutchAuction
-    IOracleSecurityModule public pip;
+    uint64 public chip;
 
     /// @inheritdoc IDutchAuction
-    IPriceCurve public calc;
-
-    /// @inheritdoc IDutchAuction
-    address public vow;
+    uint192 public tip;
 
     /// @inheritdoc IDutchAuction
     uint256 public buf;
@@ -55,16 +49,22 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     uint256 public cusp;
 
     /// @inheritdoc IDutchAuction
-    uint64 public chip;
-
-    /// @inheritdoc IDutchAuction
-    uint192 public tip;
-
-    /// @inheritdoc IDutchAuction
     uint256 public kicks;
 
     /// @inheritdoc IDutchAuction
     uint256 public live;
+
+    /// @inheritdoc IDutchAuction
+    address public vow;
+
+    /// @inheritdoc IDutchAuction
+    ILiquidationTrigger public dog;
+
+    /// @inheritdoc IDutchAuction
+    IOracleSecurityModule public pip;
+
+    /// @inheritdoc IDutchAuction
+    IPriceCurve public calc;
 
     /// @inheritdoc IDutchAuction
     uint256[] public active;

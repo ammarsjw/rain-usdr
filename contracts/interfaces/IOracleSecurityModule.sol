@@ -89,32 +89,6 @@ interface IOracleSecurityModule {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Returns the update delay in seconds (30 minutes).
-     */
-    function HOP() external view returns (uint16);
-
-    /**
-     * @notice Returns the price source of a collateral type.
-     * @param ilkId Identifier of the collateral type.
-     * @return src The price source.
-     */
-    function src(bytes32 ilkId) external view returns (IPriceSource);
-
-    /**
-     * @notice Returns the timestamp of the start of a collateral's current delay window.
-     * @param ilkId Identifier of the collateral type.
-     * @return zzz The window start timestamp.
-     */
-    function zzz(bytes32 ilkId) external view returns (uint64);
-
-    /**
-     * @notice Returns whether a collateral's price updates are frozen.
-     * @param ilkId Identifier of the collateral type.
-     * @return stopped Status. `1` when frozen, `0` when updating.
-     */
-    function stopped(bytes32 ilkId) external view returns (uint256);
-
-    /**
      * @notice Freezes a collateral's price updates.
      * @param ilkId Identifier of the collateral type.
      */
@@ -164,6 +138,27 @@ interface IOracleSecurityModule {
     function poke(bytes32 ilkId) external;
 
     /**
+     * @notice Returns the price source of a collateral type.
+     * @param ilkId Identifier of the collateral type.
+     * @return src The price source.
+     */
+    function src(bytes32 ilkId) external view returns (IPriceSource);
+
+    /**
+     * @notice Returns the timestamp of the start of a collateral's current delay window.
+     * @param ilkId Identifier of the collateral type.
+     * @return zzz The window start timestamp.
+     */
+    function zzz(bytes32 ilkId) external view returns (uint64);
+
+    /**
+     * @notice Returns whether a collateral's price updates are frozen.
+     * @param ilkId Identifier of the collateral type.
+     * @return stopped Status. `1` when frozen, `0` when updating.
+     */
+    function stopped(bytes32 ilkId) external view returns (uint256);
+
+    /**
      * @notice Returns a collateral's current (delayed) price with a validity flag.
      * @param ilkId Identifier of the collateral type.
      * @return encodedPrice The price, encoded as bytes32.
@@ -192,4 +187,9 @@ interface IOracleSecurityModule {
      * @return isCallable Whether `poke` may be called.
      */
     function pass(bytes32 ilkId) external view returns (bool);
+
+    /**
+     * @notice Returns the update delay in seconds (30 minutes).
+     */
+    function HOP() external view returns (uint16);
 }
