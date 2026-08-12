@@ -29,7 +29,7 @@ const deployOracles = async () => {
     // Logging tag.
     logTag("Oracles");
 
-    // Deploying the Oracle Security Module (a single instance serving every priced collateral).
+    // Deploying the Oracle Security Module.
     const osmConstructorArguments = [];
     const osmAddress = await deployContract(osmName, osmConstructorArguments);
 

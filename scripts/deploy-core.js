@@ -36,18 +36,20 @@ const deployCore = async () => {
         initialOwnerAddress = deployer.address;
     }
 
-    // Compiling constructor arguments.
+    // Logging tag.
+    logTag("Tokens");
+
+    // Deploying the token and the core ledger.
     const usdrConstructorArguments = [];
-    const vaultEngineConstructorArguments = [];
+    const usdrAddress = await deployContract(usdrName, usdrConstructorArguments);
 
     // Logging tag.
     logTag("Core");
 
-    // Deploying the token and the core ledger.
-    const usdrAddress = await deployContract(usdrName, usdrConstructorArguments);
+    // Deploying the core ledger and the token adapter (a single instance serving USDR and every collateral).
+    const vaultEngineConstructorArguments = [];
     const vaultEngineAddress = await deployContract(vaultEngineName, vaultEngineConstructorArguments);
 
-    // Deploying the token adapter (a single instance serving USDR and every collateral).
     const collateralAdapterConstructorArguments = [vaultEngineAddress];
     const collateralAdapterAddress = await deployContract(collateralAdapterName, collateralAdapterConstructorArguments);
 
