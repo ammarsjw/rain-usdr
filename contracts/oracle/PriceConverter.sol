@@ -57,7 +57,6 @@ contract PriceConverter is IPriceConverter, AccessControl {
         _grantRole(_WARD_ROLE, msg.sender);
 
         VAULT_ENGINE = vaultEngine_;
-
         par = _RAY;
         live = 1;
     }

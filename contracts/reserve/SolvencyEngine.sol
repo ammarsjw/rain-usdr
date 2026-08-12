@@ -61,7 +61,6 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
 
         VAULT_ENGINE = vaultEngine_;
         RESERVE_ACCOUNTING = reserveAccounting_;
-
         stressMarkdown = _WAD / 2;
         stressDepth = (_WAD * 35) / 100;
     }
@@ -110,7 +109,6 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      */
     function checkInvariant() external returns (uint256 loss, uint256 reserve) {
         loss = worstCaseLoss();
-
         reserve = RESERVE_ACCOUNTING.totalReserve();
 
         // The master rule: worst-case loss must never exceed the stable reserve.

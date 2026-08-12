@@ -163,6 +163,7 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
      */
     function read(bytes32 ilkId) external view onlyRole(_READER_ROLE) returns (bytes32) {
         Feed storage cur = _ilks[ilkId].cur;
+
         if (cur.has != 1) {
             _revert(NoCurrentValue.selector);
         }

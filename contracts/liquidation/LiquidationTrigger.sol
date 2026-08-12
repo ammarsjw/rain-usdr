@@ -66,7 +66,6 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         _grantRole(_WARD_ROLE, msg.sender);
 
         VAULT_ENGINE = vaultEngine_;
-
         throttle = _WAD / 5;
         live = 1;
     }
@@ -155,7 +154,6 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         (uint256 ink, uint256 art) = VAULT_ENGINE.urns(ilkId, urn);
 
         IlkLiquidation memory milk = ilks[ilkId];
-
         uint256 dart;
         uint256 rate;
         uint256 dust;

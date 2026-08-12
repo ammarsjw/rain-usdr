@@ -75,7 +75,6 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
 
         ILK_ID = ilkId_;
         PIP = pip_;
-
         threshold = _WAD / 4;
         calmBlocks = 3;
     }

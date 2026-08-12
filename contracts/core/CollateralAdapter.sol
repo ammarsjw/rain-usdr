@@ -63,6 +63,7 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
         if (address(token) == address(0)) {
             _revert(InvalidAddress.selector);
         }
+
         if (address(ilks[ilkId].token) != address(0)) {
             _revert(IlkAlreadyInitialized.selector);
         }

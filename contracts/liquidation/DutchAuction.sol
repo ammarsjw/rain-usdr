@@ -94,7 +94,6 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         ILK_ID = ilkId_;
         VAULT_ENGINE = vaultEngine_;
-
         buf = _RAY;
         live = 1;
     }
@@ -167,6 +166,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         }
 
         id = ++kicks;
+
         active.push(id);
 
         sales[id].pos = active.length - 1;
@@ -189,6 +189,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         if (tip > 0 || chip > 0) {
             coin = tip + (tab * chip) / _WAD;
+
             VAULT_ENGINE.suck(vow, kpr, coin);
         }
 
@@ -240,6 +241,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         if (tip > 0 || chip > 0) {
             coin = tip + (tab * chip) / _WAD;
+
             VAULT_ENGINE.suck(vow, kpr, coin);
         }
 
@@ -393,6 +395,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         if (id != move) {
             uint256 pos = sales[id].pos;
+
             active[pos] = move;
             sales[move].pos = pos;
         }
