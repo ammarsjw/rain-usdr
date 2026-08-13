@@ -157,6 +157,8 @@ abstract contract BaseTest is Test {
         liquidationTrigger.file(RAIN_ILK, "clip", address(dutchAuction));
         liquidationTrigger.file(RAIN_ILK, "barkFactor", (_WAD * 65) / 100);
         liquidationTrigger.grantRole(_WARD_ROLE, address(dutchAuction));
+        balanceSheet.grantRole(_WARD_ROLE, address(liquidationTrigger));
+        balanceSheet.grantRole(_WARD_ROLE, address(dutchAuction));
         dutchAuction.file("buf", (_RAY * 105) / 100);
         dutchAuction.file("tail", 1800);
         dutchAuction.file("cusp", (_RAY * 40) / 100);

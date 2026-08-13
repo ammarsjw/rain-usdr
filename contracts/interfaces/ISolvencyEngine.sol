@@ -158,4 +158,10 @@ interface ISolvencyEngine {
      * @return The collateral type identifier.
      */
     function volatileIlks(uint256 index) external view returns (bytes32);
+
+    /**
+     * @notice Returns whether an ilk is registered as volatile in the stress calculation.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function isVolatile(bytes32 ilkId) external view returns (bool);
 }

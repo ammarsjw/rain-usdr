@@ -59,6 +59,9 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
     /// @inheritdoc ISolvencyEngine
     bytes32[] public volatileIlks;
 
+    /// @inheritdoc ISolvencyEngine
+    mapping(bytes32 ilkId => bool volatile_) public isVolatile;
+
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
@@ -122,14 +125,11 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      * @inheritdoc ISolvencyEngine
      */
     function addVolatileIlk(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
-        uint256 length = volatileIlks.length;
-
-        for (uint256 i; i < length; ++i) {
-            if (volatileIlks[i] == ilkId) {
-                _revert(IlkAlreadyInitialized.selector);
-            }
+        if (isVolatile[ilkId]) {
+            _revert(IlkAlreadyInitialized.selector);
         }
 
+        isVolatile[ilkId] = true;
         volatileIlks.push(ilkId);
 
         emit AddVolatileIlk({ ilkId: ilkId });
@@ -146,6 +146,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
                 // Swap-and-pop removal.
                 volatileIlks[i] = volatileIlks[length - 1];
                 volatileIlks.pop();
+                isVolatile[ilkId] = false;
 
                 emit RemoveVolatileIlk({ ilkId: ilkId });
 

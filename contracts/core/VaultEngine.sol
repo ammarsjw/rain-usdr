@@ -240,9 +240,16 @@ contract VaultEngine is IVaultEngine, AccessControl {
         }
 
         // Solvency gate: when the Solvency Engine is wired and reports a breach of the reserve invariant,
-        // risk-increasing changes (drawing debt or withdrawing collateral) are blocked. Repayment (dart < 0) and
-        // collateral top-ups (dink > 0) always remain available because they reduce risk.
-        if ((dart > 0 || dink < 0) && solvencyEngine != address(0) && ISolvencyEngine(solvencyEngine).isBreached()) {
+        // risk-increasing changes (drawing debt or withdrawing collateral) against VOLATILE collateral are blocked.
+        // Repayment (dart < 0) and collateral top-ups (dink > 0) always remain available because they reduce risk.
+        // Stable (PSM) ilks are exempt here: PSM inflows are reserve-increasing and must never be gated, while PSM
+        // redemptions are gated inside the PSM itself.
+        if (
+            (dart > 0 || dink < 0) &&
+            solvencyEngine != address(0) &&
+            ISolvencyEngine(solvencyEngine).isBreached() &&
+            ISolvencyEngine(solvencyEngine).isVolatile(ilkId)
+        ) {
             _revert(SolvencyGateActive.selector);
         }
 
