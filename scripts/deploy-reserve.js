@@ -22,6 +22,11 @@ const deployReserve = async () => {
     // Deployment variables.
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
     const collateralAdapterAddress = process.env.COLLATERAL_ADAPTER_ADDRESS;
+    const priceConverterAddress = process.env.PRICE_CONVERTER_ADDRESS;
+
+    // Fixed point scalars.
+    const WAD = 10n ** 18n;
+    const RAD = 10n ** 45n;
 
     // Collateral type identifiers.
     const rainIlk = hardhat.ethers.encodeBytes32String("RAIN-A");
@@ -62,8 +67,52 @@ const deployReserve = async () => {
     await (await psmInstance.init(usdcIlk)).wait();
     await (await reserveAccountingInstance.grantRole(RECORDER_ROLE, psmAddress)).wait();
 
-    // Registering RAIN as a volatile collateral in the solvency stress calculation.
+    // Registering RAIN as a volatile collateral in the solvency stress calculation and wiring the mat source.
     await (await solvencyEngineInstance.addVolatileIlk(rainIlk)).wait();
+    await (
+        await solvencyEngineInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("priceConverter"),
+            priceConverterAddress
+        )
+    ).wait();
+
+    // Wiring the solvency gate: risk-increasing frobs and PSM redemptions consult the Solvency Engine.
+    await (
+        await vaultEngineInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("solvencyEngine"),
+            solvencyEngineAddress
+        )
+    ).wait();
+    await (
+        await psmInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("solvencyEngine"),
+            solvencyEngineAddress
+        )
+    ).wait();
+
+    // Balance Sheet: bad debt queue delay, surplus buffer floor ($500k) and dynamic rate (10% of the reserve).
+    const balanceSheetInstance = await hardhat.ethers.getContractAt(balanceSheetName, balanceSheetAddress);
+    await (
+        await balanceSheetInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("wait"), 561600n)
+    ).wait(); // 6.5 days, Maker's launch value.
+    await (
+        await balanceSheetInstance["file(bytes32,uint256)"](
+            hardhat.ethers.encodeBytes32String("humpFloor"),
+            500000n * RAD
+        )
+    ).wait();
+    await (
+        await balanceSheetInstance["file(bytes32,uint256)"](
+            hardhat.ethers.encodeBytes32String("humpRate"),
+            WAD / 10n
+        )
+    ).wait();
+    await (
+        await balanceSheetInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("reserveAccounting"),
+            reserveAccountingAddress
+        )
+    ).wait();
 
     // Authorizing the Balance Sheet to heal and suck on the ledger.
     await (await vaultEngineInstance.grantRole(WARD_ROLE, balanceSheetAddress)).wait();

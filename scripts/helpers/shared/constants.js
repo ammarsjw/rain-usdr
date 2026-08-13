@@ -7,6 +7,9 @@ const BIGINT_HUNDRED = 100n;
 // keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
 const TYPE_HASH = "0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f";
 
+// keccak256("BURNER_ROLE")
+const BURNER_ROLE = "0x3c11d16cbaffd01df69ce1c404f6340ee057498f5f00246190ea54220576a848";
+
 // keccak256("COMMITTER_ROLE")
 const COMMITTER_ROLE = "0x0b60b5d7f7e737e4561eecda7c6a01e19e626c495c26e6f45e5b255f76a20106";
 
@@ -23,6 +26,7 @@ module.exports = {
     BIGINT_ZERO,
     BIGINT_HUNDRED,
     TYPE_HASH,
+    BURNER_ROLE,
     COMMITTER_ROLE,
     READER_ROLE,
     RECORDER_ROLE,

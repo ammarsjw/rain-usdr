@@ -103,6 +103,14 @@ const deployLiquidation = async () => {
             dutchAuctionAddress
         )
     ).wait();
+    // Bark threshold: a vault becomes liquidatable at 65% of the ilk's required ratio (RAIN 400% -> 260%).
+    await (
+        await liquidationTriggerInstance["file(bytes32,bytes32,uint256)"](
+            rainIlk,
+            hardhat.ethers.encodeBytes32String("barkFactor"),
+            (WAD * 65n) / 100n
+        )
+    ).wait();
 
     // Dutch auction: 5% start markup, 30 minute reset time, 40% reset threshold, 2% keeper reward.
     await (
@@ -158,6 +166,24 @@ const deployLiquidation = async () => {
     await (await vaultEngineInstance.grantRole(WARD_ROLE, dutchAuctionAddress)).wait();
     await (await liquidationTriggerInstance.grantRole(WARD_ROLE, dutchAuctionAddress)).wait();
     await (await dutchAuctionInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
+
+    // Circuit breaker: 30 minute calm period, 5 minute observation interval (constructor defaults; set explicitly).
+    const circuitBreakerInstance = await hardhat.ethers.getContractAt(circuitBreakerName, circuitBreakerAddress);
+    await (
+        await circuitBreakerInstance["file(bytes32,uint256)"](
+            hardhat.ethers.encodeBytes32String("calmPeriod"),
+            1800n
+        )
+    ).wait();
+    await (
+        await circuitBreakerInstance["file(bytes32,uint256)"](
+            hardhat.ethers.encodeBytes32String("obsInterval"),
+            300n
+        )
+    ).wait();
+
+    // Caching the auction's dust-times-chop threshold now that dust and chop are set.
+    await (await dutchAuctionInstance.upchost()).wait();
     console.log("Liquidation setup complete");
 
     // Updating env.
