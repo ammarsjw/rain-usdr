@@ -8,10 +8,11 @@ import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IBalanceSheet } from "../interfaces/IBalanceSheet.sol";
 import { ICircuitBreaker } from "../interfaces/ICircuitBreaker.sol";
 import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
+import { IGovernor } from "../interfaces/IGovernor.sol";
 import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, NotLive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -46,6 +47,9 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
 
     /// @inheritdoc ILiquidationTrigger
     ICircuitBreaker public circuitBreaker;
+
+    /// @inheritdoc ILiquidationTrigger
+    address public governor;
 
     /// @inheritdoc ILiquidationTrigger
     mapping(bytes32 ilkId => IlkLiquidation liquidation) public ilks;
@@ -95,6 +99,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             balanceSheet = IBalanceSheet(data);
         } else if (what == "circuitBreaker") {
             circuitBreaker = ICircuitBreaker(data);
+        } else if (what == "governor") {
+            governor = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -114,6 +120,14 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             ilks[ilkId].chop = data;
         } else if (what == "hole") {
             ilks[ilkId].hole = data;
+        } else if (what == "barkFactor") {
+            // The bark factor must be in (0, 1]: a vault only becomes liquidatable once its collateral ratio falls to
+            // this fraction of the ilk's required ratio.
+            if (data == 0 || data > _WAD) {
+                _revert(InvalidBarkFactor.selector);
+            }
+
+            ilks[ilkId].barkFactor = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -151,6 +165,11 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             _revert(NotLive.selector);
         }
 
+        // Emergency pause check (full stop).
+        if (governor != address(0) && IGovernor(governor).paused()) {
+            _revert(SystemPaused.selector);
+        }
+
         (uint256 ink, uint256 art) = VAULT_ENGINE.urns(ilkId, urn);
 
         IlkLiquidation memory milk = ilks[ilkId];
@@ -161,10 +180,15 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         {
             uint256 spot;
 
-            (, rate, spot, , dust) = VAULT_ENGINE.ilks(ilkId);
+            (, , rate, spot, , dust) = VAULT_ENGINE.ilks(ilkId);
 
-            // Unsafe check: the vault's collateral value must be less than its debt.
-            if (spot == 0 || ink * spot >= art * rate) {
+            // Unsafe check: the vault's collateral value must be below `barkFactor` of its debt. `spot` [ray] already
+            // embeds the ilk's required ratio (mat), so `ink * spot < art * rate` is Maker's at-mat condition; scaling
+            // the debt side by barkFactor [wad] moves the trigger to barkFactor of mat (e.g. 65% of 400% = 260%).
+            // Units: ink [wad] * spot [ray] = [rad]; art [wad] * rate [ray] = [rad]; dividing the rad debt by WAD
+            // before multiplying by barkFactor [wad] keeps the product in [rad] with ample headroom and full
+            // precision (art*rate is a multiple of RAY, so /WAD loses nothing at rate == RAY).
+            if (spot == 0 || ink * spot >= ((art * rate) / _WAD) * milk.barkFactor) {
                 _revert(NotUnsafe.selector);
             }
 
@@ -181,8 +205,10 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
                 room = (room * throttle) / _WAD;
             }
 
-            // uint256.max()/(RAD*WAD) = 115,792,089,237,316
-            dart = Math.min(art, ((room / rate) * _WAD) / milk.chop);
+            // uint256.max()/(RAD*WAD) = 115,792,089,237,316, i.e. the room [rad] * WAD product has overflow headroom
+            // up to ~115 trillion rad of room. Maker's ordering multiplies before dividing so small rooms at large
+            // rates still yield a correctly scaled, nonzero dart.
+            dart = Math.min(art, (room * _WAD) / rate / milk.chop);
 
             // Partial liquidation edge case logic.
             if (art > dart) {

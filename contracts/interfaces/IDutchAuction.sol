@@ -115,6 +115,12 @@ interface IDutchAuction {
      */
     event Yank(uint256 indexed id);
 
+    /**
+     * @dev Emitted when the cached dust-times-chop threshold is refreshed.
+     * @param chost The refreshed threshold [rad].
+     */
+    event Upchost(uint256 chost);
+
     /* ========================== ERRORS ========================== */
 
     /**
@@ -204,6 +210,12 @@ interface IDutchAuction {
     function redo(uint256 id, address kpr) external;
 
     /**
+     * @notice Refreshes the cached dust-times-chop threshold from the Vault Engine and the Liquidation Trigger.
+     * @dev Permissionless. Must be called after `dust` or `chop` changes.
+     */
+    function upchost() external;
+
+    /**
      * @notice Lets a keeper buy some or all of the collateral at the current descending price.
      * @dev Supports flash-loan-style buying via the callback. Reverts if the auction needs a reset or if the current
      *      price exceeds the keeper's maximum.
@@ -283,6 +295,11 @@ interface IDutchAuction {
      * @notice Returns the auction id counter, the number of auctions started so far.
      */
     function kicks() external view returns (uint256);
+
+    /**
+     * @notice Returns the cached dust-times-chop threshold used for reward gating and partial purchases [rad].
+     */
+    function chost() external view returns (uint256);
 
     /**
      * @notice Returns the liveness flag. `1` while live, `0` after shutdown.

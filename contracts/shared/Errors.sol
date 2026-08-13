@@ -43,3 +43,13 @@ error NotLive();
  * @dev Indicates a failure with an unrecognized parameter name in a `file` call.
  */
 error UnrecognizedParameter();
+
+/**
+ * @dev Indicates that the Governor's emergency pause is active and the operation is unavailable.
+ */
+error SystemPaused();
+
+/**
+ * @dev Indicates that the solvency invariant is breached and reserve-decreasing operations are gated.
+ */
+error SolvencyGateActive();

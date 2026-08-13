@@ -13,6 +13,7 @@ interface IVaultEngine {
     /**
      * @notice A collateral type and its risk settings.
      * @param globalArt Total normalized debt issued against this collateral [wad].
+     * @param globalInk Total collateral locked in vaults of this collateral type [wad].
      * @param rate Debt multiplier. Fixed at RAY (1.0) since USDR charges no stability fee [ray].
      * @param spot Maximum USDR mintable per unit of collateral (price factor) [ray].
      * @param line Debt ceiling for this collateral type [rad].
@@ -20,6 +21,7 @@ interface IVaultEngine {
      */
     struct Ilk {
         uint256 globalArt;
+        uint256 globalInk;
         uint256 rate;
         uint256 spot;
         uint256 line;
@@ -64,6 +66,13 @@ interface IVaultEngine {
      * @param data New value [rad].
      */
     event File(bytes32 indexed what, uint256 data);
+
+    /**
+     * @dev Emitted when a global address dependency is updated.
+     * @param what Name of the parameter.
+     * @param addr New address.
+     */
+    event File(bytes32 indexed what, address addr);
 
     /**
      * @dev Emitted when a per-collateral parameter is updated.
@@ -161,6 +170,26 @@ interface IVaultEngine {
      * @dev Indicates that a vault would carry debt below the minimum size.
      */
     error DustAmount();
+
+    /* ========================== SOLVENCY GATE / PAUSE ========================== */
+
+    /**
+     * @notice Updates an address dependency {solvencyEngine} or {governor}. Set via `file` to avoid circular
+     *         constructor dependencies. When unset (`address(0)`), the corresponding check is skipped.
+     * @param what Name of the parameter.
+     * @param data New address.
+     */
+    function file(bytes32 what, address data) external;
+
+    /**
+     * @notice Returns the Solvency Engine consulted before risk-increasing frobs. Zero when unset.
+     */
+    function solvencyEngine() external view returns (address);
+
+    /**
+     * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
+     */
+    function governor() external view returns (address);
 
     /* ========================== FUNCTIONS ========================== */
 
@@ -302,6 +331,7 @@ interface IVaultEngine {
      * @notice Returns a collateral type's settings and totals.
      * @param ilkId Identifier of the collateral type.
      * @return globalArt Total normalized debt issued against this collateral [wad].
+     * @return globalInk Total collateral locked in vaults of this collateral type [wad].
      * @return rate Debt multiplier [ray].
      * @return spot Maximum USDR mintable per unit of collateral [ray].
      * @return line Debt ceiling for this collateral type [rad].
@@ -309,7 +339,10 @@ interface IVaultEngine {
      */
     function ilks(
         bytes32 ilkId
-    ) external view returns (uint256 globalArt, uint256 rate, uint256 spot, uint256 line, uint256 dust);
+    )
+        external
+        view
+        returns (uint256 globalArt, uint256 globalInk, uint256 rate, uint256 spot, uint256 line, uint256 dust);
 
     /**
      * @notice Returns a vault's locked collateral and normalized debt.

@@ -52,6 +52,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     uint256 public kicks;
 
     /// @inheritdoc IDutchAuction
+    uint256 public chost;
+
+    /// @inheritdoc IDutchAuction
     uint256 public live;
 
     /// @inheritdoc IDutchAuction
@@ -104,6 +107,10 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      * @inheritdoc IDutchAuction
      */
     function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
+        if (live != 1) {
+            _revert(NotLive.selector);
+        }
+
         if (what == "buf") {
             buf = data;
         } else if (what == "tail") {
@@ -125,6 +132,10 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      * @inheritdoc IDutchAuction
      */
     function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
+        if (live != 1) {
+            _revert(NotLive.selector);
+        }
+
         if (what == "pip") {
             pip = IOracleSecurityModule(data);
         } else if (what == "dog") {
@@ -236,13 +247,18 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         sales[id].top = top;
 
-        // Whoever triggers the reset earns the keeper reward for doing so.
+        // Whoever triggers the reset earns the keeper reward for doing so, but only when the auction is large enough
+        // to be worth resetting: both the remaining debt and the collateral's market value must be at least the
+        // cached dust-times-chop threshold (chost), exactly like Maker's clip.sol. This prevents reward farming on
+        // tiny auctions.
         uint256 coin;
 
         if (tip > 0 || chip > 0) {
-            coin = tip + (tab * chip) / _WAD;
+            if (tab >= chost && lot * feedPrice >= chost) {
+                coin = tip + (tab * chip) / _WAD;
 
-            VAULT_ENGINE.suck(vow, kpr, coin);
+                VAULT_ENGINE.suck(vow, kpr, coin);
+            }
         }
 
         emit Redo({ id: id, top: top, tab: tab, lot: lot, usr: usr, kpr: kpr, coin: coin });
@@ -298,11 +314,18 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
                 owe = tab;
                 slice = owe / price;
             } else if (owe < tab && slice < lot) {
-                // A partial purchase must leave a non-dusty remainder.
-                (, , , , uint256 dust) = VAULT_ENGINE.ilks(ILK_ID);
+                // A partial purchase must leave a remainder of at least chost. Instead of reverting outright, the
+                // purchase is adjusted down so the remainder is exactly chost (Maker's clip.sol behaviour); only when
+                // the whole tab is at or below chost is a partial purchase impossible.
+                if (tab - owe < chost) {
+                    if (tab <= chost) {
+                        // Any partial purchase would leave a remainder below chost.
+                        _revert(NoPartialPurchase.selector);
+                    }
 
-                if (tab - owe < dust) {
-                    _revert(NoPartialPurchase.selector);
+                    // Adjusting the purchase down to leave exactly chost behind.
+                    owe = tab - chost;
+                    slice = owe / price;
                 }
             }
 
@@ -354,6 +377,18 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         _remove(id);
 
         emit Yank({ id: id });
+    }
+
+    /**
+     * @inheritdoc IDutchAuction
+     */
+    function upchost() external {
+        (, , , , , uint256 dust) = VAULT_ENGINE.ilks(ILK_ID);
+
+        // Caching dust [rad] times the liquidation penalty chop [wad], scaled back to rad: wmul(dust, chop).
+        chost = (dust * dog.chop(ILK_ID)) / _WAD;
+
+        emit Upchost({ chost: chost });
     }
 
     /**

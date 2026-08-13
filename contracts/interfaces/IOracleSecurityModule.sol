@@ -62,6 +62,13 @@ interface IOracleSecurityModule {
      */
     event Poke(bytes32 indexed ilkId, uint128 current, uint128 next);
 
+    /**
+     * @dev Emitted when a poke finds the price source reporting an invalid value. The stored prices are untouched.
+     * @param ilkId Identifier of the collateral type.
+     * @param src Address of the price source that failed.
+     */
+    event PokeFailed(bytes32 indexed ilkId, address indexed src);
+
     /* ========================== ERRORS ========================== */
 
     /**
