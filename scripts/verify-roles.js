@@ -64,7 +64,8 @@ const verifyRoles = async () => {
             addresses.BalanceSheet
         ],
         LiquidationTrigger: [addresses.DutchAuction],
-        DutchAuction: [addresses.LiquidationTrigger]
+        DutchAuction: [addresses.LiquidationTrigger],
+        BalanceSheet: [addresses.LiquidationTrigger]
     };
 
     for (const name of Object.keys(addresses)) {

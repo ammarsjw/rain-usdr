@@ -166,6 +166,9 @@ const deployLiquidation = async () => {
     await (await vaultEngineInstance.grantRole(WARD_ROLE, dutchAuctionAddress)).wait();
     await (await liquidationTriggerInstance.grantRole(WARD_ROLE, dutchAuctionAddress)).wait();
     await (await dutchAuctionInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
+    // The trigger queues bad debt on the vow (`bark` -> `fess`), which is ward-gated on the balance sheet.
+    const balanceSheetInstance = await hardhat.ethers.getContractAt("BalanceSheet", balanceSheetAddress);
+    await (await balanceSheetInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
 
     // Circuit breaker: 30 minute calm period, 5 minute observation interval (constructor defaults; set explicitly).
     const circuitBreakerInstance = await hardhat.ethers.getContractAt(circuitBreakerName, circuitBreakerAddress);
