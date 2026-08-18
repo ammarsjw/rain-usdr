@@ -19,9 +19,9 @@ import { _revert } from "../shared/Globals.sol";
  *         and burning RAIN.
  * @dev Uses no surplus or debt auctions. USDR uses a RAIN buyback-and-burn for surplus and a controlled backstop for
  *      bad debt instead. The strict "fill before burn" rule is enforced in `distributeSurplus`. Bad debt entering via
- *      `fess` sits in a time-indexed queue for `wait` seconds before it can be healed, exactly like Maker's vow.sol
- *      debt queue, so surplus cannot be netted against debt whose auction is still running. USDR has no debt auctions,
- *      so there is no `Ash` (on-auction debt) term anywhere in the accounting.
+ *      `fess` sits in a time-indexed queue for `wait` seconds before it can be healed so surplus cannot be netted
+ *      against debt whose auction is still running. USDR has no debt auctions, so there is no `Ash` (on-auction debt)
+ *      term anywhere in the accounting.
  */
 contract BalanceSheet is IBalanceSheet, AccessControl {
     /* ========================== STATE VARIABLES ========================== */

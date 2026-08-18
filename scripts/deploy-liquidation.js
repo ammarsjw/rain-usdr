@@ -172,16 +172,10 @@ const deployLiquidation = async () => {
 
     // Circuit breaker: 30 minute calm period, 5 minute observation interval (constructor defaults; set explicitly).
     await (
-        await circuitBreakerInstance["file(bytes32,uint256)"](
-            hardhat.ethers.encodeBytes32String("calmPeriod"),
-            1800n
-        )
+        await circuitBreakerInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("calmPeriod"), 1800n)
     ).wait();
     await (
-        await circuitBreakerInstance["file(bytes32,uint256)"](
-            hardhat.ethers.encodeBytes32String("obsInterval"),
-            300n
-        )
+        await circuitBreakerInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("obsInterval"), 300n)
     ).wait();
 
     // Caching the auction's dust-times-chop threshold now that dust and chop are set.

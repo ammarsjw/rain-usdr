@@ -94,7 +94,7 @@ const deployReserve = async () => {
     const balanceSheetInstance = await hardhat.ethers.getContractAt(balanceSheetName, balanceSheetAddress);
     await (
         await balanceSheetInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("wait"), 561600n)
-    ).wait(); // 6.5 days, Maker's launch value.
+    ).wait(); // 6.5 days.
     await (
         await balanceSheetInstance["file(bytes32,uint256)"](
             hardhat.ethers.encodeBytes32String("humpFloor"),
@@ -102,10 +102,7 @@ const deployReserve = async () => {
         )
     ).wait();
     await (
-        await balanceSheetInstance["file(bytes32,uint256)"](
-            hardhat.ethers.encodeBytes32String("humpRate"),
-            WAD / 10n
-        )
+        await balanceSheetInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("humpRate"), WAD / 10n)
     ).wait();
     await (
         await balanceSheetInstance["file(bytes32,address)"](

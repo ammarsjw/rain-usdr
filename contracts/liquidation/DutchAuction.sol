@@ -249,8 +249,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         // Whoever triggers the reset earns the keeper reward for doing so, but only when the auction is large enough
         // to be worth resetting: both the remaining debt and the collateral's market value must be at least the
-        // cached dust-times-chop threshold (chost), exactly like Maker's clip.sol. This prevents reward farming on
-        // tiny auctions.
+        // cached dust-times-chop threshold (chost). This prevents reward farming on tiny auctions.
         uint256 coin;
 
         if (tip > 0 || chip > 0) {
@@ -315,8 +314,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
                 slice = owe / price;
             } else if (owe < tab && slice < lot) {
                 // A partial purchase must leave a remainder of at least chost. Instead of reverting outright, the
-                // purchase is adjusted down so the remainder is exactly chost (Maker's clip.sol behaviour); only when
-                // the whole tab is at or below chost is a partial purchase impossible.
+                // purchase is adjusted down so the remainder is exactly chost; only when the whole tab is at or below
+                // chost is a partial purchase impossible.
                 if (tab - owe < chost) {
                     if (tab <= chost) {
                         // Any partial purchase would leave a remainder below chost.

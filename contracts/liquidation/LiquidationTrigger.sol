@@ -183,8 +183,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             (, , rate, spot, , dust) = VAULT_ENGINE.ilks(ilkId);
 
             // Unsafe check: the vault's collateral value must be below `barkFactor` of its debt. `spot` [ray] already
-            // embeds the ilk's required ratio (mat), so `ink * spot < art * rate` is Maker's at-mat condition; scaling
-            // the debt side by barkFactor [wad] moves the trigger to barkFactor of mat (e.g. 65% of 400% = 260%).
+            // embeds the ilk's required ratio (mat), so `ink * spot < art * rate` is the at-mat condition; scaling the
+            // debt side by barkFactor [wad] moves the trigger to barkFactor of mat (e.g. 65% of 400% = 260%).
             // Units: ink [wad] * spot [ray] = [rad]; art [wad] * rate [ray] = [rad]; dividing the rad debt by WAD
             // before multiplying by barkFactor [wad] keeps the product in [rad] with ample headroom and full
             // precision (art*rate is a multiple of RAY, so /WAD loses nothing at rate == RAY).
@@ -206,8 +206,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             }
 
             // uint256.max()/(RAD*WAD) = 115,792,089,237,316, i.e. the room [rad] * WAD product has overflow headroom
-            // up to ~115 trillion rad of room. Maker's ordering multiplies before dividing so small rooms at large
-            // rates still yield a correctly scaled, nonzero dart.
+            // up to ~115 trillion rad of room. Ordering multiplies before dividing so small rooms at large rates still
+            // yield a correctly scaled, nonzero dart.
             dart = Math.min(art, (room * _WAD) / rate / milk.chop);
 
             // Partial liquidation edge case logic.

@@ -267,20 +267,20 @@ contract VaultEngine is IVaultEngine, AccessControl {
         debt = Math.add(debt, dtab);
 
         // Ceiling check: either debt is being repaid (dart decreased), or both the ilk ceiling and the global ceiling
-        // must hold after the change. (Maker's either/both phrasing.)
+        // must hold after the change.
         if (!(dart <= 0 || Math.both(ilk.globalArt * ilk.rate <= ilk.line, debt <= globalLine))) {
             _revert(CeilingExceeded.selector);
         }
 
         // Safety check: the urn is either less risky than before, or it is safe after the change. Uses the delayed
-        // oracle price factor already stored in the system. (Maker's either/both phrasing.)
+        // oracle price factor already stored in the system.
         if (!(Math.both(dart <= 0, dink >= 0) || tab <= urn.ink * ilk.spot)) {
             _revert(NotSafe.selector);
         }
 
-        // Permission checks (Maker's either/both phrasing): the urn is either less risky than before, or its owner
-        // consents; collateral is either not being taken, or its source consents; internal USDR is either not being
-        // drawn down, or the destination consents.
+        // Permission checks: the urn is either less risky than before, or its owner consents; collateral is either not
+        // being taken, or its source consents; internal USDR is either not being drawn down, or the destination
+        // consents.
         if (!(Math.both(dart <= 0, dink >= 0) || _wish(u, msg.sender))) {
             _revert(NotAllowed.selector);
         }
@@ -293,7 +293,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
             _revert(NotAllowed.selector);
         }
 
-        // Minimum size check: the urn either has no debt, or a non-dusty amount. (Maker's either phrasing.)
+        // Minimum size check: the urn either has no debt, or a non-dusty amount.
         if (!(urn.art == 0 || tab >= ilk.dust)) {
             _revert(DustAmount.selector);
         }
