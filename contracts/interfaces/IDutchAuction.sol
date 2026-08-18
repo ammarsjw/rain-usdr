@@ -20,6 +20,7 @@ interface IDutchAuction {
      * @param pos Index in the active auctions array.
      * @param tab USDR debt to recover, including the penalty [rad].
      * @param lot Collateral for sale [wad].
+     * @param vaultId Identifier of the vault the collateral was seized from.
      * @param usr Vault owner who receives any leftover collateral.
      * @param tic Auction start time.
      * @param top Starting price [ray].
@@ -28,6 +29,7 @@ interface IDutchAuction {
         uint256 pos;
         uint256 tab;
         uint256 lot;
+        uint256 vaultId;
         address usr;
         uint96 tic;
         uint256 top;
@@ -55,6 +57,7 @@ interface IDutchAuction {
      * @param top Starting price [ray].
      * @param tab USDR debt to recover, including the penalty [rad].
      * @param lot Collateral for sale [wad].
+     * @param vaultId Identifier of the vault the collateral was seized from.
      * @param usr Vault owner who receives any leftover collateral.
      * @param kpr Keeper eligible for the kick reward.
      * @param coin Keeper reward created as backed-later debt [rad].
@@ -64,7 +67,8 @@ interface IDutchAuction {
         uint256 top,
         uint256 tab,
         uint256 lot,
-        address indexed usr,
+        uint256 indexed vaultId,
+        address usr,
         address indexed kpr,
         uint256 coin
     );
@@ -195,11 +199,13 @@ interface IDutchAuction {
      *      markup.
      * @param tab USDR debt to recover, including the penalty [rad].
      * @param lot Collateral for sale [wad].
+     * @param vaultId Identifier of the vault the collateral was seized from (used by emergency settlement to
+     *        reclaim in-flight auctions).
      * @param usr Vault owner who receives any leftover collateral.
      * @param kpr Keeper eligible for the kick reward.
      * @return id Identifier of the new auction.
      */
-    function kick(uint256 tab, uint256 lot, address usr, address kpr) external returns (uint256 id);
+    function kick(uint256 tab, uint256 lot, uint256 vaultId, address usr, address kpr) external returns (uint256 id);
 
     /**
      * @notice Restarts an auction that has gone too long or fallen too far without a buyer.
@@ -228,11 +234,18 @@ interface IDutchAuction {
     function take(uint256 id, uint256 amt, uint256 max, address who, bytes calldata data) external;
 
     /**
-     * @notice Forcibly ends an auction, used during emergency shutdown.
-     * @dev Only governance may call this via authorization.
+     * @notice Forcibly ends an auction, used during emergency shutdown. The remaining collateral moves to the
+     *         caller (Maker's clip.sol behaviour) so the settlement module can reclaim it into the seized vault.
+     * @dev Only governance or the settlement module may call this via authorization.
      * @param id Identifier of the auction.
      */
     function yank(uint256 id) external;
+
+    /**
+     * @notice Shuts the auction house down. Blocks kick, take and redo; yank remains available so settlement can
+     *         reclaim in-flight auctions.
+     */
+    function cage() external;
 
     /**
      * @notice Returns the number of active auctions.
@@ -339,11 +352,15 @@ interface IDutchAuction {
      * @return pos Index in the active auctions array.
      * @return tab USDR debt to recover, including the penalty [rad].
      * @return lot Collateral for sale [wad].
+     * @return vaultId Identifier of the vault the collateral was seized from.
      * @return usr Vault owner who receives any leftover collateral.
      * @return tic Auction start time.
      * @return top Starting price [ray].
      */
     function sales(
         uint256 id
-    ) external view returns (uint256 pos, uint256 tab, uint256 lot, address usr, uint96 tic, uint256 top);
+    )
+        external
+        view
+        returns (uint256 pos, uint256 tab, uint256 lot, uint256 vaultId, address usr, uint96 tic, uint256 top);
 }

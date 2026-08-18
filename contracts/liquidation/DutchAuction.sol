@@ -14,6 +14,7 @@ import { IPriceCurve } from "../interfaces/IPriceCurve.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, InvalidBytes, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -157,6 +158,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     function kick(
         uint256 tab,
         uint256 lot,
+        uint256 vaultId,
         address usr,
         address kpr
     ) external onlyRole(_WARD_ROLE) nonReentrant returns (uint256 id) {
@@ -183,6 +185,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         sales[id].pos = active.length - 1;
         sales[id].tab = tab;
         sales[id].lot = lot;
+        sales[id].vaultId = vaultId;
         sales[id].usr = usr;
         sales[id].tic = uint96(block.timestamp);
 
@@ -204,7 +207,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             VAULT_ENGINE.suck(vow, kpr, coin);
         }
 
-        emit Kick({ id: id, top: top, tab: tab, lot: lot, usr: usr, kpr: kpr, coin: coin });
+        emit Kick({ id: id, top: top, tab: tab, lot: lot, vaultId: vaultId, usr: usr, kpr: kpr, coin: coin });
     }
 
     /**
@@ -369,13 +372,25 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             _revert(AuctionNotRunning.selector);
         }
 
-        // The remaining debt goes back to the balance sheet and the remaining collateral returns to the vault owner.
+        // The remaining debt is freed from the liquidation capacity and the remaining collateral moves to the
+        // CALLER (Maker's clip.sol behaviour): during emergency settlement the caller is the End, which reclaims
+        // the collateral into the seized vault so the position settles like every other. Handing it to the vault
+        // owner here instead would erase the debt side and leak value at settlement.
         dog.digs(ILK_ID, sales[id].tab);
-        VAULT_ENGINE.flux(ILK_ID, address(this), sales[id].usr, sales[id].lot);
+        VAULT_ENGINE.flux(ILK_ID, address(this), msg.sender, sales[id].lot);
 
         _remove(id);
 
         emit Yank({ id: id });
+    }
+
+    /**
+     * @inheritdoc IDutchAuction
+     */
+    function cage() external onlyRole(_WARD_ROLE) {
+        live = 0;
+
+        emit Cage();
     }
 
     /**

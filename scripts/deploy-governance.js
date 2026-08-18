@@ -3,7 +3,7 @@ const hardhat = require("hardhat");
 const { configure } = require("./helpers/config/config");
 const { verifyContract } = require("./helpers/libraries/auxiliary");
 const { deployContract } = require("./helpers/libraries/workflows");
-const { WARD_ROLE } = require("./helpers/shared/constants");
+const { READER_ROLE, WARD_ROLE } = require("./helpers/shared/constants");
 const { LOG_TYPE } = require("./helpers/shared/types");
 const { updateEnv } = require("./helpers/utils/env");
 const { logTag, wait } = require("./helpers/utils/tools");
@@ -15,6 +15,7 @@ const deployGovernance = async () => {
 
     // Definition variables.
     const governorName = "Governor";
+    const endName = "End";
 
     // Deployment variables.
     const governorDelay = process.env.GOVERNOR_DELAY || 172800n; // 48 hours default.
@@ -46,6 +47,34 @@ const deployGovernance = async () => {
     // Deploying the Governor.
     const governorConstructorArguments = [governorDelay];
     const governorAddress = await deployContract(governorName, governorConstructorArguments);
+
+    // Deploying the End (emergency settlement).
+    const endConstructorArguments = [vaultEngineAddress];
+    const endAddress = await deployContract(endName, endConstructorArguments);
+
+    // Wiring the End's dependencies and settlement cooldown (must exceed the Balance Sheet's sin queue wait so
+    // thaw can heal all queued sin first).
+    const endInstance = await hardhat.ethers.getContractAt(endName, endAddress);
+    const endWait = process.env.END_WAIT || 604800n; // 7 days default.
+    await (
+        await endInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("liquidationTrigger"),
+            liquidationTriggerAddress
+        )
+    ).wait();
+    await (
+        await endInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("balanceSheet"),
+            balanceSheetAddress
+        )
+    ).wait();
+    await (
+        await endInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("priceConverter"),
+            priceConverterAddress
+        )
+    ).wait();
+    await (await endInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("wait"), endWait)).wait();
 
     // Setting up governance wiring.
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
@@ -101,6 +130,20 @@ const deployGovernance = async () => {
     await (await psmInstance["file(bytes32,address)"](governorWhat, governorAddress)).wait();
     await (await liquidationTriggerInstance["file(bytes32,address)"](governorWhat, governorAddress)).wait();
 
+    // Granting the End authority over the contracts its settlement path drives:
+    // - VaultEngine: cage, grab, suck, and post-cage heal
+    // - LiquidationTrigger: cage
+    // - PriceConverter: cage
+    // - DutchAuction: cage and yank (skip reclaims in-flight auctions)
+    // - OSM READER_ROLE: cage(ilkId) reads the last delayed price
+    const priceConverterInstance = await hardhat.ethers.getContractAt("PriceConverter", priceConverterAddress);
+    const osmInstance = await hardhat.ethers.getContractAt("OracleSecurityModule", osmAddress);
+    await (await vaultEngineInstance.grantRole(WARD_ROLE, endAddress)).wait();
+    await (await liquidationTriggerInstance.grantRole(WARD_ROLE, endAddress)).wait();
+    await (await priceConverterInstance.grantRole(WARD_ROLE, endAddress)).wait();
+    await (await dutchAuctionInstance.grantRole(WARD_ROLE, endAddress)).wait();
+    await (await osmInstance.grantRole(READER_ROLE, endAddress)).wait();
+
     // Handing full control of EVERY deployed contract to the Governor and renouncing the deployer's WARD role.
     // Ordering matters: renounce only after all cross-contract wiring and file calls are complete (this script runs
     // last in the deploy sequence).
@@ -119,7 +162,8 @@ const deployGovernance = async () => {
         ["LiquidationTrigger", liquidationTriggerAddress],
         ["DutchAuction", dutchAuctionAddress],
         ["CircuitBreaker", circuitBreakerAddress],
-        ["Governor", governorAddress]
+        ["Governor", governorAddress],
+        ["End", endAddress]
     ];
 
     for (const [name, address] of wardedContracts) {
@@ -132,12 +176,14 @@ const deployGovernance = async () => {
 
     // Updating env.
     updateEnv("GOVERNOR_ADDRESS", governorAddress);
+    updateEnv("END_ADDRESS", endAddress);
 
     // Waiting for block explorer.
     await wait("30 seconds");
 
     // Verifying governance contracts.
     await verifyContract(governorAddress, governorConstructorArguments);
+    await verifyContract(endAddress, endConstructorArguments);
 };
 
 deployGovernance()

@@ -26,7 +26,8 @@ const verifyRoles = async () => {
         LiquidationTrigger: process.env.LIQUIDATION_TRIGGER_ADDRESS,
         DutchAuction: process.env.DUTCH_AUCTION_ADDRESS,
         CircuitBreaker: process.env.CIRCUIT_BREAKER_ADDRESS,
-        Governor: process.env.GOVERNOR_ADDRESS
+        Governor: process.env.GOVERNOR_ADDRESS,
+        End: process.env.END_ADDRESS
     };
 
     for (const [name, address] of Object.entries(addresses)) {
@@ -61,10 +62,12 @@ const verifyRoles = async () => {
             addresses.PriceConverter,
             addresses.LiquidationTrigger,
             addresses.DutchAuction,
-            addresses.BalanceSheet
+            addresses.BalanceSheet,
+            addresses.End
         ],
-        LiquidationTrigger: [addresses.DutchAuction],
-        DutchAuction: [addresses.LiquidationTrigger],
+        LiquidationTrigger: [addresses.DutchAuction, addresses.End],
+        PriceConverter: [addresses.End],
+        DutchAuction: [addresses.LiquidationTrigger, addresses.End],
         BalanceSheet: [addresses.LiquidationTrigger]
     };
 
@@ -101,6 +104,7 @@ const verifyRoles = async () => {
     await check("OracleSecurityModule", READER_ROLE, "READER_ROLE", addresses.PriceConverter, true, "PriceConverter");
     await check("OracleSecurityModule", READER_ROLE, "READER_ROLE", addresses.DutchAuction, true, "DutchAuction");
     await check("OracleSecurityModule", READER_ROLE, "READER_ROLE", addresses.CircuitBreaker, true, "CircuitBreaker");
+    await check("OracleSecurityModule", READER_ROLE, "READER_ROLE", addresses.End, true, "End");
 
     if (failures > 0) {
         console.error(`\nROLE VERIFICATION FAILED: ${failures} mismatch(es). DO NOT PROCEED.`);

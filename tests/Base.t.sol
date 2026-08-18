@@ -21,6 +21,7 @@ import { BalanceSheet } from "../contracts/reserve/BalanceSheet.sol";
 import { PegStabilityModule } from "../contracts/reserve/PegStabilityModule.sol";
 import { ReserveAccounting } from "../contracts/reserve/ReserveAccounting.sol";
 import { SolvencyEngine } from "../contracts/reserve/SolvencyEngine.sol";
+import { End } from "../contracts/settlement/End.sol";
 import { _BURNER_ROLE, _COMMITTER_ROLE, _RAD, _RAY, _READER_ROLE, _RECORDER_ROLE, _USDR_ILK, _WAD, _WARD_ROLE } from "../contracts/shared/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
@@ -49,6 +50,7 @@ abstract contract BaseTest is Test {
     DutchAuction internal dutchAuction;
     CircuitBreaker internal circuitBreaker;
     Governor internal governor;
+    End internal end;
 
     MockERC20 internal rain;
     MockERC20 internal usdt;
@@ -160,6 +162,18 @@ abstract contract BaseTest is Test {
         dutchAuction.file("vow", address(balanceSheet));
         dutchAuction.file("calc", address(priceCurve));
         dutchAuction.grantRole(_WARD_ROLE, address(liquidationTrigger));
+
+        // Deploying and wiring the End (emergency settlement).
+        end = new End(vaultEngine);
+        end.file("liquidationTrigger", address(liquidationTrigger));
+        end.file("balanceSheet", address(balanceSheet));
+        end.file("priceConverter", address(priceConverter));
+        end.file("wait", 0);
+        vaultEngine.grantRole(_WARD_ROLE, address(end));
+        liquidationTrigger.grantRole(_WARD_ROLE, address(end));
+        priceConverter.grantRole(_WARD_ROLE, address(end));
+        dutchAuction.grantRole(_WARD_ROLE, address(end));
+        osm.grantRole(_READER_ROLE, address(end));
 
         // Setting launch ceilings and minimum vault size.
         vaultEngine.file("globalLine", 1_100_000 * _RAD);

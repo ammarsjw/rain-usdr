@@ -353,12 +353,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @inheritdoc IVaultEngine
      */
     function grab(uint256 vaultId, address v, address w, int256 dink, int256 dart) external onlyRole(_WARD_ROLE) {
-        // TODO: H-7 stopgap. There is no End.sol port yet, so `grab` is simply unavailable after shutdown. Once an
-        // End equivalent exists, this must be revisited so its settlement path can seize positions.
-        if (live != 1) {
-            _revert(NotLive.selector);
-        }
-
+        // NOTE: deliberately callable after shutdown (no live check), matching Maker's vat. The emergency
+        // settlement module (End) seizes positions through this function after cage.
         if (ownerOf[vaultId] == address(0)) {
             _revert(VaultNotFound.selector);
         }
@@ -386,11 +382,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @inheritdoc IVaultEngine
      */
     function heal(uint256 rad) external {
-        // TODO: H-7 stopgap. There is no End.sol port yet, so `heal` is unavailable after shutdown.
-        if (live != 1) {
-            _revert(NotLive.selector);
-        }
-
+        // NOTE: deliberately callable after shutdown (no live check), matching Maker's vat. Emergency settlement
+        // heals the Balance Sheet's surplus against bad debt after cage (End.thaw requires it).
         sin[msg.sender] -= rad;
         usdr[msg.sender] -= rad;
         vice -= rad;
