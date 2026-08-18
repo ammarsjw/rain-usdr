@@ -7,7 +7,7 @@ import { Test } from "forge-std/Test.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import { CollateralAdapter } from "../contracts/core/CollateralAdapter.sol";
-import { USDR } from "../contracts/core/USDR.sol";
+import { USDR } from "../contracts/token/USDR.sol";
 import { VaultEngine } from "../contracts/core/VaultEngine.sol";
 import { Governor } from "../contracts/governance/Governor.sol";
 import { IPriceSource } from "../contracts/interfaces/IPriceSource.sol";
@@ -21,7 +21,7 @@ import { BalanceSheet } from "../contracts/reserve/BalanceSheet.sol";
 import { PegStabilityModule } from "../contracts/reserve/PegStabilityModule.sol";
 import { ReserveAccounting } from "../contracts/reserve/ReserveAccounting.sol";
 import { SolvencyEngine } from "../contracts/reserve/SolvencyEngine.sol";
-import { _RAD, _RAY, _USDR_ILK, _WAD, _WARD_ROLE } from "../contracts/shared/Constants.sol";
+import { _BURNER_ROLE, _COMMITTER_ROLE, _RAD, _RAY, _READER_ROLE, _RECORDER_ROLE, _USDR_ILK, _WAD, _WARD_ROLE } from "../contracts/shared/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 import { MockPriceSource } from "./mocks/MockPriceSource.sol";
@@ -96,27 +96,30 @@ abstract contract BaseTest is Test {
         dutchAuction = new DutchAuction(vaultEngine, RAIN_ILK);
         circuitBreaker = new CircuitBreaker(osm, RAIN_ILK);
 
+        // Wiring the core. Vault Engine ilks must exist before the PSM registers its ilks: PSM registration opens
+        // the module's dedicated vault in the Vault Engine.
+        vaultEngine.init(RAIN_ILK);
+        vaultEngine.init(USDT_ILK);
+        vaultEngine.init(USDC_ILK);
+
         // Deploying the PSMs and the Governor.
         psm = new PegStabilityModule(collateralAdapter, reserveAccounting);
         psm.init(USDT_ILK);
         psm.init(USDC_ILK);
         governor = new Governor(48 hours);
 
-        // Wiring the core.
-        vaultEngine.init(RAIN_ILK);
-        vaultEngine.init(USDT_ILK);
-        vaultEngine.init(USDC_ILK);
         vaultEngine.grantRole(_WARD_ROLE, address(collateralAdapter));
         vaultEngine.grantRole(_WARD_ROLE, address(priceConverter));
         vaultEngine.grantRole(_WARD_ROLE, address(liquidationTrigger));
         vaultEngine.grantRole(_WARD_ROLE, address(dutchAuction));
         vaultEngine.grantRole(_WARD_ROLE, address(balanceSheet));
         usdr.grantRole(_WARD_ROLE, address(collateralAdapter));
+        usdr.grantRole(_BURNER_ROLE, address(collateralAdapter));
 
         // Wiring the oracles (RAIN 400%, stables 100%).
-        osm.kiss(address(priceConverter));
-        osm.kiss(address(dutchAuction));
-        osm.kiss(address(circuitBreaker));
+        osm.grantRole(_READER_ROLE, address(priceConverter));
+        osm.grantRole(_READER_ROLE, address(dutchAuction));
+        osm.grantRole(_READER_ROLE, address(circuitBreaker));
         priceConverter.file(RAIN_ILK, "pip", address(osm));
         priceConverter.file(RAIN_ILK, "mat", 4 * _RAY);
         priceConverter.file(USDT_ILK, "mat", _RAY);
@@ -127,9 +130,14 @@ abstract contract BaseTest is Test {
         priceConverter.poke(USDC_ILK);
 
         // Wiring the reserve stack.
-        reserveAccounting.addCommitter(address(solvencyEngine));
-        reserveAccounting.addRecorder(address(psm));
+        reserveAccounting.grantRole(_COMMITTER_ROLE, address(solvencyEngine));
+        reserveAccounting.grantRole(_RECORDER_ROLE, address(psm));
         solvencyEngine.addVolatileIlk(RAIN_ILK);
+        solvencyEngine.file("priceConverter", address(priceConverter));
+
+        // Wiring the solvency gate.
+        vaultEngine.file("solvencyEngine", address(solvencyEngine));
+        psm.file("solvencyEngine", address(solvencyEngine));
 
         // Wiring the liquidation stack (launch parameters from the spec).
         priceCurve.file("tau", 3600);
@@ -139,7 +147,10 @@ abstract contract BaseTest is Test {
         liquidationTrigger.file(RAIN_ILK, "chop", (_WAD * 113) / 100);
         liquidationTrigger.file(RAIN_ILK, "hole", 50_000 * _RAD);
         liquidationTrigger.file(RAIN_ILK, "clip", address(dutchAuction));
+        liquidationTrigger.file(RAIN_ILK, "barkFactor", (_WAD * 65) / 100);
         liquidationTrigger.grantRole(_WARD_ROLE, address(dutchAuction));
+        balanceSheet.grantRole(_WARD_ROLE, address(liquidationTrigger));
+        balanceSheet.grantRole(_WARD_ROLE, address(dutchAuction));
         dutchAuction.file("buf", (_RAY * 105) / 100);
         dutchAuction.file("tail", 1800);
         dutchAuction.file("cusp", (_RAY * 40) / 100);
@@ -156,5 +167,8 @@ abstract contract BaseTest is Test {
         vaultEngine.file(USDT_ILK, "line", 500_000 * _RAD);
         vaultEngine.file(USDC_ILK, "line", 500_000 * _RAD);
         vaultEngine.file(RAIN_ILK, "dust", 100 * _RAD);
+
+        // Caching the auction's dust-times-chop threshold now that dust and chop are set.
+        dutchAuction.upchost();
     }
 }

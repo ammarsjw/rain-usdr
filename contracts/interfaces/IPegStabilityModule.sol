@@ -22,14 +22,12 @@ interface IPegStabilityModule {
      * @notice Configuration of a registered stablecoin ilk.
      * @param token The stablecoin (USDT or USDC).
      * @param to18ConversionFactor Decimal conversion factor between the stablecoin and 18 decimals.
-     * @param tin Mint fee [wad]. Zero at launch.
-     * @param tout Redeem fee [wad]. Zero at launch.
+     * @param vaultId The PSM's dedicated vault for this ilk in the Vault Engine, opened at registration.
      */
     struct Ilk {
         IERC20Metadata token;
         uint256 to18ConversionFactor;
-        uint256 tin;
-        uint256 tout;
+        uint256 vaultId;
     }
 
     /* ========================== EVENTS ========================== */
@@ -42,12 +40,11 @@ interface IPegStabilityModule {
     event Init(bytes32 indexed ilkId, address indexed token);
 
     /**
-     * @dev Emitted when a fee parameter is updated.
-     * @param ilkId Identifier of the stablecoin's collateral type.
+     * @dev Emitted when an address dependency is updated.
      * @param what Name of the parameter.
-     * @param data New value [wad].
+     * @param addr New address.
      */
-    event File(bytes32 indexed ilkId, bytes32 indexed what, uint256 data);
+    event File(bytes32 indexed what, address addr);
 
     /**
      * @dev Emitted when a user converts stablecoins into USDR.
@@ -85,12 +82,12 @@ interface IPegStabilityModule {
     function init(bytes32 ilkId) external;
 
     /**
-     * @notice Adjusts a stablecoin's mint fee {tin} or redeem fee {tout}. Both zero at launch.
-     * @param ilkId Identifier of the stablecoin's collateral type.
+     * @notice Sets an address dependency {solvencyEngine} or {governor}. Either may be unset (`address(0)`), in
+     *         which case the corresponding check is skipped.
      * @param what Name of the parameter.
-     * @param data New value [wad].
+     * @param data New address.
      */
-    function file(bytes32 ilkId, bytes32 what, uint256 data) external;
+    function file(bytes32 what, address data) external;
 
     /**
      * @notice Converts stablecoins into USDR at a 1:1 rate.
@@ -135,10 +132,18 @@ interface IPegStabilityModule {
      * @param ilkId Identifier of the stablecoin's collateral type.
      * @return token The stablecoin.
      * @return to18ConversionFactor Decimal conversion factor between the stablecoin and 18 decimals.
-     * @return tin Mint fee [wad].
-     * @return tout Redeem fee [wad].
      */
     function ilks(
         bytes32 ilkId
-    ) external view returns (IERC20Metadata token, uint256 to18ConversionFactor, uint256 tin, uint256 tout);
+    ) external view returns (IERC20Metadata token, uint256 to18ConversionFactor, uint256 vaultId);
+
+    /**
+     * @notice Returns the Solvency Engine consulted before redemptions. Zero when unset.
+     */
+    function solvencyEngine() external view returns (address);
+
+    /**
+     * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
+     */
+    function governor() external view returns (address);
 }

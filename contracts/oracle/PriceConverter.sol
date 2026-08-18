@@ -152,7 +152,8 @@ contract PriceConverter is IPriceConverter, AccessControl {
             (val, has) = ilk.pip.peek(ilkId);
         }
 
-        // If the price is invalid, do nothing (the price factor stays untouched).
+        // If the price is invalid, the price factor is set to ZERO, freezing new minting against this collateral
+        // until a valid price returns (a zero spot makes every mint/withdraw fail the safety check).
         uint256 spot = has ? ((((uint256(val) * (10 ** 9)) * _RAY) / par) * _RAY) / ilk.mat : 0;
 
         VAULT_ENGINE.file(ilkId, "spot", spot);

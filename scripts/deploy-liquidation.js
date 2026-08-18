@@ -59,6 +59,9 @@ const deployLiquidation = async () => {
     );
     const dutchAuctionInstance = await hardhat.ethers.getContractAt(dutchAuctionName, dutchAuctionAddress);
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
+    const balanceSheetInstance = await hardhat.ethers.getContractAt("BalanceSheet", balanceSheetAddress);
+    const osmInstance = await hardhat.ethers.getContractAt("OracleSecurityModule", osmAddress);
+    const circuitBreakerInstance = await hardhat.ethers.getContractAt(circuitBreakerName, circuitBreakerAddress);
 
     // Price curve: auction lifetime of 1 hour (straight-line decline to zero).
     await (await priceCurveInstance.file(hardhat.ethers.encodeBytes32String("tau"), 3600n)).wait();
@@ -101,6 +104,14 @@ const deployLiquidation = async () => {
             rainIlk,
             hardhat.ethers.encodeBytes32String("clip"),
             dutchAuctionAddress
+        )
+    ).wait();
+    // Bark threshold: a vault becomes liquidatable at 65% of the ilk's required ratio (RAIN 400% -> 260%).
+    await (
+        await liquidationTriggerInstance["file(bytes32,bytes32,uint256)"](
+            rainIlk,
+            hardhat.ethers.encodeBytes32String("barkFactor"),
+            (WAD * 65n) / 100n
         )
     ).wait();
 
@@ -149,7 +160,6 @@ const deployLiquidation = async () => {
     ).wait();
 
     // Whitelisting the auction and the breaker to read the OSM.
-    const osmInstance = await hardhat.ethers.getContractAt("OracleSecurityModule", osmAddress);
     await (await osmInstance.grantRole(READER_ROLE, dutchAuctionAddress)).wait();
     await (await osmInstance.grantRole(READER_ROLE, circuitBreakerAddress)).wait();
 
@@ -158,6 +168,18 @@ const deployLiquidation = async () => {
     await (await vaultEngineInstance.grantRole(WARD_ROLE, dutchAuctionAddress)).wait();
     await (await liquidationTriggerInstance.grantRole(WARD_ROLE, dutchAuctionAddress)).wait();
     await (await dutchAuctionInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
+    await (await balanceSheetInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
+
+    // Circuit breaker: 30 minute calm period, 5 minute observation interval (constructor defaults; set explicitly).
+    await (
+        await circuitBreakerInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("calmPeriod"), 1800n)
+    ).wait();
+    await (
+        await circuitBreakerInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("obsInterval"), 300n)
+    ).wait();
+
+    // Caching the auction's dust-times-chop threshold now that dust and chop are set.
+    await (await dutchAuctionInstance.upchost()).wait();
     console.log("Liquidation setup complete");
 
     // Updating env.

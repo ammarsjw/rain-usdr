@@ -61,6 +61,14 @@ interface ICollateralAdapter {
      */
     event Cage(bytes32 indexed ilkId);
 
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates that a token with more than 18 decimals was supplied. Such tokens cannot be represented in the
+     *      internal 18 decimal accounting.
+     */
+    error InvalidDecimals();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**

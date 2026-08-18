@@ -8,10 +8,11 @@ import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IBalanceSheet } from "../interfaces/IBalanceSheet.sol";
 import { ICircuitBreaker } from "../interfaces/ICircuitBreaker.sol";
 import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
+import { IGovernor } from "../interfaces/IGovernor.sol";
 import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, NotLive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -46,6 +47,9 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
 
     /// @inheritdoc ILiquidationTrigger
     ICircuitBreaker public circuitBreaker;
+
+    /// @inheritdoc ILiquidationTrigger
+    address public governor;
 
     /// @inheritdoc ILiquidationTrigger
     mapping(bytes32 ilkId => IlkLiquidation liquidation) public ilks;
@@ -95,6 +99,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             balanceSheet = IBalanceSheet(data);
         } else if (what == "circuitBreaker") {
             circuitBreaker = ICircuitBreaker(data);
+        } else if (what == "governor") {
+            governor = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -114,6 +120,14 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             ilks[ilkId].chop = data;
         } else if (what == "hole") {
             ilks[ilkId].hole = data;
+        } else if (what == "barkFactor") {
+            // The bark factor must be in (0, 1]: a vault only becomes liquidatable once its collateral ratio falls to
+            // this fraction of the ilk's required ratio.
+            if (data == 0 || data > _WAD) {
+                _revert(InvalidBarkFactor.selector);
+            }
+
+            ilks[ilkId].barkFactor = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -146,12 +160,28 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function bark(bytes32 ilkId, address urn, address kpr) external returns (uint256 id) {
+    function bark(uint256 vaultId, address kpr) external returns (uint256 id) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
 
-        (uint256 ink, uint256 art) = VAULT_ENGINE.urns(ilkId, urn);
+        // Emergency pause check (full stop).
+        if (governor != address(0) && IGovernor(governor).paused()) {
+            _revert(SystemPaused.selector);
+        }
+
+        // The vault must exist; its collateral type is fixed at open time. Each vault is checked against the bark
+        // threshold independently: only the (ink, art) of THIS vault id enter the unsafe condition, so one owner's
+        // unsafe vault never drags their other vaults into liquidation.
+        address owner = VAULT_ENGINE.ownerOf(vaultId);
+
+        if (owner == address(0)) {
+            _revert(VaultNotFound.selector);
+        }
+
+        bytes32 ilkId = VAULT_ENGINE.ilkOf(vaultId);
+
+        (uint256 ink, uint256 art) = VAULT_ENGINE.urns(vaultId);
 
         IlkLiquidation memory milk = ilks[ilkId];
         uint256 dart;
@@ -161,10 +191,15 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         {
             uint256 spot;
 
-            (, rate, spot, , dust) = VAULT_ENGINE.ilks(ilkId);
+            (, , rate, spot, , dust) = VAULT_ENGINE.ilks(ilkId);
 
-            // Unsafe check: the vault's collateral value must be less than its debt.
-            if (spot == 0 || ink * spot >= art * rate) {
+            // Unsafe check: the vault's collateral value must be below `barkFactor` of its debt. `spot` [ray] already
+            // embeds the ilk's required ratio (mat), so `ink * spot < art * rate` is the at-mat condition; scaling the
+            // debt side by barkFactor [wad] moves the trigger to barkFactor of mat (e.g. 65% of 400% = 260%).
+            // Units: ink [wad] * spot [ray] = [rad]; art [wad] * rate [ray] = [rad]; dividing the rad debt by WAD
+            // before multiplying by barkFactor [wad] keeps the product in [rad] with ample headroom and full
+            // precision (art*rate is a multiple of RAY, so /WAD loses nothing at rate == RAY).
+            if (spot == 0 || ink * spot >= ((art * rate) / _WAD) * milk.barkFactor) {
                 _revert(NotUnsafe.selector);
             }
 
@@ -181,8 +216,10 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
                 room = (room * throttle) / _WAD;
             }
 
-            // uint256.max()/(RAD*WAD) = 115,792,089,237,316
-            dart = Math.min(art, ((room / rate) * _WAD) / milk.chop);
+            // uint256.max()/(RAD*WAD) = 115,792,089,237,316, i.e. the room [rad] * WAD product has overflow headroom
+            // up to ~115 trillion rad of room. Ordering multiplies before dividing so small rooms at large rates still
+            // yield a correctly scaled, nonzero dart.
+            dart = Math.min(art, (room * _WAD) / rate / milk.chop);
 
             // Partial liquidation edge case logic.
             if (art > dart) {
@@ -209,7 +246,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         }
 
         // Seizing the vault: collateral moves to the auction, debt moves to the balance sheet.
-        VAULT_ENGINE.grab(ilkId, urn, milk.clip, address(balanceSheet), -int256(dink), -int256(dart));
+        VAULT_ENGINE.grab(vaultId, milk.clip, address(balanceSheet), -int256(dink), -int256(dart));
 
         uint256 due = dart * rate;
 
@@ -222,11 +259,21 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             globalDirt += tab;
             ilks[ilkId].dirt += tab;
 
-            // Starting the Dutch auction. Whoever called bark is eligible for the keeper reward.
-            id = IDutchAuction(milk.clip).kick({ tab: tab, lot: dink, usr: urn, kpr: kpr });
+            // Starting the Dutch auction. Whoever called bark is eligible for the keeper reward. Any leftover
+            // collateral from the auction is returned to the vault's owner.
+            id = IDutchAuction(milk.clip).kick({ tab: tab, lot: dink, usr: owner, kpr: kpr });
         }
 
-        emit Bark({ ilkId: ilkId, urn: urn, ink: dink, art: dart, due: due, clip: milk.clip, id: id });
+        emit Bark({
+            ilkId: ilkId,
+            vaultId: vaultId,
+            urn: owner,
+            ink: dink,
+            art: dart,
+            due: due,
+            clip: milk.clip,
+            id: id
+        });
     }
 
     /**

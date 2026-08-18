@@ -17,14 +17,18 @@ import { _revert } from "../shared/Globals.sol";
  *         its recent trend. If the move is too large too fast, it throttles liquidations, slowing them but never
  *         freezing them, so a manipulated price cannot trigger a wave of unfair liquidations. It never touches
  *         ordinary vault operations.
- * @dev Activates when the delayed price deviates more than the threshold (25%) from the one-hour trend. Deactivates
- *      after the deviation stays below the threshold for the required number of consecutive calm blocks (3).
+ * @dev Activates when the delayed price deviates more than the threshold (25%) from the trailing-average trend.
+ *      Deactivates only after a full calm period (in seconds) has elapsed since activation AND the deviation is back
+ *      under the threshold at that moment. The trend anchor is the average of a small ring buffer of observations
+ *      recorded at most once per `obsInterval`, so a single manipulated observation moves the anchor by at most 1/N.
+ *      Residual assumption: a keeper calls {check} regularly (at least once per observation interval); if checks stop
+ *      entirely, the trend goes stale until calls resume.
  */
 contract CircuitBreaker is ICircuitBreaker, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc ICircuitBreaker
-    uint256 public constant TREND_WINDOW = 3600;
+    uint256 public constant OBS_COUNT = 12;
 
     /// @inheritdoc ICircuitBreaker
     bytes32 public immutable ILK_ID;
@@ -36,27 +40,34 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
     uint256 public threshold;
 
     /// @inheritdoc ICircuitBreaker
-    uint256 public calmBlocks;
+    uint256 public calmPeriod;
 
     /// @inheritdoc ICircuitBreaker
-    uint256 public trendPrice;
+    uint256 public obsInterval;
 
     /// @inheritdoc ICircuitBreaker
-    uint256 public trendTimestamp;
+    uint256 public activatedAt;
 
     /// @inheritdoc ICircuitBreaker
-    uint256 public calmCount;
-
-    /// @inheritdoc ICircuitBreaker
-    uint256 public lastCheckedBlock;
+    uint256 public lastObsTimestamp;
 
     /// @inheritdoc ICircuitBreaker
     bool public active;
 
+    /// @dev Ring buffer of trailing price observations [wad].
+    uint256[OBS_COUNT] private _observations;
+
+    /// @dev Next write position in the ring buffer.
+    uint256 private _obsIndex;
+
+    /// @dev Number of populated observations (grows to OBS_COUNT and stays there).
+    uint256 private _obsFilled;
+
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
-     * @notice Initializes the breaker with its launch settings (25% threshold, 3 calm blocks).
+     * @notice Initializes the breaker with its launch settings (25% threshold, 30 minute calm period, 5 minute
+     *         observation interval).
      * @param pip_ Address of the Oracle Security Module to watch.
      * @param ilkId_ Identifier of the collateral type to watch.
      */
@@ -76,7 +87,8 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
         ILK_ID = ilkId_;
         PIP = pip_;
         threshold = _WAD / 4;
-        calmBlocks = 3;
+        calmPeriod = 1800;
+        obsInterval = 300;
     }
 
     /* ========================== FUNCTIONS ========================== */
@@ -87,8 +99,10 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
     function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "threshold") {
             threshold = data;
-        } else if (what == "calmBlocks") {
-            calmBlocks = data;
+        } else if (what == "calmPeriod") {
+            calmPeriod = data;
+        } else if (what == "obsInterval") {
+            obsInterval = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -108,39 +122,60 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
 
         uint256 currentPrice = uint256(val);
 
-        // Refreshing the trend anchor once the window has fully elapsed.
-        if (trendTimestamp == 0 || block.timestamp - trendTimestamp >= TREND_WINDOW) {
-            trendPrice = currentPrice;
-            trendTimestamp = block.timestamp;
+        // Recording an observation at most once per interval. A single manipulated observation moves the trailing
+        // average by at most 1/OBS_COUNT, so the anchor cannot be poisoned in one block.
+        if (lastObsTimestamp == 0 || block.timestamp - lastObsTimestamp >= obsInterval) {
+            _observations[_obsIndex] = currentPrice;
+            _obsIndex = (_obsIndex + 1) % OBS_COUNT;
+
+            if (_obsFilled < OBS_COUNT) {
+                ++_obsFilled;
+            }
+
+            lastObsTimestamp = block.timestamp;
         }
 
-        // Comparing the current delayed price to the one-hour trend.
-        uint256 deviation = _deviation(currentPrice, trendPrice);
+        // Comparing the current delayed price to the trailing-average trend.
+        uint256 deviation = _deviation(currentPrice, trendPrice());
 
         if (deviation > threshold) {
-            // The move is too large too fast: activate and reset the calm counter.
+            // The move is too large too fast: activate (or re-anchor the calm clock while already active).
             if (!active) {
                 active = true;
 
                 emit Activated({ deviation: deviation });
             }
 
-            calmCount = 0;
-        } else if (active && block.number != lastCheckedBlock) {
-            // Counting consecutive calm blocks toward deactivation.
-            ++calmCount;
+            activatedAt = block.timestamp;
+        } else if (active && block.timestamp >= activatedAt + calmPeriod) {
+            // Time-based deactivation: a full calm period has elapsed since the last above-threshold reading AND the
+            // deviation is back under the threshold right now.
+            active = false;
+            activatedAt = 0;
 
-            if (calmCount >= calmBlocks) {
-                active = false;
-                calmCount = 0;
-
-                emit Deactivated();
-            }
+            emit Deactivated();
         }
 
-        lastCheckedBlock = block.number;
-
         emit Checked({ deviation: deviation, active: active });
+    }
+
+    /**
+     * @inheritdoc ICircuitBreaker
+     */
+    function trendPrice() public view returns (uint256 trend) {
+        uint256 filled = _obsFilled;
+
+        if (filled == 0) {
+            return 0;
+        }
+
+        uint256 sum;
+
+        for (uint256 i; i < filled; ++i) {
+            sum += _observations[i];
+        }
+
+        trend = sum / filled;
     }
 
     /**

@@ -68,7 +68,15 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
             _revert(IlkAlreadyInitialized.selector);
         }
 
-        ilks[ilkId] = Ilk({ token: token, dec: token.decimals(), isUsdr: ilkId == _USDR_ILK, live: 1 });
+        uint8 dec = token.decimals();
+
+        // Tokens with more than 18 decimals cannot be represented internally: the `10 ** (18 - dec)` conversion
+        // would underflow. Reject them at registration.
+        if (dec > 18) {
+            _revert(InvalidDecimals.selector);
+        }
+
+        ilks[ilkId] = Ilk({ token: token, dec: dec, isUsdr: ilkId == _USDR_ILK, live: 1 });
 
         emit Init({ ilkId: ilkId, token: address(token) });
     }
@@ -106,7 +114,8 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
             // Converting token decimals to the internal 18 decimal representation.
             uint256 wad = amount * (10 ** (18 - ilk.dec));
 
-            if (int256(wad) < 0) {
+            // The value must fit the signed range before casting (mirrors exit's pattern).
+            if (wad > uint256(type(int256).max)) {
                 _revert(InvalidAmount.selector);
             }
 

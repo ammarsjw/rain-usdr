@@ -138,6 +138,8 @@ contract Governor is IGovernor, AccessControl {
 
     /**
      * @inheritdoc IGovernor
+     * @dev NOTE (accepted limitation): a scheduled change can be cancelled at any moment up to its execution,
+     *      including after its delay has elapsed. Watchers should treat a queued change as final only once executed.
      */
     function cancel(uint256 id) external onlyRole(_WARD_ROLE) {
         Change storage change = changes[id];

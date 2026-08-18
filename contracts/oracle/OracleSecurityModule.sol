@@ -116,6 +116,9 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
             ilk.delay = uint64(block.timestamp - (block.timestamp % HOP));
 
             emit Poke({ ilkId: ilkId, current: ilk.cur.val, next: ilk.nxt.val });
+        } else {
+            // The source refused to report a valid price: surface it for monitoring without reverting.
+            emit PokeFailed({ ilkId: ilkId, src: address(ilk.src) });
         }
     }
 

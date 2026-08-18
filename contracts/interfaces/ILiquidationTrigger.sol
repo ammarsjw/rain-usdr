@@ -20,12 +20,15 @@ interface ILiquidationTrigger {
      * @param chop The liquidation penalty [wad]. 13% = 1.13 * WAD.
      * @param hole The maximum active liquidation size for this collateral [rad].
      * @param dirt The amount currently being auctioned for this collateral [rad].
+     * @param barkFactor Fraction of the required collateral ratio at which a vault becomes liquidatable [wad].
+     *        65% = 0.65 * WAD.
      */
     struct IlkLiquidation {
         address clip;
         uint256 chop;
         uint256 hole;
         uint256 dirt;
+        uint256 barkFactor;
     }
 
     /* ========================== EVENTS ========================== */
@@ -63,7 +66,8 @@ interface ILiquidationTrigger {
     /**
      * @dev Emitted when an unsafe vault is liquidated.
      * @param ilkId Identifier of the collateral type.
-     * @param urn Vault that was liquidated.
+     * @param vaultId Identifier of the vault that was liquidated.
+     * @param urn Owner of the liquidated vault (receives any leftover collateral).
      * @param ink Collateral seized [wad].
      * @param art Normalized debt seized [wad].
      * @param due Debt to recover before the penalty [rad].
@@ -72,6 +76,7 @@ interface ILiquidationTrigger {
      */
     event Bark(
         bytes32 indexed ilkId,
+        uint256 indexed vaultId,
         address indexed urn,
         uint256 ink,
         uint256 art,
@@ -95,9 +100,19 @@ interface ILiquidationTrigger {
     error ChopBelowOne();
 
     /**
+     * @dev Indicates that a bark factor outside (0, 1] was supplied.
+     */
+    error InvalidBarkFactor();
+
+    /**
      * @dev Indicates that the vault is not unsafe and cannot be liquidated.
      */
     error NotUnsafe();
+
+    /**
+     * @dev Indicates that the vault id has not been opened.
+     */
+    error VaultNotFound();
 
     /**
      * @dev Indicates that the liquidation limit has been reached.
@@ -136,7 +151,7 @@ interface ILiquidationTrigger {
     function file(bytes32 what, address data) external;
 
     /**
-     * @notice Adjusts a per-collateral parameter {chop} or {hole}.
+     * @notice Adjusts a per-collateral parameter {chop}, {hole} or {barkFactor}.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
      * @param data New value.
@@ -159,13 +174,12 @@ interface ILiquidationTrigger {
     /**
      * @notice Seizes an under-collateralized vault and starts an auction for its collateral.
      * @dev Reverts if the vault is safe, if the liquidation caps are hit, or when the circuit breaker throttle leaves
-     *      no room this period.
-     * @param ilkId Identifier of the collateral type.
-     * @param urn Vault to liquidate.
+     *      no room this period. Each vault id is assessed independently against the bark threshold.
+     * @param vaultId Identifier of the vault to liquidate.
      * @param kpr Keeper eligible for the liquidation reward.
      * @return id Identifier of the started auction.
      */
-    function bark(bytes32 ilkId, address urn, address kpr) external returns (uint256 id);
+    function bark(uint256 vaultId, address kpr) external returns (uint256 id);
 
     /**
      * @notice Frees auction capacity when an auction clears its debt.
@@ -217,12 +231,20 @@ interface ILiquidationTrigger {
     function circuitBreaker() external view returns (ICircuitBreaker);
 
     /**
+     * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
+     */
+    function governor() external view returns (address);
+
+    /**
      * @notice Returns the liquidation settings for a collateral type.
      * @param ilkId Identifier of the collateral type.
      * @return clip The Dutch auction contract for this collateral.
      * @return chop The liquidation penalty [wad].
      * @return hole The maximum active liquidation size for this collateral [rad].
      * @return dirt The amount currently being auctioned for this collateral [rad].
+     * @return barkFactor Fraction of the required collateral ratio at which a vault becomes liquidatable [wad].
      */
-    function ilks(bytes32 ilkId) external view returns (address clip, uint256 chop, uint256 hole, uint256 dirt);
+    function ilks(
+        bytes32 ilkId
+    ) external view returns (address clip, uint256 chop, uint256 hole, uint256 dirt, uint256 barkFactor);
 }

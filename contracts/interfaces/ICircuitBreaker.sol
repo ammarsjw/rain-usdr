@@ -40,7 +40,8 @@ interface ICircuitBreaker {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Adjusts the deviation threshold {threshold} or the number of calm blocks needed to reset {calmBlocks}.
+     * @notice Adjusts the deviation threshold {threshold}, the calm period in seconds {calmPeriod}, or the minimum
+     *         spacing between trend observations {obsInterval}.
      * @param what Name of the parameter.
      * @param data New value.
      */
@@ -48,15 +49,15 @@ interface ICircuitBreaker {
 
     /**
      * @notice Determines whether prices are moving abnormally and sets the breaker on or off.
-     * @dev Public, anyone can call. Activates above the threshold. Deactivates after the required consecutive calm
-     *      blocks.
+     * @dev Public, anyone can call. Activates above the threshold. Deactivates only once a full calm period has
+     *      elapsed since the last above-threshold reading and the deviation is back under the threshold.
      */
     function check() external;
 
     /**
-     * @notice Returns the trend window in seconds (one hour).
+     * @notice Returns the size of the trailing-average observation ring buffer.
      */
-    function TREND_WINDOW() external view returns (uint256);
+    function OBS_COUNT() external view returns (uint256);
 
     /**
      * @notice Returns the identifier of the collateral type whose price is being watched.
@@ -74,29 +75,30 @@ interface ICircuitBreaker {
     function threshold() external view returns (uint256);
 
     /**
-     * @notice Returns the number of consecutive calm blocks required to deactivate the breaker.
+     * @notice Returns the calm period in seconds that must elapse after the last above-threshold reading before the
+     *         breaker may deactivate.
      */
-    function calmBlocks() external view returns (uint256);
+    function calmPeriod() external view returns (uint256);
 
     /**
-     * @notice Returns the one-hour trend anchor price [wad].
+     * @notice Returns the minimum spacing between trend observations in seconds.
+     */
+    function obsInterval() external view returns (uint256);
+
+    /**
+     * @notice Returns the trailing-average trend anchor price [wad]. Zero until the first observation.
      */
     function trendPrice() external view returns (uint256);
 
     /**
-     * @notice Returns the timestamp when the trend anchor was recorded.
+     * @notice Returns the timestamp of the last above-threshold reading while active. Zero when inactive.
      */
-    function trendTimestamp() external view returns (uint256);
+    function activatedAt() external view returns (uint256);
 
     /**
-     * @notice Returns the number of consecutive calm blocks observed while active.
+     * @notice Returns the timestamp of the last recorded trend observation.
      */
-    function calmCount() external view returns (uint256);
-
-    /**
-     * @notice Returns the last block in which the breaker was checked.
-     */
-    function lastCheckedBlock() external view returns (uint256);
+    function lastObsTimestamp() external view returns (uint256);
 
     /**
      * @notice Reports whether the breaker is currently active, meaning liquidations are being throttled.

@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import { IExternalExposure } from "./IExternalExposure.sol";
+import { IPriceConverter } from "./IPriceConverter.sol";
 import { IReserveAccounting } from "./IReserveAccounting.sol";
 import { IVaultEngine } from "./IVaultEngine.sol";
 
@@ -28,19 +29,26 @@ interface ISolvencyEngine {
     event AddVolatileIlk(bytes32 indexed ilkId);
 
     /**
+     * @dev Emitted when a volatile collateral type is removed from the stress calculation.
+     * @param ilkId Identifier of the collateral type.
+     */
+    event RemoveVolatileIlk(bytes32 indexed ilkId);
+
+    /**
+     * @dev Emitted when the external exposure reporter reverts or reports above the cap, and the conservative cap is
+     *      used instead.
+     * @param reported The value reported (`type(uint256).max` when the reporter reverted).
+     * @param cap The exposure cap that was applied [wad].
+     */
+    event ExposureClamped(uint256 reported, uint256 cap);
+
+    /**
      * @dev Emitted when the invariant is checked, for the monitoring system.
      * @param reserve The current stable reserve [wad].
      * @param worstCaseLoss The worst-case loss under stress [wad].
      * @param passed Whether the invariant held.
      */
     event InvariantChecked(uint256 reserve, uint256 worstCaseLoss, bool passed);
-
-    /* ========================== ERRORS ========================== */
-
-    /**
-     * @dev Indicates that the worst-case loss exceeds the stable reserve.
-     */
-    error SolvencyBreach();
 
     /* ========================== FUNCTIONS ========================== */
 
@@ -60,18 +68,36 @@ interface ISolvencyEngine {
 
     /**
      * @notice Adds a volatile collateral type to the stress calculation.
+     * @dev Reverts if the ilk is already registered.
      * @param ilkId Identifier of the collateral type.
      */
     function addVolatileIlk(bytes32 ilkId) external;
 
     /**
-     * @notice Enforces the master rule: worst-case loss must never exceed the stable reserve.
-     * @dev Reverts with a solvency-breach error if the rule would be broken. On success, updates the committed escrow
-     *      in Reserve Accounting and emits a record of the check.
+     * @notice Removes a volatile collateral type from the stress calculation (swap-and-pop).
+     * @dev Reverts if the ilk is not registered.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function removeVolatileIlk(bytes32 ilkId) external;
+
+    /**
+     * @notice Recomputes the master rule: worst-case loss must stay under the gated fraction of the stable reserve.
+     * @dev NEVER reverts on a breach: it always updates the committed escrow and the {breached} flag so downstream
+     *      accounting can never go stale. A keeper bot is expected to call this regularly.
      * @return loss The worst-case loss under stress [wad].
      * @return reserve The current stable reserve [wad].
      */
     function checkInvariant() external returns (uint256 loss, uint256 reserve);
+
+    /**
+     * @notice Returns whether the solvency invariant was breached at the last {checkInvariant} call.
+     */
+    function isBreached() external view returns (bool);
+
+    /**
+     * @notice Returns the loss level above which the invariant is considered breached [wad].
+     */
+    function breachThreshold() external view returns (uint256);
 
     /**
      * @notice Calculates the most the protocol could lose, assuming a crisis.
@@ -102,6 +128,26 @@ interface ISolvencyEngine {
     function stressDepth() external view returns (uint256);
 
     /**
+     * @notice Returns the reserve fraction above which a worst-case loss flags a breach [wad]. 90% = 0.9 * WAD.
+     */
+    function reserveFactor() external view returns (uint256);
+
+    /**
+     * @notice Returns the cap applied to externally reported exposure [wad].
+     */
+    function exposureCap() external view returns (uint256);
+
+    /**
+     * @notice Returns the breach flag as last computed by {checkInvariant}.
+     */
+    function breached() external view returns (bool);
+
+    /**
+     * @notice Returns the Price Converter used to read each ilk's collateralization ratio.
+     */
+    function priceConverter() external view returns (IPriceConverter);
+
+    /**
      * @notice Returns the prediction market layer's exposure reporter. May be unset at launch.
      */
     function externalExposure() external view returns (IExternalExposure);
@@ -112,4 +158,10 @@ interface ISolvencyEngine {
      * @return The collateral type identifier.
      */
     function volatileIlks(uint256 index) external view returns (bytes32);
+
+    /**
+     * @notice Returns whether an ilk is registered as volatile in the stress calculation.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function isVolatile(bytes32 ilkId) external view returns (bool);
 }
