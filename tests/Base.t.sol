@@ -164,6 +164,12 @@ abstract contract BaseTest is Test {
         dutchAuction.file("calc", address(priceCurve));
         dutchAuction.grantRole(_WARD_ROLE, address(liquidationTrigger));
 
+        // Wiring the Governor's emergency pause into the gated entry points (deploy-script parity).
+        vaultEngine.file("governor", address(governor));
+        psm.file("governor", address(governor));
+        liquidationTrigger.file("governor", address(governor));
+        dutchAuction.file("governor", address(governor));
+
         // Deploying and wiring the End (emergency settlement).
         end = new End(vaultEngine);
         end.file("liquidationTrigger", address(liquidationTrigger));

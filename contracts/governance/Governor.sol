@@ -168,7 +168,10 @@ contract Governor is IGovernor, AccessControl {
      * @inheritdoc IGovernor
      */
     function unpause() external {
-        if (!paused()) {
+        // Checked against the RAW flag, not the auto-expiring view: after the window expires the system already
+        // reads unpaused everywhere, but the stale storage must still be clearable (and the public-after-expiry
+        // rule below applies to exactly that case).
+        if (!_paused) {
             _revert(NotPaused.selector);
         }
 
