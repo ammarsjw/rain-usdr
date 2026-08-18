@@ -9,13 +9,7 @@ import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { Math } from "../libraries/Math.sol";
 import { _RAY, _WARD_ROLE } from "../shared/Constants.sol";
-import {
-    IlkAlreadyInitialized,
-    NotLive,
-    SolvencyGateActive,
-    SystemPaused,
-    UnrecognizedParameter
-} from "../shared/Errors.sol";
+import { IlkAlreadyInitialized, InvalidAddress, NotLive, SolvencyGateActive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -56,7 +50,16 @@ contract VaultEngine is IVaultEngine, AccessControl {
     mapping(bytes32 ilkId => Ilk collateralType) public ilks;
 
     /// @inheritdoc IVaultEngine
-    mapping(bytes32 ilkId => mapping(address vaultOwner => Urn vault)) public urns;
+    uint256 public vaultCount;
+
+    /// @inheritdoc IVaultEngine
+    mapping(uint256 vaultId => address vaultOwner) public ownerOf;
+
+    /// @inheritdoc IVaultEngine
+    mapping(uint256 vaultId => bytes32 ilkId) public ilkOf;
+
+    /// @inheritdoc IVaultEngine
+    mapping(uint256 vaultId => Urn vault) public urns;
 
     /// @inheritdoc IVaultEngine
     mapping(bytes32 ilkId => mapping(address user => uint256 balance)) public collateral;
@@ -173,6 +176,36 @@ contract VaultEngine is IVaultEngine, AccessControl {
     /**
      * @inheritdoc IVaultEngine
      */
+    function open(bytes32 ilkId, address usr) external returns (uint256 vaultId) {
+        // Vaults may only be opened while the system is live.
+        if (live != 1) {
+            _revert(NotLive.selector);
+        }
+
+        if (usr == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
+        // The collateral type must have been initialized: junk vaults against unknown ilks are rejected here rather
+        // than later in frob, so indexers only ever see real positions.
+        if (ilks[ilkId].rate == 0) {
+            _revert(IlkNotInitialized.selector);
+        }
+
+        // Vault ids are sequential and never reused. Ownership is immutable: transferring a position is not
+        // supported (a deliberate omission -- it keeps in-flight auction refunds, which are captured per owner at
+        // bark time, always correct).
+        vaultId = ++vaultCount;
+
+        ownerOf[vaultId] = usr;
+        ilkOf[vaultId] = ilkId;
+
+        emit Open({ ilkId: ilkId, owner: usr, vaultId: vaultId });
+    }
+
+    /**
+     * @inheritdoc IVaultEngine
+     */
     function cage() external onlyRole(_WARD_ROLE) {
         live = 0;
 
@@ -219,13 +252,22 @@ contract VaultEngine is IVaultEngine, AccessControl {
     /**
      * @inheritdoc IVaultEngine
      */
-    function frob(bytes32 ilkId, address u, address v, address w, int256 dink, int256 dart) external {
+    function frob(uint256 vaultId, address v, address w, int256 dink, int256 dart) external {
         // System must be live.
         if (live != 1) {
             _revert(NotLive.selector);
         }
 
-        Urn memory urn = urns[ilkId][u];
+        // The vault must have been opened. Its owner and collateral type are fixed at open time.
+        address owner = ownerOf[vaultId];
+
+        if (owner == address(0)) {
+            _revert(VaultNotFound.selector);
+        }
+
+        bytes32 ilkId = ilkOf[vaultId];
+
+        Urn memory urn = urns[vaultId];
         Ilk memory ilk = ilks[ilkId];
 
         // The collateral type must have been initialized.
@@ -278,10 +320,10 @@ contract VaultEngine is IVaultEngine, AccessControl {
             _revert(NotSafe.selector);
         }
 
-        // Permission checks: the urn is either less risky than before, or its owner consents; collateral is either not
-        // being taken, or its source consents; internal USDR is either not being drawn down, or the destination
-        // consents.
-        if (!(Math.both(dart <= 0, dink >= 0) || _wish(u, msg.sender))) {
+        // Permission checks: the vault is either less risky than before, or its owner consents; collateral is
+        // either not being taken, or its source consents; internal USDR is either not being drawn down, or the
+        // destination consents.
+        if (!(Math.both(dart <= 0, dink >= 0) || _wish(owner, msg.sender))) {
             _revert(NotAllowed.selector);
         }
 
@@ -301,30 +343,29 @@ contract VaultEngine is IVaultEngine, AccessControl {
         collateral[ilkId][v] = Math.sub(collateral[ilkId][v], dink);
         usdr[w] = Math.add(usdr[w], dtab);
 
-        urns[ilkId][u] = urn;
+        urns[vaultId] = urn;
         ilks[ilkId] = ilk;
 
-        emit Frob({ ilkId: ilkId, u: u, v: v, w: w, dink: dink, dart: dart });
+        emit Frob({ ilkId: ilkId, vaultId: vaultId, v: v, w: w, dink: dink, dart: dart });
     }
 
     /**
      * @inheritdoc IVaultEngine
      */
-    function grab(
-        bytes32 ilkId,
-        address u,
-        address v,
-        address w,
-        int256 dink,
-        int256 dart
-    ) external onlyRole(_WARD_ROLE) {
+    function grab(uint256 vaultId, address v, address w, int256 dink, int256 dart) external onlyRole(_WARD_ROLE) {
         // TODO: H-7 stopgap. There is no End.sol port yet, so `grab` is simply unavailable after shutdown. Once an
         // End equivalent exists, this must be revisited so its settlement path can seize positions.
         if (live != 1) {
             _revert(NotLive.selector);
         }
 
-        Urn storage urn = urns[ilkId][u];
+        if (ownerOf[vaultId] == address(0)) {
+            _revert(VaultNotFound.selector);
+        }
+
+        bytes32 ilkId = ilkOf[vaultId];
+
+        Urn storage urn = urns[vaultId];
         Ilk storage ilk = ilks[ilkId];
 
         urn.ink = Math.add(urn.ink, dink);
@@ -338,7 +379,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
         sin[w] = Math.sub(sin[w], dtab);
         vice = Math.sub(vice, dtab);
 
-        emit Grab({ ilkId: ilkId, u: u, v: v, w: w, dink: dink, dart: dart });
+        emit Grab({ ilkId: ilkId, vaultId: vaultId, v: v, w: w, dink: dink, dart: dart });
     }
 
     /**

@@ -29,7 +29,8 @@ interface IVaultEngine {
     }
 
     /**
-     * @notice A single user's collateralized position.
+     * @notice A single collateralized position. Users may hold any number of vaults per collateral type; each vault
+     *         is identified by a sequential id and is collateralized, drawn against and liquidated independently.
      * @param ink Amount of collateral locked in the vault [wad].
      * @param art Normalized debt of the vault [wad].
      */
@@ -59,6 +60,14 @@ interface IVaultEngine {
      * @param ilkId Identifier of the collateral type.
      */
     event Init(bytes32 indexed ilkId);
+
+    /**
+     * @dev Emitted when a new vault is opened.
+     * @param ilkId Identifier of the collateral type the vault is bound to.
+     * @param owner Owner of the new vault.
+     * @param vaultId Identifier of the new vault.
+     */
+    event Open(bytes32 indexed ilkId, address indexed owner, uint256 indexed vaultId);
 
     /**
      * @dev Emitted when a global parameter is updated.
@@ -110,24 +119,24 @@ interface IVaultEngine {
     /**
      * @dev Emitted when a vault is modified.
      * @param ilkId Identifier of the collateral type.
-     * @param u Vault owner.
+     * @param vaultId Identifier of the vault.
      * @param v Source or destination of collateral.
      * @param w Source or destination of internal USDR.
      * @param dink Signed change in locked collateral [wad].
      * @param dart Signed change in normalized debt [wad].
      */
-    event Frob(bytes32 indexed ilkId, address indexed u, address v, address w, int256 dink, int256 dart);
+    event Frob(bytes32 indexed ilkId, uint256 indexed vaultId, address v, address w, int256 dink, int256 dart);
 
     /**
      * @dev Emitted when a vault is seized during liquidation.
      * @param ilkId Identifier of the collateral type.
-     * @param u Vault being seized.
+     * @param vaultId Identifier of the vault being seized.
      * @param v Recipient of the seized collateral.
      * @param w Debt sink that receives the bad debt.
      * @param dink Signed change in locked collateral [wad].
      * @param dart Signed change in normalized debt [wad].
      */
-    event Grab(bytes32 indexed ilkId, address indexed u, address v, address w, int256 dink, int256 dart);
+    event Grab(bytes32 indexed ilkId, uint256 indexed vaultId, address v, address w, int256 dink, int256 dart);
 
     /**
      * @dev Emitted when surplus and bad debt are cancelled against each other.
@@ -170,6 +179,11 @@ interface IVaultEngine {
      * @dev Indicates that a vault would carry debt below the minimum size.
      */
     error DustAmount();
+
+    /**
+     * @dev Indicates that the vault id has not been opened.
+     */
+    error VaultNotFound();
 
     /* ========================== SOLVENCY GATE / PAUSE ========================== */
 
@@ -229,6 +243,16 @@ interface IVaultEngine {
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
 
     /**
+     * @notice Opens a new vault bound to a collateral type and returns its id.
+     * @dev Permissionless. Vault ids are sequential and never reused; ownership is fixed at open time. `usr` lets
+     *      periphery contracts open vaults on behalf of users (the vault belongs to `usr`, not the caller).
+     * @param ilkId Identifier of the collateral type the vault is bound to.
+     * @param usr Owner of the new vault.
+     * @return vaultId Identifier of the new vault.
+     */
+    function open(bytes32 ilkId, address usr) external returns (uint256 vaultId);
+
+    /**
      * @notice Freezes the core ledger during an emergency shutdown.
      */
     function cage() external;
@@ -263,26 +287,24 @@ interface IVaultEngine {
      * @notice The core vault operation: lock or free collateral and mint or repay USDR.
      * @dev Enforces the over-collateralization rule, debt ceilings, the minimum vault size and caller permissions.
      *      Uses the delayed oracle price factor already stored in the system.
-     * @param ilkId Identifier of the collateral type.
-     * @param u Vault owner.
+     * @param vaultId Identifier of the vault being modified. The collateral type is the one fixed at open time.
      * @param v Source or destination of collateral.
      * @param w Source or destination of internal USDR.
      * @param dink Signed change in locked collateral [wad].
      * @param dart Signed change in normalized debt [wad].
      */
-    function frob(bytes32 ilkId, address u, address v, address w, int256 dink, int256 dart) external;
+    function frob(uint256 vaultId, address v, address w, int256 dink, int256 dart) external;
 
     /**
      * @notice Seizes an unsafe vault's collateral and debt during liquidation.
      * @dev Only callable by the authorized liquidation contract.
-     * @param ilkId Identifier of the collateral type.
-     * @param u Vault being seized.
+     * @param vaultId Identifier of the vault being seized.
      * @param v Recipient of the seized collateral (the auction contract).
      * @param w Debt sink that receives the bad debt (the Balance Sheet).
      * @param dink Signed change in locked collateral [wad].
      * @param dart Signed change in normalized debt [wad].
      */
-    function grab(bytes32 ilkId, address u, address v, address w, int256 dink, int256 dart) external;
+    function grab(uint256 vaultId, address v, address w, int256 dink, int256 dart) external;
 
     /**
      * @notice Cancels equal amounts of the caller's bad debt and surplus.
@@ -346,12 +368,28 @@ interface IVaultEngine {
 
     /**
      * @notice Returns a vault's locked collateral and normalized debt.
-     * @param ilkId Identifier of the collateral type.
-     * @param vaultOwner Owner of the vault.
+     * @param vaultId Identifier of the vault.
      * @return ink Locked collateral [wad].
      * @return art Normalized debt [wad].
      */
-    function urns(bytes32 ilkId, address vaultOwner) external view returns (uint256 ink, uint256 art);
+    function urns(uint256 vaultId) external view returns (uint256 ink, uint256 art);
+
+    /**
+     * @notice Returns the total number of vaults ever opened. The latest vault id.
+     */
+    function vaultCount() external view returns (uint256);
+
+    /**
+     * @notice Returns the owner of a vault. Zero when the vault has not been opened.
+     * @param vaultId Identifier of the vault.
+     */
+    function ownerOf(uint256 vaultId) external view returns (address);
+
+    /**
+     * @notice Returns the collateral type a vault is bound to. Zero when the vault has not been opened.
+     * @param vaultId Identifier of the vault.
+     */
+    function ilkOf(uint256 vaultId) external view returns (bytes32);
 
     /**
      * @notice Returns a user's free collateral balance.

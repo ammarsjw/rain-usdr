@@ -66,7 +66,8 @@ interface ILiquidationTrigger {
     /**
      * @dev Emitted when an unsafe vault is liquidated.
      * @param ilkId Identifier of the collateral type.
-     * @param urn Vault that was liquidated.
+     * @param vaultId Identifier of the vault that was liquidated.
+     * @param urn Owner of the liquidated vault (receives any leftover collateral).
      * @param ink Collateral seized [wad].
      * @param art Normalized debt seized [wad].
      * @param due Debt to recover before the penalty [rad].
@@ -75,6 +76,7 @@ interface ILiquidationTrigger {
      */
     event Bark(
         bytes32 indexed ilkId,
+        uint256 indexed vaultId,
         address indexed urn,
         uint256 ink,
         uint256 art,
@@ -106,6 +108,11 @@ interface ILiquidationTrigger {
      * @dev Indicates that the vault is not unsafe and cannot be liquidated.
      */
     error NotUnsafe();
+
+    /**
+     * @dev Indicates that the vault id has not been opened.
+     */
+    error VaultNotFound();
 
     /**
      * @dev Indicates that the liquidation limit has been reached.
@@ -167,13 +174,12 @@ interface ILiquidationTrigger {
     /**
      * @notice Seizes an under-collateralized vault and starts an auction for its collateral.
      * @dev Reverts if the vault is safe, if the liquidation caps are hit, or when the circuit breaker throttle leaves
-     *      no room this period.
-     * @param ilkId Identifier of the collateral type.
-     * @param urn Vault to liquidate.
+     *      no room this period. Each vault id is assessed independently against the bark threshold.
+     * @param vaultId Identifier of the vault to liquidate.
      * @param kpr Keeper eligible for the liquidation reward.
      * @return id Identifier of the started auction.
      */
-    function bark(bytes32 ilkId, address urn, address kpr) external returns (uint256 id);
+    function bark(uint256 vaultId, address kpr) external returns (uint256 id);
 
     /**
      * @notice Frees auction capacity when an auction clears its debt.

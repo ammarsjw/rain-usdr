@@ -160,7 +160,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function bark(bytes32 ilkId, address urn, address kpr) external returns (uint256 id) {
+    function bark(uint256 vaultId, address kpr) external returns (uint256 id) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
@@ -170,7 +170,18 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             _revert(SystemPaused.selector);
         }
 
-        (uint256 ink, uint256 art) = VAULT_ENGINE.urns(ilkId, urn);
+        // The vault must exist; its collateral type is fixed at open time. Each vault is checked against the bark
+        // threshold independently: only the (ink, art) of THIS vault id enter the unsafe condition, so one owner's
+        // unsafe vault never drags their other vaults into liquidation.
+        address owner = VAULT_ENGINE.ownerOf(vaultId);
+
+        if (owner == address(0)) {
+            _revert(VaultNotFound.selector);
+        }
+
+        bytes32 ilkId = VAULT_ENGINE.ilkOf(vaultId);
+
+        (uint256 ink, uint256 art) = VAULT_ENGINE.urns(vaultId);
 
         IlkLiquidation memory milk = ilks[ilkId];
         uint256 dart;
@@ -235,7 +246,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         }
 
         // Seizing the vault: collateral moves to the auction, debt moves to the balance sheet.
-        VAULT_ENGINE.grab(ilkId, urn, milk.clip, address(balanceSheet), -int256(dink), -int256(dart));
+        VAULT_ENGINE.grab(vaultId, milk.clip, address(balanceSheet), -int256(dink), -int256(dart));
 
         uint256 due = dart * rate;
 
@@ -248,11 +259,21 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             globalDirt += tab;
             ilks[ilkId].dirt += tab;
 
-            // Starting the Dutch auction. Whoever called bark is eligible for the keeper reward.
-            id = IDutchAuction(milk.clip).kick({ tab: tab, lot: dink, usr: urn, kpr: kpr });
+            // Starting the Dutch auction. Whoever called bark is eligible for the keeper reward. Any leftover
+            // collateral from the auction is returned to the vault's owner.
+            id = IDutchAuction(milk.clip).kick({ tab: tab, lot: dink, usr: owner, kpr: kpr });
         }
 
-        emit Bark({ ilkId: ilkId, urn: urn, ink: dink, art: dart, due: due, clip: milk.clip, id: id });
+        emit Bark({
+            ilkId: ilkId,
+            vaultId: vaultId,
+            urn: owner,
+            ink: dink,
+            art: dart,
+            due: due,
+            clip: milk.clip,
+            id: id
+        });
     }
 
     /**

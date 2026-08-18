@@ -16,14 +16,7 @@ import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _USDR_ILK, _WARD_ROLE } from "../shared/Constants.sol";
-import {
-    IlkAlreadyInitialized,
-    InvalidAddress,
-    InvalidAmount,
-    SolvencyGateActive,
-    SystemPaused,
-    UnrecognizedParameter
-} from "../shared/Errors.sol";
+import { IlkAlreadyInitialized, InvalidAddress, InvalidAmount, SolvencyGateActive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -112,7 +105,11 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(InvalidAddress.selector);
         }
 
-        ilks[ilkId] = Ilk({ token: token, to18ConversionFactor: 10 ** (18 - dec) });
+        // The PSM holds its entire stable inventory for this ilk in a single dedicated vault, opened here. The ilk
+        // must therefore already be initialized in the Vault Engine.
+        uint256 vaultId = VAULT_ENGINE.open(ilkId, address(this));
+
+        ilks[ilkId] = Ilk({ token: token, to18ConversionFactor: 10 ** (18 - dec), vaultId: vaultId });
 
         emit Init({ ilkId: ilkId, token: address(token) });
     }
@@ -161,7 +158,7 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
         ilk.token.forceApprove(address(COLLATERAL_ADAPTER), stableAmt);
 
         COLLATERAL_ADAPTER.join(ilkId, address(this), stableAmt);
-        VAULT_ENGINE.frob(ilkId, address(this), address(this), address(this), int256(stableAmt18), int256(stableAmt18));
+        VAULT_ENGINE.frob(ilk.vaultId, address(this), address(this), int256(stableAmt18), int256(stableAmt18));
         COLLATERAL_ADAPTER.exit(_USDR_ILK, user, stableAmt18);
 
         // Registering the reserve increase, exactly the amount that entered.
@@ -205,14 +202,7 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
 
         IERC20(address(USDR)).safeTransferFrom(msg.sender, address(this), stableAmt18);
         COLLATERAL_ADAPTER.join(_USDR_ILK, address(this), stableAmt18);
-        VAULT_ENGINE.frob(
-            ilkId,
-            address(this),
-            address(this),
-            address(this),
-            -int256(stableAmt18),
-            -int256(stableAmt18)
-        );
+        VAULT_ENGINE.frob(ilk.vaultId, address(this), address(this), -int256(stableAmt18), -int256(stableAmt18));
         COLLATERAL_ADAPTER.exit(ilkId, user, stableAmt);
 
         // Registering the reserve decrease, exactly the amount that left.

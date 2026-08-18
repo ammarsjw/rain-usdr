@@ -22,10 +22,12 @@ interface IPegStabilityModule {
      * @notice Configuration of a registered stablecoin ilk.
      * @param token The stablecoin (USDT or USDC).
      * @param to18ConversionFactor Decimal conversion factor between the stablecoin and 18 decimals.
+     * @param vaultId The PSM's dedicated vault for this ilk in the Vault Engine, opened at registration.
      */
     struct Ilk {
         IERC20Metadata token;
         uint256 to18ConversionFactor;
+        uint256 vaultId;
     }
 
     /* ========================== EVENTS ========================== */
@@ -131,7 +133,9 @@ interface IPegStabilityModule {
      * @return token The stablecoin.
      * @return to18ConversionFactor Decimal conversion factor between the stablecoin and 18 decimals.
      */
-    function ilks(bytes32 ilkId) external view returns (IERC20Metadata token, uint256 to18ConversionFactor);
+    function ilks(
+        bytes32 ilkId
+    ) external view returns (IERC20Metadata token, uint256 to18ConversionFactor, uint256 vaultId);
 
     /**
      * @notice Returns the Solvency Engine consulted before redemptions. Zero when unset.

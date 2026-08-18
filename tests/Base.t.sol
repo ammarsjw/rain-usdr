@@ -21,17 +21,7 @@ import { BalanceSheet } from "../contracts/reserve/BalanceSheet.sol";
 import { PegStabilityModule } from "../contracts/reserve/PegStabilityModule.sol";
 import { ReserveAccounting } from "../contracts/reserve/ReserveAccounting.sol";
 import { SolvencyEngine } from "../contracts/reserve/SolvencyEngine.sol";
-import {
-    _BURNER_ROLE,
-    _COMMITTER_ROLE,
-    _RAD,
-    _RAY,
-    _READER_ROLE,
-    _RECORDER_ROLE,
-    _USDR_ILK,
-    _WAD,
-    _WARD_ROLE
-} from "../contracts/shared/Constants.sol";
+import { _BURNER_ROLE, _COMMITTER_ROLE, _RAD, _RAY, _READER_ROLE, _RECORDER_ROLE, _USDR_ILK, _WAD, _WARD_ROLE } from "../contracts/shared/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 import { MockPriceSource } from "./mocks/MockPriceSource.sol";
@@ -106,16 +96,18 @@ abstract contract BaseTest is Test {
         dutchAuction = new DutchAuction(vaultEngine, RAIN_ILK);
         circuitBreaker = new CircuitBreaker(osm, RAIN_ILK);
 
+        // Wiring the core. Vault Engine ilks must exist before the PSM registers its ilks: PSM registration opens
+        // the module's dedicated vault in the Vault Engine.
+        vaultEngine.init(RAIN_ILK);
+        vaultEngine.init(USDT_ILK);
+        vaultEngine.init(USDC_ILK);
+
         // Deploying the PSMs and the Governor.
         psm = new PegStabilityModule(collateralAdapter, reserveAccounting);
         psm.init(USDT_ILK);
         psm.init(USDC_ILK);
         governor = new Governor(48 hours);
 
-        // Wiring the core.
-        vaultEngine.init(RAIN_ILK);
-        vaultEngine.init(USDT_ILK);
-        vaultEngine.init(USDC_ILK);
         vaultEngine.grantRole(_WARD_ROLE, address(collateralAdapter));
         vaultEngine.grantRole(_WARD_ROLE, address(priceConverter));
         vaultEngine.grantRole(_WARD_ROLE, address(liquidationTrigger));

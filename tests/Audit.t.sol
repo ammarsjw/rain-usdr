@@ -32,14 +32,15 @@ contract AuditTest is BaseTest {
         priceConverter.poke(RAIN_ILK);
     }
 
-    /// @dev Opens a RAIN vault for `who` with `ink` collateral and `art` debt (rate is RAY).
-    function _openVault(address who, uint256 ink, uint256 art) internal {
+    /// @dev Opens a fresh RAIN vault for `who` with `ink` collateral and `art` debt (rate is RAY).
+    function _openVault(address who, uint256 ink, uint256 art) internal returns (uint256 vaultId) {
         rain.mint(who, ink);
 
         vm.startPrank(who);
         rain.approve(address(collateralAdapter), ink);
         collateralAdapter.join(RAIN_ILK, who, ink);
-        vaultEngine.frob(RAIN_ILK, who, who, who, int256(ink), int256(art));
+        vaultId = vaultEngine.open(RAIN_ILK, who);
+        vaultEngine.frob(vaultId, who, who, int256(ink), int256(art));
         vm.stopPrank();
     }
 
@@ -82,56 +83,133 @@ contract AuditTest is BaseTest {
         _setRainPrice(1e18);
 
         // 400 RAIN at $1 with 400% mat allows exactly 100 USDR.
-        _openVault(user, 400e18, 100e18);
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
 
-        (, uint256 art) = vaultEngine.urns(RAIN_ILK, user);
+        (, uint256 art) = vaultEngine.urns(vaultId);
         assertEq(art, 100e18, "draw at exactly mat");
 
         // One wei of extra debt breaks the safety check.
         vm.prank(user);
         vm.expectRevert(IVaultEngine.NotSafe.selector);
-        vaultEngine.frob(RAIN_ILK, user, user, user, 0, 1);
+        vaultEngine.frob(vaultId, user, user, 0, 1);
 
         // Wipe works.
         vm.prank(user);
-        vaultEngine.frob(RAIN_ILK, user, user, user, 0, -100e18);
+        vaultEngine.frob(vaultId, user, user, 0, -100e18);
 
-        (, art) = vaultEngine.urns(RAIN_ILK, user);
+        (, art) = vaultEngine.urns(vaultId);
         assertEq(art, 0, "wipe clears debt");
+    }
+
+    /* ========================== 2b. MULTI-VAULT ========================== */
+
+    function test_multipleVaultsPerUserPerIlkAreIndependent() public {
+        _setRainPrice(1e18);
+
+        // The same user opens two RAIN vaults with different risk profiles.
+        uint256 safeVault = _openVault(user, 1000e18, 100e18); // 1000%
+        uint256 riskyVault = _openVault(user, 400e18, 100e18); // 400% (at mat)
+
+        assertEq(vaultEngine.ownerOf(safeVault), user, "owner 1");
+        assertEq(vaultEngine.ownerOf(riskyVault), user, "owner 2");
+        assertTrue(safeVault != riskyVault, "distinct ids");
+
+        // Depositing into the risky vault touches only the risky vault.
+        rain.mint(user, 50e18);
+        vm.startPrank(user);
+        rain.approve(address(collateralAdapter), 50e18);
+        collateralAdapter.join(RAIN_ILK, user, 50e18);
+        vaultEngine.frob(riskyVault, user, user, int256(50e18), 0);
+        vm.stopPrank();
+
+        (uint256 ink1, ) = vaultEngine.urns(safeVault);
+        (uint256 ink2, ) = vaultEngine.urns(riskyVault);
+        assertEq(ink1, 1000e18, "safe vault untouched");
+        assertEq(ink2, 450e18, "risky vault credited");
+    }
+
+    function test_frobOnUnopenedVaultReverts() public {
+        vm.expectRevert(IVaultEngine.VaultNotFound.selector);
+        vaultEngine.frob(999, user, user, 0, 0);
+    }
+
+    function test_frobOnSomeoneElsesVaultRevertsUnlessRiskDecreasing() public {
+        _setRainPrice(1e18);
+
+        // Head-room below mat so that the permission check (not the safety check) is what fires.
+        uint256 vaultId = _openVault(user, 800e18, 100e18);
+
+        // A stranger cannot draw debt against another owner's vault.
+        vm.prank(keeper);
+        vm.expectRevert(IVaultEngine.NotAllowed.selector);
+        vaultEngine.frob(vaultId, keeper, keeper, 0, 1e18);
     }
 
     /* ========================== 3. BARK THRESHOLD ========================== */
 
     function test_barkThresholdAt65PercentOfMat() public {
         _setRainPrice(1e18);
-        _openVault(user, 400e18, 100e18);
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
 
         // At 66% of the required ratio the vault is NOT barkable.
         _setRainPrice(0.66e18);
         vm.expectRevert(ILiquidationTrigger.NotUnsafe.selector);
-        liquidationTrigger.bark(RAIN_ILK, user, keeper);
+        liquidationTrigger.bark(vaultId, keeper);
 
         // Below 65% it is barkable.
         _setRainPrice(0.64e18);
-        uint256 id = liquidationTrigger.bark(RAIN_ILK, user, keeper);
+        uint256 id = liquidationTrigger.bark(vaultId, keeper);
         assertEq(id, 1, "auction started");
+    }
+
+    function test_barkThresholdAppliesPerVaultIndependently() public {
+        _setRainPrice(1e18);
+
+        // Same owner, same ilk: one healthy vault (800%) and one at-mat vault (400%).
+        uint256 healthyVault = _openVault(user, 800e18, 100e18);
+        uint256 riskyVault = _openVault(user, 400e18, 100e18);
+
+        // At 64% of mat for the risky vault, the healthy vault (at 128% of mat) must NOT be barkable while the
+        // risky one is: the 65% barkFactor is evaluated against each vault's own ink/art in isolation.
+        _setRainPrice(0.64e18);
+
+        vm.expectRevert(ILiquidationTrigger.NotUnsafe.selector);
+        liquidationTrigger.bark(healthyVault, keeper);
+
+        uint256 id = liquidationTrigger.bark(riskyVault, keeper);
+        assertEq(id, 1, "risky vault liquidated");
+
+        // The healthy vault of the same owner is untouched by the sibling's liquidation.
+        (uint256 ink, uint256 art) = vaultEngine.urns(healthyVault);
+        assertEq(ink, 800e18, "healthy ink untouched");
+        assertEq(art, 100e18, "healthy art untouched");
+
+        // The risky vault was seized in full.
+        (ink, art) = vaultEngine.urns(riskyVault);
+        assertEq(ink, 0, "risky ink seized");
+        assertEq(art, 0, "risky art seized");
+    }
+
+    function test_barkOnUnopenedVaultReverts() public {
+        vm.expectRevert(ILiquidationTrigger.VaultNotFound.selector);
+        liquidationTrigger.bark(999, keeper);
     }
 
     /* ========================== 4. DART PRECISION (H-3) ========================== */
 
     function test_barkDartPrecisionMakerOrdering() public {
         _setRainPrice(1e18);
-        _openVault(user, 1600e18, 400e18);
+        uint256 vaultId = _openVault(user, 1600e18, 400e18);
 
         // Limiting room to force a partial liquidation.
         liquidationTrigger.file(RAIN_ILK, "hole", 150 * _RAD);
         _setRainPrice(0.6e18);
 
-        liquidationTrigger.bark(RAIN_ILK, user, keeper);
+        liquidationTrigger.bark(vaultId, keeper);
 
         // Maker's ordering: dart = room * WAD / rate / chop, computed before flooring by rate.
         uint256 expectedDart = ((150 * _RAD) * _WAD) / _RAY / ((_WAD * 113) / 100);
-        (, uint256 art) = vaultEngine.urns(RAIN_ILK, user);
+        (, uint256 art) = vaultEngine.urns(vaultId);
 
         assertGt(expectedDart, 0, "dart nonzero");
         assertEq(art, 400e18 - expectedDart, "dart correctly scaled");
@@ -141,7 +219,7 @@ contract AuditTest is BaseTest {
 
     function test_solvencyBreachGatesAndRestores() public {
         _setRainPrice(1e18);
-        _openVault(user, 800e18, 200e18);
+        uint256 vaultId = _openVault(user, 800e18, 200e18);
 
         // Loss = 200 - 800 * 0.5 * 0.35 = 60 USDR. Reserve = 20 -> threshold 18 -> breached.
         _sellUsdt(keeper, 20e6);
@@ -154,11 +232,11 @@ contract AuditTest is BaseTest {
         // Risk-increasing frob is gated.
         vm.prank(user);
         vm.expectRevert(SolvencyGateActive.selector);
-        vaultEngine.frob(RAIN_ILK, user, user, user, 0, 1e18);
+        vaultEngine.frob(vaultId, user, user, 0, 1e18);
 
         // Repayment stays open.
         vm.prank(user);
-        vaultEngine.frob(RAIN_ILK, user, user, user, 0, -1e18);
+        vaultEngine.frob(vaultId, user, user, 0, -1e18);
 
         // Reserve-increasing PSM flow stays open; redemption is gated.
         _sellUsdt(keeper, 80e6);
@@ -179,12 +257,12 @@ contract AuditTest is BaseTest {
         vm.stopPrank();
 
         vm.prank(user);
-        vaultEngine.frob(RAIN_ILK, user, user, user, 0, 1e18);
+        vaultEngine.frob(vaultId, user, user, 0, 1e18);
     }
 
     function test_worstCaseLossScalesWithCollateral() public {
         _setRainPrice(1e18);
-        _openVault(user, 400e18, 100e18);
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
 
         uint256 lossAt400 = solvencyEngine.worstCaseLoss();
         assertEq(lossAt400, 30e18, "400% collateralized loss");
@@ -194,7 +272,7 @@ contract AuditTest is BaseTest {
         vm.startPrank(user);
         rain.approve(address(collateralAdapter), 600e18);
         collateralAdapter.join(RAIN_ILK, user, 600e18);
-        vaultEngine.frob(RAIN_ILK, user, user, user, int256(600e18), 0);
+        vaultEngine.frob(vaultId, user, user, int256(600e18), 0);
         vm.stopPrank();
 
         uint256 lossAt1000 = solvencyEngine.worstCaseLoss();
@@ -224,10 +302,10 @@ contract AuditTest is BaseTest {
 
     function test_redoPaysNoRewardBelowChost() public {
         _setRainPrice(1e18);
-        _openVault(user, 400e18, 100e18);
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
         _setRainPrice(0.6e18);
 
-        uint256 id = liquidationTrigger.bark(RAIN_ILK, user, keeper);
+        uint256 id = liquidationTrigger.bark(vaultId, keeper);
 
         // Letting the auction expire, then crashing the price so lot * feedPrice < chost.
         vm.warp(vm.getBlockTimestamp() + 1801);
@@ -240,10 +318,10 @@ contract AuditTest is BaseTest {
 
     function test_redoPaysRewardAboveChost() public {
         _setRainPrice(1e18);
-        _openVault(user, 400e18, 100e18);
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
         _setRainPrice(0.6e18);
 
-        uint256 id = liquidationTrigger.bark(RAIN_ILK, user, keeper);
+        uint256 id = liquidationTrigger.bark(vaultId, keeper);
 
         vm.warp(vm.getBlockTimestamp() + 1801);
         _setRainPrice(0.6e18);
@@ -255,10 +333,10 @@ contract AuditTest is BaseTest {
 
     function test_takePartialPurchaseAdjustsDownAtChostBoundary() public {
         _setRainPrice(1e18);
-        _openVault(user, 800e18, 200e18);
+        uint256 vaultId = _openVault(user, 800e18, 200e18);
         _setRainPrice(0.6e18);
 
-        uint256 id = liquidationTrigger.bark(RAIN_ILK, user, keeper);
+        uint256 id = liquidationTrigger.bark(vaultId, keeper);
         uint256 chost = dutchAuction.chost();
 
         (, , , uint256 tab) = dutchAuction.getStatus(id);
