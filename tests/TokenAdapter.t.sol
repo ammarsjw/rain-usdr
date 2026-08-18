@@ -6,7 +6,7 @@ import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/I
 
 import { ICollateralAdapter } from "../contracts/interfaces/ICollateralAdapter.sol";
 import { IlkAlreadyInitialized, InvalidAddress, InvalidAmount, NotLive } from "../contracts/shared/Errors.sol";
-import { _RAY, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
+import { _RAY, _USDR_ILK } from "../contracts/shared/Constants.sol";
 
 import { BaseTest } from "./Base.t.sol";
 import { MockERC20 } from "./mocks/MockERC20.sol";

@@ -3,7 +3,6 @@
 pragma solidity 0.8.30;
 
 import { CircuitBreaker } from "../contracts/liquidation/CircuitBreaker.sol";
-import { ICircuitBreaker } from "../contracts/interfaces/ICircuitBreaker.sol";
 import { IOracleSecurityModule } from "../contracts/interfaces/IOracleSecurityModule.sol";
 import { InvalidAddress, InvalidBytes, UnrecognizedParameter } from "../contracts/shared/Errors.sol";
 import { _RAD, _WAD } from "../contracts/shared/Constants.sol";

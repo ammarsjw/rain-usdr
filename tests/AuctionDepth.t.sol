@@ -6,7 +6,7 @@ import { IDutchAuction } from "../contracts/interfaces/IDutchAuction.sol";
 import { IDutchAuctionCallee } from "../contracts/interfaces/IDutchAuctionCallee.sol";
 import { NotLive, UnrecognizedParameter } from "../contracts/shared/Errors.sol";
 import { IVaultEngine } from "../contracts/interfaces/IVaultEngine.sol";
-import { _RAD, _RAY, _USDR_ILK, _WAD, _WARD_ROLE } from "../contracts/shared/Constants.sol";
+import { _RAD, _RAY, _USDR_ILK } from "../contracts/shared/Constants.sol";
 
 import { BaseTest } from "./Base.t.sol";
 

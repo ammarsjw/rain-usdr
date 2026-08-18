@@ -16,7 +16,14 @@ import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _USDR_ILK, _WARD_ROLE } from "../shared/Constants.sol";
-import { IlkAlreadyInitialized, InvalidAddress, InvalidAmount, SolvencyGateActive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
+import {
+    IlkAlreadyInitialized,
+    InvalidAddress,
+    InvalidAmount,
+    SolvencyGateActive,
+    SystemPaused,
+    UnrecognizedParameter
+} from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**

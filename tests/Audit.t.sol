@@ -2,7 +2,6 @@
 
 pragma solidity 0.8.30;
 
-import { IPegStabilityModule } from "../contracts/interfaces/IPegStabilityModule.sol";
 import { ILiquidationTrigger } from "../contracts/interfaces/ILiquidationTrigger.sol";
 import { IBalanceSheet } from "../contracts/interfaces/IBalanceSheet.sol";
 import { ISolvencyEngine } from "../contracts/interfaces/ISolvencyEngine.sol";

@@ -6,7 +6,7 @@ import { IPegStabilityModule } from "../contracts/interfaces/IPegStabilityModule
 import { IReserveAccounting } from "../contracts/interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../contracts/interfaces/ISolvencyEngine.sol";
 import { InvalidAmount, SolvencyGateActive } from "../contracts/shared/Errors.sol";
-import { _RAD, _RAY, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
+import { _RAY, _WAD } from "../contracts/shared/Constants.sol";
 
 import { BaseTest } from "./Base.t.sol";
 import { MockExternalExposure } from "./mocks/MockExternalExposure.sol";
