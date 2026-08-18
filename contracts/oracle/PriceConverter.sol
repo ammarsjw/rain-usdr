@@ -108,12 +108,24 @@ contract PriceConverter is IPriceConverter, AccessControl {
         }
 
         if (what == "mat") {
+            // A collateralization ratio below 100% would authorize minting more than a dollar of USDR per dollar
+            // of collateral at origination. No legitimate configuration wants that.
+            if (data < _RAY) {
+                _revert(MatBelowOne.selector);
+            }
+
             ilks[ilkId].mat = data;
         } else if (what == "fixed") {
-            // Marking an ilk fixed pins it to $1 and detaches any oracle. Clearing it leaves the ilk unconfigured
-            // until an oracle is assigned.
-            ilks[ilkId].fixedPrice = data == 1;
-            ilks[ilkId].pip = IOracleSecurityModule(address(0));
+            if (data == 1) {
+                // Marking an ilk fixed pins it to $1 and detaches any oracle.
+                ilks[ilkId].fixedPrice = true;
+                ilks[ilkId].pip = IOracleSecurityModule(address(0));
+            } else {
+                // Clearing the fixed flag on an ilk with no oracle would silently brick its price updates and
+                // freeze spot at its last value (the dangerous direction: a stale price keeps authorizing mints).
+                // The flag is only clearable by assigning an oracle via file("pip"), which clears it atomically.
+                _revert(WouldOrphanIlk.selector);
+            }
         } else {
             _revert(UnrecognizedParameter.selector);
         }

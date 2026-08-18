@@ -13,10 +13,19 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title OracleSecurityModule
  * @author Rain Team
- * @notice The delayed price feed. Holds prices back by 30 minutes so that if a price is manipulated, there is time to
- *         detect and respond before the system acts on it. Stores two prices per collateral type: the current one
- *         (which the system uses) and the next one (which becomes current after the delay). A single deployed instance
- *         serves every priced collateral: tokens are registered dynamically, each with its own price source.
+ * @notice The delayed price feed. Holds prices back by roughly 30 minutes so that if a price is manipulated, there
+ *         is time to detect and respond before the system acts on it. Stores two prices per collateral type: the
+ *         current one (which the system uses) and the next one (which becomes current after the delay). A single
+ *         deployed instance serves every priced collateral: tokens are registered dynamically, each with its own
+ *         price source.
+ *
+ *         GUARANTEED-DELAY BOUND (read carefully): pokes are aligned to fixed half-hour boundaries, exactly like
+ *         Maker's OSM. A poke landing at the very end of a window (boundary + 1799s) permits the next poke one
+ *         second later, at the next boundary. The MINIMUM interval between a price entering `nxt` and being
+ *         promoted to `cur` is therefore 1 second in the worst case, NOT 30 minutes; 30 minutes is the AVERAGE
+ *         cadence, and a manipulated price can reach `cur` in as little as one second after first appearing.
+ *         Incident-response SLAs and monitoring must be sized to the 1-second bound, never the 30-minute average.
+ *         Keepers poking promptly at each boundary keep the effective delay near the full window.
  * @dev A single multi-collateral module keyed by ilk identifier. The per-ilk price source is any {IPriceSource}
  *      implementation, such as a dedicated Uniswap time-weighted average wrapper, a Chainlink feed wrapper, or any
  *      future adapter, so the module never needs to know what kind of oracle backs a token. Sources are switchable by
@@ -110,7 +119,9 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
 
         (bytes32 wut, bool ok) = ilk.src.peek();
 
-        if (ok) {
+        // A valid-but-zero price is treated as a failed report: zero is never a real market price, and letting it
+        // propagate would freeze minting via a zero spot while looking like a healthy update to monitoring.
+        if (ok && uint256(wut) != 0) {
             ilk.cur = ilk.nxt;
             ilk.nxt = Feed(uint128(uint256(wut)), 1);
             ilk.delay = uint64(block.timestamp - (block.timestamp % HOP));

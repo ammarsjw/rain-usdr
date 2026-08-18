@@ -29,13 +29,6 @@ interface IGovernor {
     /* ========================== EVENTS ========================== */
 
     /**
-     * @dev Emitted when a parameter is updated.
-     * @param what Name of the parameter.
-     * @param data New value in seconds.
-     */
-    event File(bytes32 indexed what, uint256 data);
-
-    /**
      * @dev Emitted when a change is scheduled.
      * @param id Identifier of the scheduled change.
      * @param target Contract to call.
@@ -106,13 +99,6 @@ interface IGovernor {
     error NotPaused();
 
     /* ========================== FUNCTIONS ========================== */
-
-    /**
-     * @notice Adjusts the timelock delay {delay}.
-     * @param what Name of the parameter.
-     * @param data New value in seconds.
-     */
-    function file(bytes32 what, uint256 data) external;
 
     /**
      * @notice Queues a parameter change or a new collateral addition to take effect after the timelock delay.

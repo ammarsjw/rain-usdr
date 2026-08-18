@@ -129,6 +129,7 @@ const deployGovernance = async () => {
     await (await vaultEngineInstance["file(bytes32,address)"](governorWhat, governorAddress)).wait();
     await (await psmInstance["file(bytes32,address)"](governorWhat, governorAddress)).wait();
     await (await liquidationTriggerInstance["file(bytes32,address)"](governorWhat, governorAddress)).wait();
+    await (await dutchAuctionInstance["file(bytes32,address)"](governorWhat, governorAddress)).wait();
 
     // Granting the End authority over the contracts its settlement path drives:
     // - VaultEngine: cage, grab, suck, and post-cage heal

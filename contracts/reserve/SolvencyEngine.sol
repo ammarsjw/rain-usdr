@@ -5,7 +5,7 @@ pragma solidity 0.8.30;
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 
 import { IExternalExposure } from "../interfaces/IExternalExposure.sol";
-import { IPriceConverter } from "../interfaces/IPriceConverter.sol";
+import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
@@ -20,11 +20,14 @@ import { _revert } from "../shared/Globals.sol";
  *         exceeds it. When the worst-case loss exceeds the configured fraction of the reserve (90% at launch), the
  *         engine flags a breach and the rest of the system gates every non-reserve-increasing operation until the
  *         invariant is restored. A keeper bot is expected to call {checkInvariant} regularly to keep the flag fresh.
- * @dev The stress scenario prices COLLATERAL: each volatile ilk's aggregate locked collateral is valued at the current
- *      delayed oracle price, marked down by the stress markdown (50%) and the stress liquidation depth (35%), and the
- *      loss is any debt not covered by that stressed recoverable value. Exposure reported by the prediction market
- *      layer is consumed defensively: it is clamped to a governance-set cap and a reverting reporter falls back to the
- *      cap, so the invariant can never overflow or permanently revert.
+ * @dev The stress scenario prices COLLATERAL: each volatile ilk's aggregate locked collateral is valued at the
+ *      delayed oracle price read DIRECTLY from the Oracle Security Module (never reconstructed as spot times mat --
+ *      the reconstruction Maker's clip.sol documents as incorrect, since a mat change desynchronizes the two until
+ *      the next poke), marked down by the stress markdown (50%) and the stress liquidation depth (35%); the loss is
+ *      any debt not covered by that stressed recoverable value. An unavailable price values the collateral at zero,
+ *      so the invariant fails CLOSED. Exposure reported by the prediction market layer is consumed defensively: it
+ *      is clamped to a governance-set cap and a reverting reporter falls back to the cap, so the invariant can never
+ *      overflow or permanently revert.
  */
 contract SolvencyEngine is ISolvencyEngine, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -54,7 +57,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
     IExternalExposure public externalExposure;
 
     /// @inheritdoc ISolvencyEngine
-    IPriceConverter public priceConverter;
+    IOracleSecurityModule public osm;
 
     /// @inheritdoc ISolvencyEngine
     bytes32[] public volatileIlks;
@@ -92,10 +95,26 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      */
     function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "stressMarkdown") {
+            // Stress parameters live in (0, WAD]: zero would value all collateral at nothing forever (permanent
+            // breach), above WAD would inflate recoverable value beyond market (disabling the invariant).
+            if (data == 0 || data > _WAD) {
+                _revert(ParameterOutOfBounds.selector);
+            }
+
             stressMarkdown = data;
         } else if (what == "stressDepth") {
+            if (data == 0 || data > _WAD) {
+                _revert(ParameterOutOfBounds.selector);
+            }
+
             stressDepth = data;
         } else if (what == "reserveFactor") {
+            // The breach threshold fraction lives in (0, WAD]: zero would flag a breach on any loss regardless of
+            // reserve, above WAD would tolerate losses exceeding the entire reserve.
+            if (data == 0 || data > _WAD) {
+                _revert(ParameterOutOfBounds.selector);
+            }
+
             reserveFactor = data;
         } else if (what == "exposureCap") {
             exposureCap = data;
@@ -111,9 +130,15 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      */
     function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
         if (what == "externalExposure") {
+            // Wiring an exposure reporter without a nonzero cap would clamp every report to zero (fail-open); the
+            // cap must be configured first.
+            if (data != address(0) && exposureCap == 0) {
+                _revert(ExposureCapNotSet.selector);
+            }
+
             externalExposure = IExternalExposure(data);
-        } else if (what == "priceConverter") {
-            priceConverter = IPriceConverter(data);
+        } else if (what == "osm") {
+            osm = IOracleSecurityModule(data);
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -127,6 +152,14 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
     function addVolatileIlk(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
         if (isVolatile[ilkId]) {
             _revert(IlkAlreadyInitialized.selector);
+        }
+
+        // The ilk must exist in the Vault Engine: an unknown ilk would silently contribute zero debt and zero
+        // collateral, polluting the loss computation without ever being noticed.
+        (, , uint256 rate, , , ) = VAULT_ENGINE.ilks(ilkId);
+
+        if (rate == 0) {
+            _revert(InvalidBytes.selector);
         }
 
         isVolatile[ilkId] = true;
@@ -212,16 +245,22 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
         for (uint256 i; i < volatileIlksLength; ++i) {
             bytes32 ilkId = volatileIlks[i];
 
-            (uint256 globalArt, uint256 globalInk, uint256 rate, uint256 spot, , ) = VAULT_ENGINE.ilks(ilkId);
+            (uint256 globalArt, uint256 globalInk, uint256 rate, , , ) = VAULT_ENGINE.ilks(ilkId);
 
             // Total debt against this collateral [wad]: art [wad] * rate [ray] / RAY.
             uint256 ilkDebt = (globalArt * rate) / _RAY;
 
-            // Collateral market value [wad]. `spot` [ray] is price / par / mat, so multiplying back by `mat` [ray]
-            // recovers price / par (dollar price with par = 1): ink [wad] * spot [ray] = [rad]; * mat [ray] / RAY
-            // keeps [rad]; / RAY yields [wad]. Ordered to divide between multiplications to avoid overflow.
-            (, uint256 mat, ) = priceConverter.ilks(ilkId);
-            uint256 collateralValue = (((globalInk * spot) / _RAY) * mat) / _RAY;
+            // Collateral market value [wad], priced DIRECTLY from the Oracle Security Module (Maker's
+            // getFeedPrice pattern). Reconstructing the price as spot * mat is forbidden: a mat change without a
+            // poke desynchronizes the two and the reconstructed price is wrong by exactly matNew / matOld. An
+            // unavailable or zero price values the collateral at zero -- the conservative direction (loss rises).
+            uint256 collateralValue;
+
+            (bytes32 val, bool has) = osm.peek(ilkId);
+
+            if (has) {
+                collateralValue = (globalInk * uint256(val)) / _WAD;
+            }
 
             // Stressed recoverable value: collateral value marked down by the stress markdown [wad] and the stress
             // liquidation depth [wad].

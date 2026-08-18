@@ -5,6 +5,7 @@ pragma solidity 0.8.30;
 import { IPegStabilityModule } from "../contracts/interfaces/IPegStabilityModule.sol";
 import { ILiquidationTrigger } from "../contracts/interfaces/ILiquidationTrigger.sol";
 import { IBalanceSheet } from "../contracts/interfaces/IBalanceSheet.sol";
+import { ISolvencyEngine } from "../contracts/interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../contracts/interfaces/IVaultEngine.sol";
 import { SolvencyGateActive } from "../contracts/shared/Errors.sol";
 import { _RAD, _RAY, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
@@ -238,23 +239,24 @@ contract AuditTest is BaseTest {
         vm.prank(user);
         vaultEngine.frob(vaultId, user, user, 0, -1e18);
 
-        // Reserve-increasing PSM flow stays open; redemption is gated.
-        _sellUsdt(keeper, 80e6);
-
+        // Redemption recomputes the invariant lazily (no stale-flag window): while the reserve is still thin the
+        // gate holds even without any keeper call.
         vm.startPrank(keeper);
         usdr.approve(address(psm), 5e18);
         vm.expectRevert(SolvencyGateActive.selector);
         psm.buyStable(USDT_ILK, keeper, 5e6);
         vm.stopPrank();
 
-        // Reserve is now 100 -> threshold 90 > loss (59 after the wipe) -> invariant restored.
-        solvencyEngine.checkInvariant();
-        assertFalse(solvencyEngine.breached(), "restored");
+        // Reserve-increasing PSM flow stays open. Reserve becomes 100 -> threshold 90 > loss (59 after the wipe),
+        // and the next redemption's lazy recompute clears the breach by itself -- again no keeper needed.
+        _sellUsdt(keeper, 80e6);
 
         vm.startPrank(keeper);
         usdr.approve(address(psm), 5e18);
         psm.buyStable(USDT_ILK, keeper, 5e6);
         vm.stopPrank();
+
+        assertFalse(solvencyEngine.breached(), "restored by lazy recompute");
 
         vm.prank(user);
         vaultEngine.frob(vaultId, user, user, 0, 1e18);
@@ -283,8 +285,12 @@ contract AuditTest is BaseTest {
     function test_externalExposureClampAndRevertFallback() public {
         MockExternalExposure exposure = new MockExternalExposure();
 
+        // Wiring a reporter before the cap is configured is forbidden (a zero cap clamps everything to zero).
+        vm.expectRevert(ISolvencyEngine.ExposureCapNotSet.selector);
         solvencyEngine.file("externalExposure", address(exposure));
+
         solvencyEngine.file("exposureCap", 7e18);
+        solvencyEngine.file("externalExposure", address(exposure));
 
         // A hostile max-value report is clamped to the cap instead of overflowing.
         exposure.setExposure(type(uint256).max);

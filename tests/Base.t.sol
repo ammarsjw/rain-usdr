@@ -135,7 +135,8 @@ abstract contract BaseTest is Test {
         reserveAccounting.grantRole(_COMMITTER_ROLE, address(solvencyEngine));
         reserveAccounting.grantRole(_RECORDER_ROLE, address(psm));
         solvencyEngine.addVolatileIlk(RAIN_ILK);
-        solvencyEngine.file("priceConverter", address(priceConverter));
+        solvencyEngine.file("osm", address(osm));
+        osm.grantRole(_READER_ROLE, address(solvencyEngine));
 
         // Wiring the solvency gate.
         vaultEngine.file("solvencyEngine", address(solvencyEngine));

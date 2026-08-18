@@ -3,7 +3,7 @@
 pragma solidity ^0.8.0;
 
 import { IExternalExposure } from "./IExternalExposure.sol";
-import { IPriceConverter } from "./IPriceConverter.sol";
+import { IOracleSecurityModule } from "./IOracleSecurityModule.sol";
 import { IReserveAccounting } from "./IReserveAccounting.sol";
 import { IVaultEngine } from "./IVaultEngine.sol";
 
@@ -49,6 +49,18 @@ interface ISolvencyEngine {
      * @param passed Whether the invariant held.
      */
     event InvariantChecked(uint256 reserve, uint256 worstCaseLoss, bool passed);
+
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates that a stress or threshold parameter outside (0, WAD] was supplied.
+     */
+    error ParameterOutOfBounds();
+
+    /**
+     * @dev Indicates that an exposure reporter cannot be wired while the exposure cap is unset.
+     */
+    error ExposureCapNotSet();
 
     /* ========================== FUNCTIONS ========================== */
 
@@ -143,9 +155,9 @@ interface ISolvencyEngine {
     function breached() external view returns (bool);
 
     /**
-     * @notice Returns the Price Converter used to read each ilk's collateralization ratio.
+     * @notice Returns the Oracle Security Module the stress scenario prices collateral from.
      */
-    function priceConverter() external view returns (IPriceConverter);
+    function osm() external view returns (IOracleSecurityModule);
 
     /**
      * @notice Returns the prediction market layer's exposure reporter. May be unset at launch.
