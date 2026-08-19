@@ -199,6 +199,11 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
     function humpTarget() public view returns (uint256 target) {
         // Dynamic buffer target: the greater of the static floor and `humpRate` of the total stable reserve. The
         // reserve is tracked in wad, the buffer in rad, so the rate product is scaled up by RAY.
+        //
+        // NOTE (accepted, monitored): `totalReserve` moves with permissionless PSM flows, so a user can nudge the
+        // dynamic component of this target up (sell stables in) or down (redeem out) around a distribution. The
+        // floor is the authoritative lower bound -- size `humpFloor` so the buffer is adequate even if the dynamic
+        // term is gamed to its minimum, and treat unusual pre-distribution PSM volume as a monitoring signal.
         target = humpFloor;
 
         if (address(reserveAccounting) != address(0)) {

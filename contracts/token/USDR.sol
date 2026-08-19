@@ -52,6 +52,11 @@ contract USDR is IUSDR, ERC20, ERC20Permit, AccessControl {
      * @inheritdoc IUSDR
      */
     function burn(address from, uint256 amount) external {
+        // Zero-amount burns are rejected rather than emitting no-op Transfer events that pollute indexers.
+        if (amount == 0) {
+            _revert(InvalidAmount.selector);
+        }
+
         if (from != msg.sender && !hasRole(_BURNER_ROLE, msg.sender)) {
             _spendAllowance(from, msg.sender, amount);
         }

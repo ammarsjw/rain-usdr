@@ -88,13 +88,34 @@ library Math {
      * @return z The product `x * y` as a signed integer.
      */
     function mul(uint256 x, int256 y) internal pure returns (int256 z) {
-        z = int256(x) * y;
-
-        if (int256(x) < 0) {
+        // The unsigned operand must fit the signed range BEFORE the cast is used in arithmetic: validating after
+        // multiplying would compute with an already-corrupted (negative) operand.
+        if (x > uint256(type(int256).max)) {
             _revert(MulOverflow.selector);
         }
 
+        unchecked {
+            z = int256(x) * y;
+        }
+
         if (y != 0 && z / y != int256(x)) {
+            _revert(MulOverflow.selector);
+        }
+    }
+
+    /**
+     * @dev Multiplies two unsigned integers, reverting with a decodable error (rather than an arithmetic panic) on
+     *      overflow. Used in ledger hot paths where reachable products may exceed 256 bits.
+     * @param x First operand.
+     * @param y Second operand.
+     * @return z The product `x * y`.
+     */
+    function umul(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        unchecked {
+            z = x * y;
+        }
+
+        if (y != 0 && z / y != x) {
             _revert(MulOverflow.selector);
         }
     }

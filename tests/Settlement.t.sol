@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 
 import { IEnd } from "../contracts/interfaces/IEnd.sol";
 import { NotLive } from "../contracts/shared/Errors.sol";
-import { _RAD, _RAY, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
+import { _RAD, _RAY, _USDR_ILK } from "../contracts/shared/Constants.sol";
 
 import { BaseTest } from "./Base.t.sol";
 

@@ -19,6 +19,7 @@ const deployGovernance = async () => {
 
     // Deployment variables.
     const governorDelay = process.env.GOVERNOR_DELAY || 172800n; // 48 hours default.
+    const endWait = process.env.END_WAIT || 604800n; // 7 days default.
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
     const usdrAddress = process.env.USDR_ADDRESS;
     const collateralAdapterAddress = process.env.COLLATERAL_ADAPTER_ADDRESS;
@@ -55,7 +56,6 @@ const deployGovernance = async () => {
     // Wiring the End's dependencies and settlement cooldown (must exceed the Balance Sheet's sin queue wait so
     // thaw can heal all queued sin first).
     const endInstance = await hardhat.ethers.getContractAt(endName, endAddress);
-    const endWait = process.env.END_WAIT || 604800n; // 7 days default.
     await (
         await endInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("liquidationTrigger"),
@@ -129,6 +129,7 @@ const deployGovernance = async () => {
     await (await vaultEngineInstance["file(bytes32,address)"](governorWhat, governorAddress)).wait();
     await (await psmInstance["file(bytes32,address)"](governorWhat, governorAddress)).wait();
     await (await liquidationTriggerInstance["file(bytes32,address)"](governorWhat, governorAddress)).wait();
+    await (await dutchAuctionInstance["file(bytes32,address)"](governorWhat, governorAddress)).wait();
 
     // Granting the End authority over the contracts its settlement path drives:
     // - VaultEngine: cage, grab, suck, and post-cage heal

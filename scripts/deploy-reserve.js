@@ -3,7 +3,7 @@ const hardhat = require("hardhat");
 const { configure } = require("./helpers/config/config");
 const { verifyContract } = require("./helpers/libraries/auxiliary");
 const { deployContract } = require("./helpers/libraries/workflows");
-const { COMMITTER_ROLE, RECORDER_ROLE, WARD_ROLE } = require("./helpers/shared/constants");
+const { COMMITTER_ROLE, READER_ROLE, RECORDER_ROLE, WARD_ROLE } = require("./helpers/shared/constants");
 const { LOG_TYPE } = require("./helpers/shared/types");
 const { updateEnv } = require("./helpers/utils/env");
 const { logTag, wait } = require("./helpers/utils/tools");
@@ -23,6 +23,7 @@ const deployReserve = async () => {
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
     const collateralAdapterAddress = process.env.COLLATERAL_ADAPTER_ADDRESS;
     const priceConverterAddress = process.env.PRICE_CONVERTER_ADDRESS;
+    const osmAddress = process.env.OSM_ADDRESS;
 
     // Fixed point scalars.
     const WAD = 10n ** 18n;
@@ -67,12 +68,23 @@ const deployReserve = async () => {
     await (await psmInstance.init(usdcIlk)).wait();
     await (await reserveAccountingInstance.grantRole(RECORDER_ROLE, psmAddress)).wait();
 
-    // Registering RAIN as a volatile collateral in the solvency stress calculation and wiring the mat source.
+    // Registering RAIN as a volatile collateral in the solvency stress calculation and wiring the direct OSM
+    // price source (worst-case loss reads prices straight from the OSM, never spot * mat).
     await (await solvencyEngineInstance.addVolatileIlk(rainIlk)).wait();
     await (
-        await solvencyEngineInstance["file(bytes32,address)"](
-            hardhat.ethers.encodeBytes32String("priceConverter"),
-            priceConverterAddress
+        await solvencyEngineInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("osm"), osmAddress)
+    ).wait();
+
+    // Granting the Solvency Engine read access on the OSM.
+    const osmInstance = await hardhat.ethers.getContractAt("OracleSecurityModule", osmAddress);
+    await (await osmInstance.grantRole(READER_ROLE, solvencyEngineAddress)).wait();
+
+    // Setting the prediction-market exposure cap BEFORE any reporter is wired ($250k launch cap): an unset (zero)
+    // cap would clamp every report to zero, silently suppressing real exposure.
+    await (
+        await solvencyEngineInstance["file(bytes32,uint256)"](
+            hardhat.ethers.encodeBytes32String("exposureCap"),
+            250000n * WAD
         )
     ).wait();
 

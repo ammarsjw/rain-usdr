@@ -83,6 +83,12 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         if (what == "globalHole") {
             globalHole = data;
         } else if (what == "throttle") {
+            // The throttle lives in (0, WAD]: it scales available liquidation room while the circuit breaker is
+            // active, and zero would silently convert the throttle into a full liquidation halt.
+            if (data == 0 || data > _WAD) {
+                _revert(InvalidThrottle.selector);
+            }
+
             throttle = data;
         } else {
             _revert(UnrecognizedParameter.selector);

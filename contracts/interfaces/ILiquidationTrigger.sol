@@ -105,6 +105,11 @@ interface ILiquidationTrigger {
     error InvalidBarkFactor();
 
     /**
+     * @dev Indicates that a circuit breaker throttle outside (0, 1] was supplied.
+     */
+    error InvalidThrottle();
+
+    /**
      * @dev Indicates that the vault is not unsafe and cannot be liquidated.
      */
     error NotUnsafe();

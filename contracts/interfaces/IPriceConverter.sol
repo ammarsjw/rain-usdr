@@ -58,6 +58,19 @@ interface IPriceConverter {
      */
     event Poke(bytes32 indexed ilkId, bytes32 val, uint256 spot);
 
+    /* ========================== ERRORS ========================== */
+
+    /**
+     * @dev Indicates that a collateralization ratio below 100% was supplied.
+     */
+    error MatBelowOne();
+
+    /**
+     * @dev Indicates that clearing the fixed flag would leave the ilk with no price source. Assign an oracle via
+     *      `file("pip")` instead, which clears the flag atomically.
+     */
+    error WouldOrphanIlk();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**

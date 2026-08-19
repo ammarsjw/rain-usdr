@@ -38,6 +38,11 @@ interface IReserveAccounting {
      */
     error EscrowExceedsReserve();
 
+    /**
+     * @dev Indicates that a decrease would drop the total reserve below the committed escrow.
+     */
+    error ReserveBelowEscrow();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**

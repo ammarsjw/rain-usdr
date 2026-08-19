@@ -56,6 +56,13 @@ contract ReserveAccounting is IReserveAccounting, AccessControl {
     function recordDecrease(uint256 wad) external onlyRole(_RECORDER_ROLE) {
         totalReserve -= wad;
 
+        // The reserve must never drop below the committed escrow: freeSlack() would underflow and every consumer
+        // of the split (redemption above all) would revert. The PSM checks freeSlack before recording, so this is
+        // defence in depth against any future recorder that does not.
+        if (totalReserve < committedEscrow) {
+            _revert(ReserveBelowEscrow.selector);
+        }
+
         emit RecordDecrease({ wad: wad, totalReserve: totalReserve });
     }
 

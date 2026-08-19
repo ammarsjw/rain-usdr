@@ -177,6 +177,11 @@ interface IDutchAuction {
      */
     error InvalidPrice();
 
+    /**
+     * @dev Indicates that the operation is stopped by the auction breaker.
+     */
+    error Stopped();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**
@@ -318,6 +323,17 @@ interface IDutchAuction {
      * @notice Returns the liveness flag. `1` while live, `0` after shutdown.
      */
     function live() external view returns (uint256);
+
+    /**
+     * @notice Returns the breaker level: 0 = normal, 1 = no new kicks, 2 = no kicks or takes, 3 = no kicks, takes
+     *         or redos. Yank is never gated.
+     */
+    function stopped() external view returns (uint256);
+
+    /**
+     * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
+     */
+    function governor() external view returns (address);
 
     /**
      * @notice Returns the balance sheet that receives auction proceeds.

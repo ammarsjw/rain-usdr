@@ -22,7 +22,17 @@ import { PegStabilityModule } from "../contracts/reserve/PegStabilityModule.sol"
 import { ReserveAccounting } from "../contracts/reserve/ReserveAccounting.sol";
 import { SolvencyEngine } from "../contracts/reserve/SolvencyEngine.sol";
 import { End } from "../contracts/settlement/End.sol";
-import { _BURNER_ROLE, _COMMITTER_ROLE, _RAD, _RAY, _READER_ROLE, _RECORDER_ROLE, _USDR_ILK, _WAD, _WARD_ROLE } from "../contracts/shared/Constants.sol";
+import {
+    _BURNER_ROLE,
+    _COMMITTER_ROLE,
+    _RAD,
+    _RAY,
+    _READER_ROLE,
+    _RECORDER_ROLE,
+    _USDR_ILK,
+    _WAD,
+    _WARD_ROLE
+} from "../contracts/shared/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 import { MockPriceSource } from "./mocks/MockPriceSource.sol";
@@ -135,7 +145,8 @@ abstract contract BaseTest is Test {
         reserveAccounting.grantRole(_COMMITTER_ROLE, address(solvencyEngine));
         reserveAccounting.grantRole(_RECORDER_ROLE, address(psm));
         solvencyEngine.addVolatileIlk(RAIN_ILK);
-        solvencyEngine.file("priceConverter", address(priceConverter));
+        solvencyEngine.file("osm", address(osm));
+        osm.grantRole(_READER_ROLE, address(solvencyEngine));
 
         // Wiring the solvency gate.
         vaultEngine.file("solvencyEngine", address(solvencyEngine));
@@ -162,6 +173,12 @@ abstract contract BaseTest is Test {
         dutchAuction.file("vow", address(balanceSheet));
         dutchAuction.file("calc", address(priceCurve));
         dutchAuction.grantRole(_WARD_ROLE, address(liquidationTrigger));
+
+        // Wiring the Governor's emergency pause into the gated entry points (deploy-script parity).
+        vaultEngine.file("governor", address(governor));
+        psm.file("governor", address(governor));
+        liquidationTrigger.file("governor", address(governor));
+        dutchAuction.file("governor", address(governor));
 
         // Deploying and wiring the End (emergency settlement).
         end = new End(vaultEngine);

@@ -85,6 +85,12 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
      * @inheritdoc ICollateralAdapter
      */
     function cage(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
+        // Caging an unregistered ilk is rejected: silently succeeding would let a typoed governance call report
+        // success while the intended ilk stays live.
+        if (address(ilks[ilkId].token) == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
         ilks[ilkId].live = 0;
 
         emit Cage({ ilkId: ilkId });
@@ -101,6 +107,11 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
             _revert(InvalidAddress.selector);
         }
 
+        // Zero-amount operations are rejected rather than emitting no-op events that pollute indexers.
+        if (amount == 0) {
+            _revert(InvalidAmount.selector);
+        }
+
         if (ilk.isUsdr) {
             // Returning USDR into the system keeps working after shutdown.
             VAULT_ENGINE.move(address(this), user, _RAY * amount);
@@ -111,8 +122,22 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
                 _revert(NotLive.selector);
             }
 
+            // Measuring the balance delta actually received rather than trusting the nominal amount: a
+            // fee-on-transfer or rebasing token would otherwise credit more than the adapter holds, silently
+            // under-collateralizing the shared adapter and socializing the shortfall across every holder of the
+            // ilk. Only the delta is credited, and any shortfall surfaces here as a hard revert.
+            uint256 balanceBefore = ilk.token.balanceOf(address(this));
+
+            ilk.token.safeTransferFrom(msg.sender, address(this), amount);
+
+            uint256 received = ilk.token.balanceOf(address(this)) - balanceBefore;
+
+            if (received != amount) {
+                _revert(FeeOnTransferToken.selector);
+            }
+
             // Converting token decimals to the internal 18 decimal representation.
-            uint256 wad = amount * (10 ** (18 - ilk.dec));
+            uint256 wad = received * (10 ** (18 - ilk.dec));
 
             // The value must fit the signed range before casting (mirrors exit's pattern).
             if (wad > uint256(type(int256).max)) {
@@ -120,7 +145,6 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
             }
 
             VAULT_ENGINE.slip(ilkId, user, int256(wad));
-            ilk.token.safeTransferFrom(msg.sender, address(this), amount);
         }
 
         emit Join({ ilkId: ilkId, user: user, amount: amount });
@@ -137,6 +161,11 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
             _revert(InvalidAddress.selector);
         }
 
+        // Zero-amount operations are rejected rather than emitting no-op events that pollute indexers.
+        if (amount == 0) {
+            _revert(InvalidAmount.selector);
+        }
+
         if (ilk.isUsdr) {
             // Minting is blocked after shutdown. Returning USDR continues to work.
             if (ilk.live != 1) {
@@ -147,6 +176,11 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
             IUSDR(address(ilk.token)).mint(user, amount);
         } else {
             // Converting token decimals to the internal 18 decimal representation.
+            //
+            // NOTE (accepted): exit takes the amount in TOKEN decimals, so for 6-decimal ilks any internal balance
+            // below 1e12 (one token unit scaled to 18 decimals) is unreachable by exit. Such sub-unit ledger dust
+            // can only arise from internal transfers (flux), never from join/frob flows, and is bounded by one
+            // token unit per holder; it stays on the ledger rather than being silently rounded away.
             uint256 wad = amount * (10 ** (18 - ilk.dec));
 
             if (wad > uint256(type(int256).max)) {

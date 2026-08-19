@@ -9,7 +9,14 @@ import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { Math } from "../libraries/Math.sol";
 import { _RAY, _WARD_ROLE } from "../shared/Constants.sol";
-import { IlkAlreadyInitialized, InvalidAddress, NotLive, SolvencyGateActive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
+import {
+    IlkAlreadyInitialized,
+    InvalidAddress,
+    NotLive,
+    SolvencyGateActive,
+    SystemPaused,
+    UnrecognizedParameter
+} from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -304,19 +311,19 @@ contract VaultEngine is IVaultEngine, AccessControl {
         // and the dust/tab comparisons below remain correct only under that assumption. If a stability fee is ever
         // introduced, this arithmetic must be revisited.
         int256 dtab = Math.mul(ilk.rate, dart);
-        uint256 tab = ilk.rate * urn.art;
+        uint256 tab = Math.umul(ilk.rate, urn.art);
 
         debt = Math.add(debt, dtab);
 
         // Ceiling check: either debt is being repaid (dart decreased), or both the ilk ceiling and the global ceiling
         // must hold after the change.
-        if (!(dart <= 0 || Math.both(ilk.globalArt * ilk.rate <= ilk.line, debt <= globalLine))) {
+        if (!(dart <= 0 || Math.both(Math.umul(ilk.globalArt, ilk.rate) <= ilk.line, debt <= globalLine))) {
             _revert(CeilingExceeded.selector);
         }
 
         // Safety check: the urn is either less risky than before, or it is safe after the change. Uses the delayed
         // oracle price factor already stored in the system.
-        if (!(Math.both(dart <= 0, dink >= 0) || tab <= urn.ink * ilk.spot)) {
+        if (!(Math.both(dart <= 0, dink >= 0) || tab <= Math.umul(urn.ink, ilk.spot))) {
             _revert(NotSafe.selector);
         }
 

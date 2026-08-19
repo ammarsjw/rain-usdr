@@ -16,7 +16,14 @@ import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _USDR_ILK, _WARD_ROLE } from "../shared/Constants.sol";
-import { IlkAlreadyInitialized, InvalidAddress, InvalidAmount, SolvencyGateActive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
+import {
+    IlkAlreadyInitialized,
+    InvalidAddress,
+    InvalidAmount,
+    SolvencyGateActive,
+    SystemPaused,
+    UnrecognizedParameter
+} from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -186,9 +193,16 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(SystemPaused.selector);
         }
 
-        // Solvency gate: redemption DECREASES the reserve, so it is blocked while the invariant is breached.
-        if (solvencyEngine != address(0) && ISolvencyEngine(solvencyEngine).isBreached()) {
-            _revert(SolvencyGateActive.selector);
+        // Solvency gate: redemption DECREASES the reserve, so it is blocked while the invariant is breached. The
+        // invariant is recomputed HERE, at redemption time, rather than trusting the keeper-maintained flag: a
+        // stale flag (keeper down during a price collapse) would otherwise hand early redeemers a bank-run ordering
+        // advantage, letting them exit whole at par against a stale escrow while a live loss stands.
+        if (solvencyEngine != address(0)) {
+            ISolvencyEngine(solvencyEngine).checkInvariant();
+
+            if (ISolvencyEngine(solvencyEngine).isBreached()) {
+                _revert(SolvencyGateActive.selector);
+            }
         }
 
         // Exactly 1:1: the user pays stableAmt18 USDR for stableAmt stablecoins. No fee.

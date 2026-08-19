@@ -6,7 +6,7 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 
 import { IGovernor } from "../interfaces/IGovernor.sol";
 import { _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, InvalidAmount, NotAuthorized, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, NotAuthorized } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -15,7 +15,10 @@ import { _revert } from "../shared/Globals.sol";
  * @notice The controlled way to change the protocol's adjustable settings. Every change waits out a mandatory delay
  *         before it can take effect, giving the community time to review. Also holds the emergency pause. It can never
  *         touch the immutable core, only the risk parameters.
- * @dev The pause auto-expires after 72 hours and its scope is fixed at the moment of pausing.
+ * @dev The timelock delay is immutable: it is fixed at construction and can never be changed, so the timelock can
+ *      never be shortened or removed by a compromised governance key (Maker's design). The pause auto-expires after
+ *      72 hours -- {paused} returns false once the window elapses even without an {unpause} call -- and its scope is
+ *      fixed at the moment of pausing.
  */
 contract Governor is IGovernor, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -24,10 +27,10 @@ contract Governor is IGovernor, AccessControl {
     uint256 public constant PAUSE_MAX = 72 hours;
 
     /// @inheritdoc IGovernor
-    bytes32 public pauseScope;
+    uint256 public immutable delay;
 
     /// @inheritdoc IGovernor
-    uint256 public delay;
+    bytes32 public pauseScope;
 
     /// @inheritdoc IGovernor
     uint256 public pausedAt;
@@ -35,8 +38,8 @@ contract Governor is IGovernor, AccessControl {
     /// @inheritdoc IGovernor
     uint256 public changeCount;
 
-    /// @inheritdoc IGovernor
-    bool public paused;
+    /// @dev Raw pause flag. Read through {paused}, which also applies the 72-hour auto-expiry.
+    bool private _paused;
 
     /// @inheritdoc IGovernor
     mapping(uint256 changeId => Change change) public changes;
@@ -60,19 +63,6 @@ contract Governor is IGovernor, AccessControl {
     }
 
     /* ========================== FUNCTIONS ========================== */
-
-    /**
-     * @inheritdoc IGovernor
-     */
-    function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
-        if (what == "delay") {
-            delay = data;
-        } else {
-            _revert(UnrecognizedParameter.selector);
-        }
-
-        emit File({ what: what, data: data });
-    }
 
     /**
      * @inheritdoc IGovernor
@@ -161,13 +151,13 @@ contract Governor is IGovernor, AccessControl {
      * @inheritdoc IGovernor
      */
     function pause(bytes32 scope) external onlyRole(_WARD_ROLE) {
-        // The system must not already be paused.
-        if (paused) {
+        // The system must not already be paused (using the auto-expiry-aware view).
+        if (paused()) {
             _revert(AlreadyPaused.selector);
         }
 
         // The scope is fixed at the moment of pausing and cannot be widened afterward.
-        paused = true;
+        _paused = true;
         pausedAt = block.timestamp;
         pauseScope = scope;
 
@@ -178,7 +168,10 @@ contract Governor is IGovernor, AccessControl {
      * @inheritdoc IGovernor
      */
     function unpause() external {
-        if (!paused) {
+        // Checked against the RAW flag, not the auto-expiring view: after the window expires the system already
+        // reads unpaused everywhere, but the stale storage must still be clearable (and the public-after-expiry
+        // rule below applies to exactly that case).
+        if (!_paused) {
             _revert(NotPaused.selector);
         }
 
@@ -190,10 +183,20 @@ contract Governor is IGovernor, AccessControl {
             }
         }
 
-        paused = false;
+        _paused = false;
         pausedAt = 0;
         pauseScope = bytes32(0);
 
         emit Unpause();
+    }
+
+    /**
+     * @inheritdoc IGovernor
+     */
+    function paused() public view returns (bool) {
+        // The pause auto-expires after PAUSE_MAX: once the window elapses the system is unpaused for every consumer
+        // even if nobody has called {unpause} to clear the storage. This makes the "72h auto-expiry" real rather
+        // than a relabelling of who may call unpause.
+        return _paused && block.timestamp < pausedAt + PAUSE_MAX;
     }
 }

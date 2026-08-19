@@ -8,12 +8,13 @@ import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
 import { IDutchAuctionCallee } from "../interfaces/IDutchAuctionCallee.sol";
+import { IGovernor } from "../interfaces/IGovernor.sol";
 import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceCurve } from "../interfaces/IPriceCurve.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, InvalidBytes, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidBytes, NotLive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -59,7 +60,13 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     uint256 public live;
 
     /// @inheritdoc IDutchAuction
+    uint256 public stopped;
+
+    /// @inheritdoc IDutchAuction
     address public vow;
+
+    /// @inheritdoc IDutchAuction
+    address public governor;
 
     /// @inheritdoc IDutchAuction
     ILiquidationTrigger public dog;
@@ -122,6 +129,10 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             chip = uint64(data);
         } else if (what == "tip") {
             tip = uint192(data);
+        } else if (what == "stopped") {
+            // Maker's clip.sol breaker levels: 0 = normal, 1 = no new kicks, 2 = no new kicks or takes,
+            // 3 = no kicks, takes or redos. Yank always stays available for settlement.
+            stopped = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -145,6 +156,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             vow = data;
         } else if (what == "calc") {
             calc = IPriceCurve(data);
+        } else if (what == "governor") {
+            governor = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -165,6 +178,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         if (live != 1) {
             _revert(NotLive.selector);
         }
+
+        // Breaker level 1+ stops new auctions; the governance pause is a full stop for the auction house too.
+        _requireRunning(1);
 
         if (tab == 0) {
             _revert(ZeroTab.selector);
@@ -217,6 +233,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         if (live != 1) {
             _revert(NotLive.selector);
         }
+
+        // Breaker level 3 stops resets.
+        _requireRunning(3);
 
         address usr = sales[id].usr;
         uint96 tic = sales[id].tic;
@@ -273,6 +292,10 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         if (live != 1) {
             _revert(NotLive.selector);
         }
+
+        // Breaker level 2 stops purchases: during an oracle incident governance must be able to stop keepers
+        // buying collateral at bad-feed prices, in-flight auctions included. The governance pause does too.
+        _requireRunning(2);
 
         address usr = sales[id].usr;
         uint96 tic = sales[id].tic;
@@ -433,6 +456,21 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         needsRedo = usr != address(0) && done;
         lot = sales[id].lot;
         tab = sales[id].tab;
+    }
+
+    /**
+     * @dev Reverts when the breaker is at or above `level`, or when the governance pause is active. Yank is never
+     *      gated: emergency settlement must always be able to reclaim auctions.
+     * @param level Breaker level at which the calling operation is stopped.
+     */
+    function _requireRunning(uint256 level) private view {
+        if (stopped >= level) {
+            _revert(Stopped.selector);
+        }
+
+        if (governor != address(0) && IGovernor(governor).paused()) {
+            _revert(SystemPaused.selector);
+        }
     }
 
     /**
