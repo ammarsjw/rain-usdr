@@ -20,6 +20,7 @@ const deployGovernance = async () => {
     // Deployment variables.
     const governorDelay = process.env.GOVERNOR_DELAY || 172800n; // 48 hours default.
     const endWait = process.env.END_WAIT || 604800n; // 7 days default.
+    const governorHandover = process.env.GOVERNOR_HANDOVER === "true" || false; // false default.
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
     const usdrAddress = process.env.USDR_ADDRESS;
     const collateralAdapterAddress = process.env.COLLATERAL_ADAPTER_ADDRESS;
@@ -145,34 +146,37 @@ const deployGovernance = async () => {
     await (await dutchAuctionInstance.grantRole(WARD_ROLE, endAddress)).wait();
     await (await osmInstance.grantRole(READER_ROLE, endAddress)).wait();
 
-    // Handing full control of EVERY deployed contract to the Governor and renouncing the deployer's WARD role.
-    // Ordering matters: renounce only after all cross-contract wiring and file calls are complete (this script runs
-    // last in the deploy sequence).
-    const [deployer] = await hardhat.ethers.getSigners();
-    const wardedContracts = [
-        ["USDR", usdrAddress],
-        ["VaultEngine", vaultEngineAddress],
-        ["CollateralAdapter", collateralAdapterAddress],
-        ["OracleSecurityModule", osmAddress],
-        ["PriceConverter", priceConverterAddress],
-        ["ReserveAccounting", reserveAccountingAddress],
-        ["SolvencyEngine", solvencyEngineAddress],
-        ["BalanceSheet", balanceSheetAddress],
-        ["PegStabilityModule", psmAddress],
-        ["PriceCurve", priceCurveAddress],
-        ["LiquidationTrigger", liquidationTriggerAddress],
-        ["DutchAuction", dutchAuctionAddress],
-        ["CircuitBreaker", circuitBreakerAddress],
-        ["Governor", governorAddress],
-        ["End", endAddress]
-    ];
+    if (governorHandover) {
+        // Handing full control of EVERY deployed contract to the Governor and renouncing the deployer's WARD role.
+        // Ordering matters: renounce only after all cross-contract wiring and file calls are complete (this script runs
+        // last in the deploy sequence).
+        const [deployer] = await hardhat.ethers.getSigners();
+        const wardedContracts = [
+            ["USDR", usdrAddress],
+            ["VaultEngine", vaultEngineAddress],
+            ["CollateralAdapter", collateralAdapterAddress],
+            ["OracleSecurityModule", osmAddress],
+            ["PriceConverter", priceConverterAddress],
+            ["ReserveAccounting", reserveAccountingAddress],
+            ["SolvencyEngine", solvencyEngineAddress],
+            ["BalanceSheet", balanceSheetAddress],
+            ["PegStabilityModule", psmAddress],
+            ["PriceCurve", priceCurveAddress],
+            ["LiquidationTrigger", liquidationTriggerAddress],
+            ["DutchAuction", dutchAuctionAddress],
+            ["CircuitBreaker", circuitBreakerAddress],
+            ["Governor", governorAddress],
+            ["End", endAddress]
+        ];
 
-    for (const [name, address] of wardedContracts) {
-        const instance = await hardhat.ethers.getContractAt(name, address);
-        await (await instance.grantRole(WARD_ROLE, governorAddress)).wait();
-        await (await instance.renounceRole(WARD_ROLE, deployer.address)).wait();
-        console.log(`WARD_ROLE: ${name} handed to Governor, deployer renounced`);
+        for (const [name, address] of wardedContracts) {
+            const instance = await hardhat.ethers.getContractAt(name, address);
+            await (await instance.grantRole(WARD_ROLE, governorAddress)).wait();
+            await (await instance.renounceRole(WARD_ROLE, deployer.address)).wait();
+            console.log(`WARD_ROLE: ${name} handed to Governor, deployer renounced`);
+        }
     }
+
     console.log("Governance setup complete");
 
     // Updating env.
