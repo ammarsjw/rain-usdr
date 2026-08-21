@@ -68,7 +68,7 @@
         "solhint": "^6.2.4"
     },
     "allowScripts": {
-        "keccak@3.0.4": true,
-        "secp256k1@4.0.4": true
+        "keccak": true,
+        "secp256k1": true
     }
 }
