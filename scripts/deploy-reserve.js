@@ -22,7 +22,6 @@ const deployReserve = async () => {
     // Deployment variables.
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
     const collateralAdapterAddress = process.env.COLLATERAL_ADAPTER_ADDRESS;
-    const priceConverterAddress = process.env.PRICE_CONVERTER_ADDRESS;
     const osmAddress = process.env.OSM_ADDRESS;
 
     // Fixed point scalars.
@@ -125,6 +124,7 @@ const deployReserve = async () => {
 
     // Authorizing the Balance Sheet to heal and suck on the ledger.
     await (await vaultEngineInstance.grantRole(WARD_ROLE, balanceSheetAddress)).wait();
+
     console.log("Reserve setup complete");
 
     // Updating env.

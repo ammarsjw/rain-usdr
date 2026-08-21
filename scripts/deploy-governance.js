@@ -79,8 +79,6 @@ const deployGovernance = async () => {
 
     // Setting up governance wiring.
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
-
-    // Setting launch risk parameters: ceilings and minimum vault size.
     await (
         await vaultEngineInstance["file(bytes32,uint256)"](
             hardhat.ethers.encodeBytes32String("globalLine"),
@@ -165,7 +163,6 @@ const deployGovernance = async () => {
             ["LiquidationTrigger", liquidationTriggerAddress],
             ["DutchAuction", dutchAuctionAddress],
             ["CircuitBreaker", circuitBreakerAddress],
-            ["Governor", governorAddress],
             ["End", endAddress]
         ];
 

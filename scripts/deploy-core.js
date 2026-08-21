@@ -77,6 +77,7 @@ const deployCore = async () => {
     await (await vaultEngineInstance.grantRole(WARD_ROLE, collateralAdapterAddress)).wait();
     await (await usdrInstance.grantRole(WARD_ROLE, collateralAdapterAddress)).wait();
     await (await usdrInstance.grantRole(BURNER_ROLE, collateralAdapterAddress)).wait();
+
     console.log("Core setup complete");
 
     // Updating env.

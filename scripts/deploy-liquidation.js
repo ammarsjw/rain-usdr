@@ -180,6 +180,7 @@ const deployLiquidation = async () => {
 
     // Caching the auction's dust-times-chop threshold now that dust and chop are set.
     await (await dutchAuctionInstance.upchost()).wait();
+
     console.log("Liquidation setup complete");
 
     // Updating env.

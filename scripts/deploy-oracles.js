@@ -101,6 +101,7 @@ const deployOracles = async () => {
     // Setting the stablecoins' price factors once; fixed ilks never need another poke unless par or mat changes.
     await (await priceConverterInstance.poke(usdtIlk)).wait();
     await (await priceConverterInstance.poke(usdcIlk)).wait();
+
     console.log("Oracles setup complete");
 
     // Updating env.
