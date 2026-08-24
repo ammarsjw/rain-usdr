@@ -70,8 +70,8 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
 
         uint8 dec = token.decimals();
 
-        // Tokens with more than 18 decimals cannot be represented internally: the `10 ** (18 - dec)` conversion
-        // would underflow. Reject them at registration.
+        // Tokens with more than 18 decimals cannot be represented internally: the `10 ** (18 - dec)` conversion would
+        // underflow. Reject them at registration.
         if (dec > 18) {
             _revert(InvalidDecimals.selector);
         }
@@ -122,10 +122,10 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
                 _revert(NotLive.selector);
             }
 
-            // Measuring the balance delta actually received rather than trusting the nominal amount: a
-            // fee-on-transfer or rebasing token would otherwise credit more than the adapter holds, silently
-            // under-collateralizing the shared adapter and socializing the shortfall across every holder of the
-            // ilk. Only the delta is credited, and any shortfall surfaces here as a hard revert.
+            // Measuring the balance delta actually received rather than trusting the nominal amount: a fee-on-transfer
+            // or rebasing token would otherwise credit more than the adapter holds, silently under-collateralizing the
+            // shared adapter and socializing the shortfall across every holder of the ilk. Only the delta is credited,
+            // and any shortfall surfaces here as a hard revert.
             uint256 balanceBefore = ilk.token.balanceOf(address(this));
 
             ilk.token.safeTransferFrom(msg.sender, address(this), amount);
@@ -139,7 +139,7 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
             // Converting token decimals to the internal 18 decimal representation.
             uint256 wad = received * (10 ** (18 - ilk.dec));
 
-            // The value must fit the signed range before casting (mirrors exit's pattern).
+            // The value must fit the signed range before casting.
             if (wad > uint256(type(int256).max)) {
                 _revert(InvalidAmount.selector);
             }
@@ -176,11 +176,10 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
             IUSDR(address(ilk.token)).mint(user, amount);
         } else {
             // Converting token decimals to the internal 18 decimal representation.
-            //
-            // NOTE (accepted): exit takes the amount in TOKEN decimals, so for 6-decimal ilks any internal balance
-            // below 1e12 (one token unit scaled to 18 decimals) is unreachable by exit. Such sub-unit ledger dust
-            // can only arise from internal transfers (flux), never from join/frob flows, and is bounded by one
-            // token unit per holder; it stays on the ledger rather than being silently rounded away.
+            // NOTE: exit takes the amount in TOKEN decimals, so for 6-decimal ilks any internal balance below 1e12
+            // (one token unit scaled to 18 decimals) is unreachable by exit. Such sub-unit ledger dust can only arise
+            // from internal transfers (flux), never from join/frob flows, and is bounded by one token unit per holder;
+            // it stays on the ledger rather than being silently rounded away.
             uint256 wad = amount * (10 ** (18 - ilk.dec));
 
             if (wad > uint256(type(int256).max)) {

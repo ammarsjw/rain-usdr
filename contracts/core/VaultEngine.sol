@@ -200,8 +200,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
         }
 
         // Vault ids are sequential and never reused. Ownership is immutable: transferring a position is not
-        // supported (a deliberate omission -- it keeps in-flight auction refunds, which are captured per owner at
-        // bark time, always correct).
+        // supported.
         vaultId = ++vaultCount;
 
         ownerOf[vaultId] = usr;
@@ -327,9 +326,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
             _revert(NotSafe.selector);
         }
 
-        // Permission checks: the vault is either less risky than before, or its owner consents; collateral is
-        // either not being taken, or its source consents; internal USDR is either not being drawn down, or the
-        // destination consents.
+        // Permission checks: the vault is either less risky than before, or its owner consents; collateral is either
+        // not being taken, or its source consents; internal USDR is either not being drawn down, or the destination
+        // consents.
         if (!(Math.both(dart <= 0, dink >= 0) || _wish(owner, msg.sender))) {
             _revert(NotAllowed.selector);
         }
@@ -360,8 +359,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @inheritdoc IVaultEngine
      */
     function grab(uint256 vaultId, address v, address w, int256 dink, int256 dart) external onlyRole(_WARD_ROLE) {
-        // NOTE: deliberately callable after shutdown (no live check), matching Maker's vat. The emergency
-        // settlement module (End) seizes positions through this function after cage.
+        // NOTE: deliberately callable after shutdown (no live check). The emergency settlement module (End) seizes
+        // positions through this function after cage.
         if (ownerOf[vaultId] == address(0)) {
             _revert(VaultNotFound.selector);
         }
@@ -389,8 +388,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @inheritdoc IVaultEngine
      */
     function heal(uint256 rad) external {
-        // NOTE: deliberately callable after shutdown (no live check), matching Maker's vat. Emergency settlement
-        // heals the Balance Sheet's surplus against bad debt after cage (End.thaw requires it).
+        // NOTE: deliberately callable after shutdown (no live check). Emergency settlement heals the Balance Sheet's
+        // surplus against bad debt after cage (End.thaw() requires it).
         sin[msg.sender] -= rad;
         usdr[msg.sender] -= rad;
         vice -= rad;

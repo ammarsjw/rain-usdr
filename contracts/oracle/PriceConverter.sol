@@ -108,8 +108,8 @@ contract PriceConverter is IPriceConverter, AccessControl {
         }
 
         if (what == "mat") {
-            // A collateralization ratio below 100% would authorize minting more than a dollar of USDR per dollar
-            // of collateral at origination. No legitimate configuration wants that.
+            // A collateralization ratio below 100% would authorize minting more than a dollar of USDR per dollar of
+            // collateral at origination. No legitimate configuration wants that.
             if (data < _RAY) {
                 _revert(MatBelowOne.selector);
             }
@@ -121,9 +121,9 @@ contract PriceConverter is IPriceConverter, AccessControl {
                 ilks[ilkId].fixedPrice = true;
                 ilks[ilkId].pip = IOracleSecurityModule(address(0));
             } else {
-                // Clearing the fixed flag on an ilk with no oracle would silently brick its price updates and
-                // freeze spot at its last value (the dangerous direction: a stale price keeps authorizing mints).
-                // The flag is only clearable by assigning an oracle via file("pip"), which clears it atomically.
+                // Clearing the fixed flag on an ilk with no oracle would silently brick its price updates and freeze
+                // spot at its last value (the dangerous direction: a stale price keeps authorizing mints). The flag is
+                // only clearable by assigning an oracle via file("pip"), which clears it atomically.
                 _revert(WouldOrphanIlk.selector);
             }
         } else {
@@ -164,8 +164,8 @@ contract PriceConverter is IPriceConverter, AccessControl {
             (val, has) = ilk.pip.peek(ilkId);
         }
 
-        // If the price is invalid, the price factor is set to ZERO, freezing new minting against this collateral
-        // until a valid price returns (a zero spot makes every mint/withdraw fail the safety check).
+        // If the price is invalid, the price factor is set to ZERO, freezing new minting against this collateral until
+        // a valid price returns (a zero spot makes every mint/withdraw fail the safety check).
         uint256 spot = has ? ((((uint256(val) * (10 ** 9)) * _RAY) / par) * _RAY) / ilk.mat : 0;
 
         VAULT_ENGINE.file(ilkId, "spot", spot);

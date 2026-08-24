@@ -23,20 +23,20 @@ import { _revert } from "../shared/Globals.sol";
  * @author Rain Team
  * @notice The emergency settlement module. When governance pulls the plug, this contract freezes the system, settles
  *         every vault at the last oracle price, hands vault owners their excess collateral back, and finally lets
- *         every USDR holder redeem the remaining collateral pro-rata. A faithful port of MakerDAO's end.sol adapted
- *         to USDR's vaultId-keyed ledger, single balance sheet and fee-less, fixed-rate design.
+ *         every USDR holder redeem the remaining collateral pro-rata. This contract runs on a single balance sheet and
+ *         fee-less, fixed-rate design.
  * @dev Settlement runs in ordered phases:
- *      1. `cage()` -- freeze the Vault Engine, the Liquidation Trigger and the Price Converter.
- *      2. `cage(ilkId)` -- fix each collateral type's settlement price and snapshot its debt.
- *      3. `skip(ilkId, id)` -- reclaim in-flight auctions into the vaults they were seized from.
- *         `skim(vaultId)` -- settle each vault: confiscate collateral covering its debt, cancel the debt.
- *      4. `free(vaultId)` -- vault owners reclaim leftover collateral (their vault must carry no debt).
- *      5. `thaw()` -- after the cooldown, with the Balance Sheet's surplus healed away, fix the total debt.
- *      6. `flow(ilkId)` -- compute each collateral type's final redemption price.
- *      7. `pack(wad)` -- USDR holders deposit internal USDR into a redemption bag.
- *      8. `cash(ilkId, wad)` -- holders redeem each collateral type pro-rata against their bag.
- *      Holders of the USDR ERC-20 first convert it to internal USDR through the Collateral Adapter (`join`), and
- *      must `hope` this contract so it can move their internal balance in `pack`.
+ *      1. `cage()` - freeze the Vault Engine, the Liquidation Trigger and the Price Converter.
+ *      2. `cage(ilkId)` - fix each collateral type's settlement price and snapshot its debt.
+ *      3. `skip(ilkId, id)` - reclaim in-flight auctions into the vaults they were seized from.
+ *         `skim(vaultId)` - settle each vault: confiscate collateral covering its debt, cancel the debt.
+ *      4. `free(vaultId)` - vault owners reclaim leftover collateral (their vault must carry no debt).
+ *      5. `thaw()` - after the cooldown, with the Balance Sheet's surplus healed away, fix the total debt.
+ *      6. `flow(ilkId)` - compute each collateral type's final redemption price.
+ *      7. `pack(wad)` - USDR holders deposit internal USDR into a redemption bag.
+ *      8. `cash(ilkId, wad)` - holders redeem each collateral type pro-rata against their bag.
+ *      Holders of the USDR ERC-20 first convert it to internal USDR through the Collateral Adapter (`join`), and must
+ *      `hope` this contract so it can move their internal balance in `pack`.
  */
 contract End is IEnd, AccessControl, ReentrancyGuard {
     /* ========================== STATE VARIABLES ========================== */
@@ -154,7 +154,7 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         when = block.timestamp;
 
         // Freezing the system: no new debt, no new liquidations, no more price pokes. The Oracle Security Module is
-        // deliberately NOT frozen -- `cage(ilkId)` still needs its last delayed price.
+        // deliberately NOT frozen since `cage(ilkId)` still needs its last delayed price.
         VAULT_ENGINE.cage();
         liquidationTrigger.cage();
         priceConverter.cage();
@@ -178,9 +178,9 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
 
         art[ilkId] = globalArt;
 
-        // The settlement price is par (USDR's target value) divided by the collateral's last delayed price:
-        // collateral units owed per USDR of debt [ray]. Fixed-price ilks settle at exactly $1, matching the price
-        // they minted at; oracle-backed ilks read the OSM's current value one final time.
+        // The settlement price is par (USDR's target value) divided by the collateral's last delayed price: collateral
+        // units owed per USDR of debt [ray]. Fixed-price ilks settle at exactly $1, matching the price they minted at;
+        // oracle-backed ilks read the OSM's current value one final time.
         (IOracleSecurityModule pip, , bool fixedPrice) = priceConverter.ilks(ilkId);
 
         uint256 price;
@@ -217,9 +217,8 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         (, , uint256 rate, , , ) = VAULT_ENGINE.ilks(ilkId);
 
         // Recreating the auction's debt on the Balance Sheet so the reclaim below can cancel it: suck mints matched
-        // surplus and bad debt, grab then consumes the bad debt while restoring the vault. Net effect: the vault
-        // gets its collateral and debt back, and the Balance Sheet keeps a surplus offsetting the sin queued at
-        // bark time. (Maker's end.sol skip, adapted to the single balance sheet.)
+        // surplus and bad debt, grab then consumes the bad debt while restoring the vault. Net effect: the vault gets
+        // its collateral and debt back, and the Balance Sheet keeps a surplus offsetting the sin queued at bark time.
         VAULT_ENGINE.suck(address(balanceSheet), address(balanceSheet), tab);
 
         // Yanking the auction moves its remaining collateral to this contract.
@@ -300,9 +299,9 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
             _revert(DebtAlreadyFixed.selector);
         }
 
-        // The Balance Sheet's surplus must be fully healed against bad debt first, so redemption is computed
-        // against the true outstanding supply. Queued sin unlocks for healing once the Balance Sheet's own wait
-        // elapses -- size this contract's wait accordingly.
+        // The Balance Sheet's surplus must be fully healed against bad debt first, so redemption is computed against
+        // the true outstanding supply. Queued sin unlocks for healing once the Balance Sheet's own wait elapses. This
+        // contract's wait needs to be set accordingly.
         if (VAULT_ENGINE.usdr(address(balanceSheet)) != 0) {
             _revert(SurplusNotZero.selector);
         }

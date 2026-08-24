@@ -66,8 +66,7 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
-     * @notice Initializes the breaker with its launch settings (25% threshold, 30 minute calm period, 5 minute
-     *         observation interval).
+     * @notice Initializes the breaker with its launch settings.
      * @param pip_ Address of the Oracle Security Module to watch.
      * @param ilkId_ Identifier of the collateral type to watch.
      */

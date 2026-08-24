@@ -130,8 +130,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         } else if (what == "tip") {
             tip = uint192(data);
         } else if (what == "stopped") {
-            // Maker's clip.sol breaker levels: 0 = normal, 1 = no new kicks, 2 = no new kicks or takes,
-            // 3 = no kicks, takes or redos. Yank always stays available for settlement.
+            // Circuit Breaker levels: 0 = normal, 1 = no new kicks, 2 = no new kicks or takes, 3 = no kicks, takes or
+            // redos. Yank always stays available for settlement.
             stopped = data;
         } else {
             _revert(UnrecognizedParameter.selector);
@@ -270,8 +270,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         sales[id].top = top;
 
         // Whoever triggers the reset earns the keeper reward for doing so, but only when the auction is large enough
-        // to be worth resetting: both the remaining debt and the collateral's market value must be at least the
-        // cached dust-times-chop threshold (chost). This prevents reward farming on tiny auctions.
+        // to be worth resetting: both the remaining debt and the collateral's market value must be at least the cached
+        // dust-times-chop threshold (chost). This prevents reward farming on tiny auctions.
         uint256 coin;
 
         if (tip > 0 || chip > 0) {
@@ -293,8 +293,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             _revert(NotLive.selector);
         }
 
-        // Breaker level 2 stops purchases: during an oracle incident governance must be able to stop keepers
-        // buying collateral at bad-feed prices, in-flight auctions included. The governance pause does too.
+        // Breaker level 2 stops purchases: during an oracle incident governance must be able to stop keepers buying
+        // collateral at bad-feed prices, in-flight auctions included. The governance pause does too.
         _requireRunning(2);
 
         address usr = sales[id].usr;
@@ -395,10 +395,10 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             _revert(AuctionNotRunning.selector);
         }
 
-        // The remaining debt is freed from the liquidation capacity and the remaining collateral moves to the
-        // CALLER (Maker's clip.sol behaviour): during emergency settlement the caller is the End, which reclaims
-        // the collateral into the seized vault so the position settles like every other. Handing it to the vault
-        // owner here instead would erase the debt side and leak value at settlement.
+        // The remaining debt is freed from the liquidation capacity and the remaining collateral moves to the CALLER:
+        // during emergency settlement the caller is the End, which reclaims the collateral into the the seized vault
+        // so the position settles like every other. Handing it to the vault owner here instead would erase the debt
+        // side and leak value at settlement.
         dog.digs(ILK_ID, sales[id].tab);
         VAULT_ENGINE.flux(ILK_ID, address(this), msg.sender, sales[id].lot);
 

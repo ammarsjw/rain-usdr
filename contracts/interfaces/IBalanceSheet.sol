@@ -89,8 +89,8 @@ interface IBalanceSheet {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Adjusts the surplus buffer floor {humpFloor} [rad], the dynamic buffer rate {humpRate} [wad], or the
-     *         bad debt queue delay {wait} [seconds].
+     * @notice Adjusts the surplus buffer floor {humpFloor} [rad], the dynamic buffer rate {humpRate} [wad], or the bad
+     *         debt queue delay {wait} [seconds].
      * @param what Name of the parameter.
      * @param data New value.
      */

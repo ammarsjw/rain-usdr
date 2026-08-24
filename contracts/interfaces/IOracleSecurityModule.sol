@@ -172,7 +172,7 @@ interface IOracleSecurityModule {
     function pass(bytes32 ilkId) external view returns (bool);
 
     /**
-     * @notice Returns the update delay in seconds (30 minutes).
+     * @notice Returns the update delay in seconds.
      */
     function HOP() external view returns (uint16);
 }

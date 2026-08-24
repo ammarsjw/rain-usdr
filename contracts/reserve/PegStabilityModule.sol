@@ -34,8 +34,8 @@ import { _revert } from "../shared/Globals.sol";
  *         guaranteed obligations are covered. A single deployed instance serves every stablecoin, and ilks are
  *         registered dynamically. Conversions are exactly 1:1 in both directions: the protocol charges no fee.
  * @dev Uses a shared-reserve model with a single ilk-keyed module riding the equally singular Collateral Adapter.
- *      USDR's reserve is shared, so guaranteed obligations always take priority and redemption reverts when free
- *      slack is too low. This keeps the protocol from promising the same dollar twice.
+ *      USDR's reserve is shared, so guaranteed obligations always take priority and redemption reverts when free slack
+ *      is too low. This keeps the protocol from promising the same dollar twice.
  */
 contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -150,8 +150,9 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(InvalidAmount.selector);
         }
 
-        // Emergency pause check (full stop). Note that this is never gated by the solvency engine: selling stables
-        // INCREASES the reserve, so it remains available during a solvency breach.
+        // Emergency pause check (full stop).
+        // Note: This is never gated by the solvency engine: selling stables INCREASES the reserve, so it remains
+        // available during a solvency breach.
         if (governor != address(0) && IGovernor(governor).paused()) {
             _revert(SystemPaused.selector);
         }
@@ -194,8 +195,8 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
         }
 
         // Solvency gate: redemption DECREASES the reserve, so it is blocked while the invariant is breached. The
-        // invariant is recomputed HERE, at redemption time, rather than trusting the keeper-maintained flag: a
-        // stale flag (keeper down during a price collapse) would otherwise hand early redeemers a bank-run ordering
+        // invariant is recomputed HERE, at redemption time, rather than trusting the keeper-maintained flag: a stable
+        // flag (keeper down during a price collapse) would otherwise hand early redeemers a bank-run ordering
         // advantage, letting them exit whole at par against a stale escrow while a live loss stands.
         if (solvencyEngine != address(0)) {
             ISolvencyEngine(solvencyEngine).checkInvariant();

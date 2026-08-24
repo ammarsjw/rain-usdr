@@ -135,7 +135,7 @@ interface IGovernor {
     function unpause() external;
 
     /**
-     * @notice Returns the maximum pause duration in seconds (72 hours), after which anyone can un-pause.
+     * @notice Returns the maximum pause duration in seconds, after which anyone can un-pause.
      */
     function PAUSE_MAX() external view returns (uint256);
 

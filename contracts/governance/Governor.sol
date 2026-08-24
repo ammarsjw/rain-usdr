@@ -16,9 +16,9 @@ import { _revert } from "../shared/Globals.sol";
  *         before it can take effect, giving the community time to review. Also holds the emergency pause. It can never
  *         touch the immutable core, only the risk parameters.
  * @dev The timelock delay is immutable: it is fixed at construction and can never be changed, so the timelock can
- *      never be shortened or removed by a compromised governance key (Maker's design). The pause auto-expires after
- *      72 hours -- {paused} returns false once the window elapses even without an {unpause} call -- and its scope is
- *      fixed at the moment of pausing.
+ *      never be shortened or removed by a compromised governance key. The pause auto-expires after 72 hours, that is
+ *      {paused} returns false once the window elapses even without an {unpause} call, and its scope is fixed at the
+ *      moment of pausing.
  */
 contract Governor is IGovernor, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -128,8 +128,8 @@ contract Governor is IGovernor, AccessControl {
 
     /**
      * @inheritdoc IGovernor
-     * @dev NOTE (accepted limitation): a scheduled change can be cancelled at any moment up to its execution,
-     *      including after its delay has elapsed. Watchers should treat a queued change as final only once executed.
+     * @dev A scheduled change can be cancelled at any moment up to its execution, including after its delay has
+     *      elapsed. Watchers should treat a queued change as final only once executed.
      */
     function cancel(uint256 id) external onlyRole(_WARD_ROLE) {
         Change storage change = changes[id];
@@ -151,7 +151,7 @@ contract Governor is IGovernor, AccessControl {
      * @inheritdoc IGovernor
      */
     function pause(bytes32 scope) external onlyRole(_WARD_ROLE) {
-        // The system must not already be paused (using the auto-expiry-aware view).
+        // The system must not already be paused.
         if (paused()) {
             _revert(AlreadyPaused.selector);
         }
@@ -168,9 +168,8 @@ contract Governor is IGovernor, AccessControl {
      * @inheritdoc IGovernor
      */
     function unpause() external {
-        // Checked against the RAW flag, not the auto-expiring view: after the window expires the system already
-        // reads unpaused everywhere, but the stale storage must still be clearable (and the public-after-expiry
-        // rule below applies to exactly that case).
+        // Checked against the RAW flag, not the auto-expiring view: after the window expires the system already reads
+        // unpaused everywhere, but the stale storage must still be clearable.
         if (!_paused) {
             _revert(NotPaused.selector);
         }
@@ -195,8 +194,8 @@ contract Governor is IGovernor, AccessControl {
      */
     function paused() public view returns (bool) {
         // The pause auto-expires after PAUSE_MAX: once the window elapses the system is unpaused for every consumer
-        // even if nobody has called {unpause} to clear the storage. This makes the "72h auto-expiry" real rather
-        // than a relabelling of who may call unpause.
+        // even if nobody has called {unpause} to clear the storage. This makes the "72h auto-expiry" real rather than
+        // a relabelling of who may call unpause.
         return _paused && block.timestamp < pausedAt + PAUSE_MAX;
     }
 }

@@ -239,8 +239,8 @@ interface IDutchAuction {
     function take(uint256 id, uint256 amt, uint256 max, address who, bytes calldata data) external;
 
     /**
-     * @notice Forcibly ends an auction, used during emergency shutdown. The remaining collateral moves to the
-     *         caller (Maker's clip.sol behaviour) so the settlement module can reclaim it into the seized vault.
+     * @notice Forcibly ends an auction, used during emergency shutdown. The remaining collateral moves to the caller
+     *         so the settlement module can reclaim it into the seized vault.
      * @dev Only governance or the settlement module may call this via authorization.
      * @param id Identifier of the auction.
      */
@@ -325,8 +325,8 @@ interface IDutchAuction {
     function live() external view returns (uint256);
 
     /**
-     * @notice Returns the breaker level: 0 = normal, 1 = no new kicks, 2 = no kicks or takes, 3 = no kicks, takes
-     *         or redos. Yank is never gated.
+     * @notice Returns the breaker level: 0 = normal, 1 = no new kicks, 2 = no kicks or takes, 3 = no kicks, takes or
+     *         redos. Yank is never gated.
      */
     function stopped() external view returns (uint256);
 

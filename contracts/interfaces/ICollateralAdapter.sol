@@ -70,8 +70,7 @@ interface ICollateralAdapter {
     error InvalidDecimals();
 
     /**
-     * @dev Indicates that a token delivered fewer units than were sent (fee-on-transfer or rebasing behaviour).
-     *      Such tokens cannot back the shared adapter.
+     * @dev Indicates that a token delivered fewer units than were sent. Such tokens cannot back the shared adapter.
      */
     error FeeOnTransferToken();
 

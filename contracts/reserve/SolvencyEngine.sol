@@ -21,13 +21,12 @@ import { _revert } from "../shared/Globals.sol";
  *         engine flags a breach and the rest of the system gates every non-reserve-increasing operation until the
  *         invariant is restored. A keeper bot is expected to call {checkInvariant} regularly to keep the flag fresh.
  * @dev The stress scenario prices COLLATERAL: each volatile ilk's aggregate locked collateral is valued at the
- *      delayed oracle price read DIRECTLY from the Oracle Security Module (never reconstructed as spot times mat --
- *      the reconstruction Maker's clip.sol documents as incorrect, since a mat change desynchronizes the two until
- *      the next poke), marked down by the stress markdown (50%) and the stress liquidation depth (35%); the loss is
- *      any debt not covered by that stressed recoverable value. An unavailable price values the collateral at zero,
- *      so the invariant fails CLOSED. Exposure reported by the prediction market layer is consumed defensively: it
- *      is clamped to a governance-set cap and a reverting reporter falls back to the cap, so the invariant can never
- *      overflow or permanently revert.
+ *      delayed oracle price read DIRECTLY from the Oracle Security Module (never reconstructed as spot times mat),
+ *      marked down by the stress markdown (50%) and the stress liquidation depth (35%); the loss is any debt not
+ *      covered by that stressed recoverable value. An unavailable price values the collateral at zero, so the
+ *      invariant fails CLOSED. Exposure reported by the prediction market layer is consumed defensively: it is clamped
+ *      to a governance-set cap and a reverting reporter falls back to the cap, so the invariant can never overflow or
+ *      permanently revert.
  */
 contract SolvencyEngine is ISolvencyEngine, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -250,10 +249,10 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
             // Total debt against this collateral [wad]: art [wad] * rate [ray] / RAY.
             uint256 ilkDebt = (globalArt * rate) / _RAY;
 
-            // Collateral market value [wad], priced DIRECTLY from the Oracle Security Module (Maker's
-            // getFeedPrice pattern). Reconstructing the price as spot * mat is forbidden: a mat change without a
-            // poke desynchronizes the two and the reconstructed price is wrong by exactly matNew / matOld. An
-            // unavailable or zero price values the collateral at zero -- the conservative direction (loss rises).
+            // Collateral market value [wad], priced DIRECTLY from the Oracle Security Module. Reconstructing the price
+            // as spot * mat is forbidden: a mat change without a poke desynchronizes the two and the reconstructed
+            // price is wrong by exactly matNew / matOld. An unavailable or zero price values the collateral at
+            // zero -- the conservative direction (loss rises).
             uint256 collateralValue;
 
             (bytes32 val, bool has) = osm.peek(ilkId);
@@ -271,8 +270,8 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
             }
         }
 
-        // Adding any exposure reported by the prediction market layer, defensively: a reverting reporter falls back
-        // to the cap (conservative), and any reported value is clamped to the cap so it can never overflow the sum.
+        // Adding any exposure reported by the prediction market layer, defensively: a reverting reporter falls back to
+        // the cap (conservative), and any reported value is clamped to the cap so it can never overflow the sum.
         if (address(externalExposure) != address(0)) {
             uint256 exposure = exposureCap;
 

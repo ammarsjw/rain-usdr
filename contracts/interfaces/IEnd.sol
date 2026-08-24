@@ -181,8 +181,8 @@ interface IEnd {
     function cage() external;
 
     /**
-     * @notice Phase 2: fixes a collateral type's settlement price from its last delayed oracle price and snapshots
-     *         its total debt.
+     * @notice Phase 2: fixes a collateral type's settlement price from its last delayed oracle price and snapshots its
+     *         total debt.
      * @dev Permissionless once settlement has been triggered. Fixed-price ilks settle at exactly $1.
      * @param ilkId Identifier of the collateral type.
      */
@@ -197,8 +197,8 @@ interface IEnd {
     function skip(bytes32 ilkId, uint256 auctionId) external;
 
     /**
-     * @notice Phase 3b: settles a vault. Confiscates exactly the collateral needed to back its debt at the
-     *         settlement price and cancels the debt. Any shortfall is recorded in the collateral's gap.
+     * @notice Phase 3b: settles a vault. Confiscates exactly the collateral needed to back its debt at the settlement
+     *         price and cancels the debt. Any shortfall is recorded in the collateral's gap.
      * @param vaultId Identifier of the vault to settle.
      */
     function skim(uint256 vaultId) external;

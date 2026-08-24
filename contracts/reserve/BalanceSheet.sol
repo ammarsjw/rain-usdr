@@ -138,8 +138,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             _revert(InsufficientSurplus.selector);
         }
 
-        // Only debt released from the queue may be healed. USDR has no debt auctions, so there is no on-auction
-        // (Ash) term to subtract, only the queued portion.
+        // Only debt released from the queue may be healed. USDR has no debt auctions, so there is no on-auction (Ash)
+        // term to subtract, only the queued portion.
         if (rad > VAULT_ENGINE.sin(address(this)) - totalQueuedSin) {
             _revert(InsufficientDebt.selector);
         }
@@ -166,8 +166,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         uint256 surplus = VAULT_ENGINE.usdr(address(this));
         uint256 badDebt = VAULT_ENGINE.sin(address(this));
 
-        // Bad debt (including debt still sitting in the queue) is always absorbed before any distribution. Queued
-        // sin counts too: it is real bad debt that just cannot be healed yet, so it must never be shipped out.
+        // Bad debt (including debt still sitting in the queue) is always absorbed before any distribution. Queued sin
+        // counts too: it is real bad debt that just cannot be healed yet, so it must never be shipped out.
         if (badDebt != 0) {
             _revert(OutstandingBadDebt.selector);
         }
@@ -175,8 +175,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         uint256 target = humpTarget();
 
         // The strict "fill before burn" rule: the surplus buffer must be above its target first. When the buffer is
-        // below target, no distribution happens and all revenue stays -- this is a routine keeper no-op, not an
-        // error, so it returns 0 instead of reverting.
+        // below target, no distribution happens and all revenue stays, and because this is a routine keeper no-op, not
+        // an error, it returns 0 instead of reverting.
         if (surplus <= target) {
             return 0;
         }
@@ -199,11 +199,10 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
     function humpTarget() public view returns (uint256 target) {
         // Dynamic buffer target: the greater of the static floor and `humpRate` of the total stable reserve. The
         // reserve is tracked in wad, the buffer in rad, so the rate product is scaled up by RAY.
-        //
-        // NOTE (accepted, monitored): `totalReserve` moves with permissionless PSM flows, so a user can nudge the
-        // dynamic component of this target up (sell stables in) or down (redeem out) around a distribution. The
-        // floor is the authoritative lower bound -- size `humpFloor` so the buffer is adequate even if the dynamic
-        // term is gamed to its minimum, and treat unusual pre-distribution PSM volume as a monitoring signal.
+        // NOTE: `totalReserve` moves with permissionless PSM flows, so a user can nudge the dynamic component of this
+        // target up (sell stables in) or down (redeem out) around a distribution. The floor is the authoritative lower
+        // bound. `humpFloor` needs to be set so the buffer is adequate even if the dynamic term is gamed to its
+        // minimum, also, unusual pre-distribution PSM volume needs to be treated as a monitoring signal.
         target = humpFloor;
 
         if (address(reserveAccounting) != address(0)) {
