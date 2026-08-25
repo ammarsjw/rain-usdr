@@ -6,26 +6,26 @@ import { Test } from "forge-std/Test.sol";
 
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
-import { CollateralAdapter } from "../contracts/core/CollateralAdapter.sol";
-import { USDR } from "../contracts/token/USDR.sol";
-import { VaultEngine } from "../contracts/core/VaultEngine.sol";
-import { Governor } from "../contracts/governance/Governor.sol";
-import { IPriceSource } from "../contracts/interfaces/IPriceSource.sol";
-import { CircuitBreaker } from "../contracts/liquidation/CircuitBreaker.sol";
-import { DutchAuction } from "../contracts/liquidation/DutchAuction.sol";
-import { LiquidationTrigger } from "../contracts/liquidation/LiquidationTrigger.sol";
-import { PriceCurve } from "../contracts/liquidation/PriceCurve.sol";
-import { OracleSecurityModule } from "../contracts/oracle/OracleSecurityModule.sol";
-import { PriceConverter } from "../contracts/oracle/PriceConverter.sol";
-import { BalanceSheet } from "../contracts/reserve/BalanceSheet.sol";
-import { PegStabilityModule } from "../contracts/reserve/PegStabilityModule.sol";
-import { ReserveAccounting } from "../contracts/reserve/ReserveAccounting.sol";
-import { SolvencyEngine } from "../contracts/reserve/SolvencyEngine.sol";
-import { End } from "../contracts/governance/End.sol";
-import { _BURNER_ROLE, _COMMITTER_ROLE, _RAD, _RAY, _READER_ROLE, _RECORDER_ROLE, _USDR_ILK, _WAD, _WARD_ROLE } from "../contracts/shared/Constants.sol";
+import { CollateralAdapter } from "../../contracts/core/CollateralAdapter.sol";
+import { USDR } from "../../contracts/token/USDR.sol";
+import { VaultEngine } from "../../contracts/core/VaultEngine.sol";
+import { Governor } from "../../contracts/governance/Governor.sol";
+import { IPriceSource } from "../../contracts/interfaces/IPriceSource.sol";
+import { CircuitBreaker } from "../../contracts/liquidation/CircuitBreaker.sol";
+import { DutchAuction } from "../../contracts/liquidation/DutchAuction.sol";
+import { LiquidationTrigger } from "../../contracts/liquidation/LiquidationTrigger.sol";
+import { PriceCurve } from "../../contracts/liquidation/PriceCurve.sol";
+import { OracleSecurityModule } from "../../contracts/oracle/OracleSecurityModule.sol";
+import { PriceConverter } from "../../contracts/oracle/PriceConverter.sol";
+import { BalanceSheet } from "../../contracts/reserve/BalanceSheet.sol";
+import { PegStabilityModule } from "../../contracts/reserve/PegStabilityModule.sol";
+import { ReserveAccounting } from "../../contracts/reserve/ReserveAccounting.sol";
+import { SolvencyEngine } from "../../contracts/reserve/SolvencyEngine.sol";
+import { End } from "../../contracts/governance/End.sol";
+import { _BURNER_ROLE, _COMMITTER_ROLE, _RAD, _RAY, _READER_ROLE, _RECORDER_ROLE, _USDR_ILK, _WAD, _WARD_ROLE } from "../../contracts/shared/Constants.sol";
 
-import { MockERC20 } from "./mocks/MockERC20.sol";
-import { MockPriceSource } from "./mocks/MockPriceSource.sol";
+import { MockERC20 } from "../mocks/MockERC20.sol";
+import { MockPriceSource } from "../mocks/MockPriceSource.sol";
 
 /**
  * @title BaseTest
