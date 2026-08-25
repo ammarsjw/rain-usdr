@@ -45,7 +45,7 @@ contract OracleTest is BaseTest {
     }
 
     function test_osmWorstCaseDelayIsOneSecondAtBoundary() public {
-        // M-1 (documented, Maker parity): a poke at boundary+1799 permits the next poke one second later. This is
+        // M-1 (documented): a poke at boundary+1799 permits the next poke one second later. This is
         // the exact behaviour SLAs must be sized to; the test pins it so any future change is deliberate.
         _warpToBoundary(1799);
         rainPriceSource.setPrice(1e18);

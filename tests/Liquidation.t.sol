@@ -645,7 +645,7 @@ contract AuctionDepthTest is BaseTest {
         uint256 before = vaultEngine.collateral(RAIN_ILK, address(this));
         dutchAuction.yank(id);
 
-        // Maker clip.sol semantics: remaining collateral moves to the CALLER (the settlement path depends on it).
+        // Remaining collateral moves to the CALLER (the settlement path depends on it).
         assertEq(vaultEngine.collateral(RAIN_ILK, address(this)) - before, 400e18, "collateral to caller");
 
         (, , uint256 lot, uint256 tab) = dutchAuction.getStatus(id);
@@ -806,7 +806,7 @@ contract LiquidationAuditTest is BaseTest {
 
     /* ========================== 2. DART PRECISION ========================== */
 
-    function test_barkDartPrecisionMakerOrdering() public {
+    function test_barkDartPrecisionOrdering() public {
         _setRainPrice(1e18);
         uint256 vaultId = _openVault(user, 1600e18, 400e18);
 
@@ -816,7 +816,7 @@ contract LiquidationAuditTest is BaseTest {
 
         liquidationTrigger.bark(vaultId, keeper);
 
-        // Maker's ordering: dart = room * WAD / rate / chop, computed before flooring by rate.
+        // Precision ordering: dart = room * WAD / rate / chop, computed before flooring by rate.
         uint256 expectedDart = ((150 * _RAD) * _WAD) / _RAY / ((_WAD * 113) / 100);
         (, uint256 art) = vaultEngine.urns(vaultId);
 

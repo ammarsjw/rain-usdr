@@ -375,7 +375,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
         ilk.globalInk = Math.add(ilk.globalInk, dink);
 
         // NOTE: with a variable `rate` (stability fees), `dtab`/`tab` are exact rad values but no longer exact
-        // multiples of RAY. This mirrors Maker's vat semantics: `tab = rate * art` [rad] is compared against `dust`
+        // multiples of RAY. `tab = rate * art` [rad] is compared against `dust`
         // [rad] directly, which stays correct at any rate >= RAY and cannot be gamed by rounding.
         int256 dtab = Math.mul(ilk.rate, dart);
         uint256 tab = Math.umul(ilk.rate, urn.art);

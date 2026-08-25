@@ -23,7 +23,7 @@ import { MockFeeOnTransferERC20 } from "./mocks/MockFeeOnTransferERC20.sol";
  * @title VaultEngineCoreTest
  * @author Rain Team
  * @notice Adversarial coverage of the core ledger: authorization, conservation, overflow behaviour, permissions and
- *         vault lifecycle, diffed against MakerDAO vat.sol semantics.
+ *         vault lifecycle.
  */
 contract VaultEngineCoreTest is BaseTest {
     bytes32 internal constant TEST_ILK = "TEST-A";
@@ -366,7 +366,7 @@ contract VaultEngineCoreTest is BaseTest {
     }
 
     function test_healAndGrabWorkAfterCage() public {
-        // Settlement path: both must remain callable post-cage (Maker vat parity; End depends on it).
+        // Settlement path: both must remain callable post-cage (End depends on it).
         uint256 vaultId = _openTestVault(alice, 100e18, 10e18);
 
         vaultEngine.suck(address(this), address(this), 3 * _RAD);
@@ -637,7 +637,7 @@ contract TokenAdapterTest is BaseTest {
 contract StabilityFeeTest is BaseTest {
     bytes32 internal constant TEST_ILK = "TEST-A";
 
-    /// @dev Per-second factor for roughly 5% APY: 1.05^(1/31536000) scaled to ray (Maker's canonical value).
+    /// @dev Per-second factor for roughly 5% APY: 1.05^(1/31536000) scaled to ray.
     uint256 internal constant DUTY_5PCT = 1000000001547125957863212448;
 
     /// @dev Per-second factor for roughly 100% APY (stress value): 2^(1/31536000) scaled to ray.
