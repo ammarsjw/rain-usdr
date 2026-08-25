@@ -84,13 +84,13 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
         RESERVE_ACCOUNTING = reserveAccounting_;
         VAULT_ENGINE = IVaultEngine(address(collateralAdapter_.VAULT_ENGINE()));
 
-        (IERC20Metadata usdrToken, , , ) = collateralAdapter_.ilks(_USDR_ILK);
+        (IERC20Metadata usdr, , , ) = collateralAdapter_.ilks(_USDR_ILK);
 
-        if (address(usdrToken) == address(0)) {
+        if (address(usdr) == address(0)) {
             _revert(InvalidAddress.selector);
         }
 
-        USDR = IUSDR(address(usdrToken));
+        USDR = IUSDR(address(usdr));
 
         VAULT_ENGINE.hope(address(collateralAdapter_));
     }

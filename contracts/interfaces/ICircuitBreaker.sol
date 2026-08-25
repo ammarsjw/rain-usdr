@@ -55,6 +55,11 @@ interface ICircuitBreaker {
     function check() external;
 
     /**
+     * @notice Returns the trailing-average trend anchor price [wad]. Zero until the first observation.
+     */
+    function trendPrice() external view returns (uint256);
+
+    /**
      * @notice Returns the size of the trailing-average observation ring buffer.
      */
     function OBS_COUNT() external view returns (uint256);
@@ -84,11 +89,6 @@ interface ICircuitBreaker {
      * @notice Returns the minimum spacing between trend observations in seconds.
      */
     function obsInterval() external view returns (uint256);
-
-    /**
-     * @notice Returns the trailing-average trend anchor price [wad]. Zero until the first observation.
-     */
-    function trendPrice() external view returns (uint256);
 
     /**
      * @notice Returns the timestamp of the last above-threshold reading while active. Zero when inactive.

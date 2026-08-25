@@ -82,6 +82,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
 
         VAULT_ENGINE = vaultEngine_;
         RESERVE_ACCOUNTING = reserveAccounting_;
+
         stressMarkdown = _WAD / 2;
         stressDepth = (_WAD * 35) / 100;
         reserveFactor = (_WAD * 9) / 10;

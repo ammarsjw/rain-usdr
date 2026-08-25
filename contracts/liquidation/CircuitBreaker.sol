@@ -54,29 +54,29 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
     /// @inheritdoc ICircuitBreaker
     bool public active;
 
-    /// @dev Ring buffer of trailing price observations [wad].
-    uint256[OBS_COUNT] private _observations;
-
     /// @dev Next write position in the ring buffer.
     uint256 private _obsIndex;
 
     /// @dev Number of populated observations (grows to OBS_COUNT and stays there).
     uint256 private _obsFilled;
 
+    /// @dev Ring buffer of trailing price observations [wad].
+    uint256[OBS_COUNT] private _observations;
+
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
      * @notice Initializes the breaker with its launch settings.
-     * @param pip_ Address of the Oracle Security Module to watch.
      * @param ilkId_ Identifier of the collateral type to watch.
+     * @param pip_ Address of the Oracle Security Module to watch.
      */
-    constructor(IOracleSecurityModule pip_, bytes32 ilkId_) {
-        if (address(pip_) == address(0)) {
-            _revert(InvalidAddress.selector);
-        }
-
+    constructor(bytes32 ilkId_, IOracleSecurityModule pip_) {
         if (ilkId_ == bytes32(0)) {
             _revert(InvalidBytes.selector);
+        }
+
+        if (address(pip_) == address(0)) {
+            _revert(InvalidAddress.selector);
         }
 
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
@@ -85,6 +85,7 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
 
         ILK_ID = ilkId_;
         PIP = pip_;
+
         threshold = _WAD / 4;
         calmPeriod = 1800;
         obsInterval = 300;

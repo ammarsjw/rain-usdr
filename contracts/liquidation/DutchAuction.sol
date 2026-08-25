@@ -87,16 +87,16 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
     /**
      * @notice Initializes the auction house and marks it live.
-     * @param vaultEngine_ Address of the Vault Engine.
      * @param ilkId_ Identifier of the collateral type.
+     * @param vaultEngine_ Address of the Vault Engine.
      */
-    constructor(IVaultEngine vaultEngine_, bytes32 ilkId_) {
-        if (address(vaultEngine_) == address(0)) {
-            _revert(InvalidAddress.selector);
-        }
-
+    constructor(bytes32 ilkId_, IVaultEngine vaultEngine_) {
         if (ilkId_ == bytes32(0)) {
             _revert(InvalidBytes.selector);
+        }
+
+        if (address(vaultEngine_) == address(0)) {
+            _revert(InvalidAddress.selector);
         }
 
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
@@ -105,6 +105,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         ILK_ID = ilkId_;
         VAULT_ENGINE = vaultEngine_;
+
         buf = _RAY;
         live = 1;
     }
@@ -130,8 +131,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         } else if (what == "tip") {
             tip = uint192(data);
         } else if (what == "stopped") {
-            // Circuit Breaker levels: 0 = normal, 1 = no new kicks, 2 = no new kicks or takes, 3 = no kicks, takes or
-            // redos. Yank always stays available for settlement.
+            // Breaker levels: 0 = normal, 1 = no new kicks, 2 = no new kicks or takes, 3 = no kicks, takes or redos.
+            // Yank always stays available for settlement.
             stopped = data;
         } else {
             _revert(UnrecognizedParameter.selector);

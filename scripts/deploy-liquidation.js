@@ -45,10 +45,10 @@ const deployLiquidation = async () => {
         liquidationTriggerConstructorArguments
     );
 
-    const dutchAuctionConstructorArguments = [vaultEngineAddress, rainIlk];
+    const dutchAuctionConstructorArguments = [rainIlk, vaultEngineAddress];
     const dutchAuctionAddress = await deployContract(dutchAuctionName, dutchAuctionConstructorArguments);
 
-    const circuitBreakerConstructorArguments = [osmAddress, rainIlk];
+    const circuitBreakerConstructorArguments = [rainIlk, osmAddress];
     const circuitBreakerAddress = await deployContract(circuitBreakerName, circuitBreakerConstructorArguments);
 
     // Setting up the liquidation stack.

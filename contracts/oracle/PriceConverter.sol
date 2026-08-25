@@ -44,7 +44,7 @@ contract PriceConverter is IPriceConverter, AccessControl {
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
-     * @notice Initializes the converter with the Vault Engine and a par value of 1.0.
+     * @notice Initializes the converter with the Vault Engine.
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
@@ -57,6 +57,7 @@ contract PriceConverter is IPriceConverter, AccessControl {
         _grantRole(_WARD_ROLE, msg.sender);
 
         VAULT_ENGINE = vaultEngine_;
+
         par = _RAY;
         live = 1;
     }

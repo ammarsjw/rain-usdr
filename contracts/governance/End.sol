@@ -99,6 +99,7 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         _grantRole(_WARD_ROLE, msg.sender);
 
         VAULT_ENGINE = vaultEngine_;
+
         live = 1;
     }
 
