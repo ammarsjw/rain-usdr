@@ -33,9 +33,8 @@ import { _revert } from "../shared/Globals.sol";
 contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
-    // TODO mock - uint16 public constant HOP = 1800;
     /// @inheritdoc IOracleSecurityModule
-    uint16 public HOP = 180;
+    uint16 public constant HOP = 1800;
 
     /// @dev Oracle state per collateral type.
     mapping(bytes32 ilkId => Ilk ilk) private _ilks;
@@ -190,12 +189,5 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
      */
     function pass(bytes32 ilkId) public view returns (bool) {
         return block.timestamp >= _ilks[ilkId].delay + HOP;
-    }
-
-    /**
-     * TODO mock - remove
-     */
-    function tempChangeHop(uint16 newHop) external {
-        HOP = newHop;
     }
 }
