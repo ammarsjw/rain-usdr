@@ -125,6 +125,16 @@ const deployReserve = async () => {
     // Authorizing the Balance Sheet to heal and suck on the ledger.
     await (await vaultEngineInstance.grantRole(WARD_ROLE, balanceSheetAddress)).wait();
 
+    // Stability fee wiring: accrued fees (drip) are credited to the Balance Sheet as surplus. Each ilk's duty stays
+    // at its zero-fee default (RAY) until governance files one, e.g. ~2% APY = 1000000000627937192491029810n (ray,
+    // per-second factor 1.02^(1/31536000)).
+    await (
+        await vaultEngineInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("feeRecipient"),
+            balanceSheetAddress
+        )
+    ).wait();
+
     console.log("Reserve setup complete");
 
     // Updating env.

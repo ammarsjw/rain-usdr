@@ -156,7 +156,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
 
         // The ilk must exist in the Vault Engine: an unknown ilk would silently contribute zero debt and zero
         // collateral, polluting the loss computation without ever being noticed.
-        (, , uint256 rate, , , ) = VAULT_ENGINE.ilks(ilkId);
+        (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
         if (rate == 0) {
             _revert(InvalidBytes.selector);
@@ -245,7 +245,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
         for (uint256 i; i < volatileIlksLength; ++i) {
             bytes32 ilkId = volatileIlks[i];
 
-            (uint256 globalArt, uint256 globalInk, uint256 rate, , , ) = VAULT_ENGINE.ilks(ilkId);
+            (uint256 globalArt, uint256 globalInk, uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
             // Total debt against this collateral [wad]: art [wad] * rate [ray] / RAY.
             uint256 ilkDebt = (globalArt * rate) / _RAY;

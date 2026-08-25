@@ -21,18 +21,8 @@ import { BalanceSheet } from "../contracts/reserve/BalanceSheet.sol";
 import { PegStabilityModule } from "../contracts/reserve/PegStabilityModule.sol";
 import { ReserveAccounting } from "../contracts/reserve/ReserveAccounting.sol";
 import { SolvencyEngine } from "../contracts/reserve/SolvencyEngine.sol";
-import { End } from "../contracts/settlement/End.sol";
-import {
-    _BURNER_ROLE,
-    _COMMITTER_ROLE,
-    _RAD,
-    _RAY,
-    _READER_ROLE,
-    _RECORDER_ROLE,
-    _USDR_ILK,
-    _WAD,
-    _WARD_ROLE
-} from "../contracts/shared/Constants.sol";
+import { End } from "../contracts/governance/End.sol";
+import { _BURNER_ROLE, _COMMITTER_ROLE, _RAD, _RAY, _READER_ROLE, _RECORDER_ROLE, _USDR_ILK, _WAD, _WARD_ROLE } from "../contracts/shared/Constants.sol";
 
 import { MockERC20 } from "./mocks/MockERC20.sol";
 import { MockPriceSource } from "./mocks/MockPriceSource.sol";
@@ -105,8 +95,8 @@ abstract contract BaseTest is Test {
         // Deploying the liquidation stack.
         priceCurve = new PriceCurve();
         liquidationTrigger = new LiquidationTrigger(vaultEngine);
-        dutchAuction = new DutchAuction(vaultEngine, RAIN_ILK);
-        circuitBreaker = new CircuitBreaker(osm, RAIN_ILK);
+        dutchAuction = new DutchAuction(RAIN_ILK, vaultEngine);
+        circuitBreaker = new CircuitBreaker(RAIN_ILK, osm);
 
         // Wiring the core. Vault Engine ilks must exist before the PSM registers its ilks: PSM registration opens
         // the module's dedicated vault in the Vault Engine.
@@ -125,6 +115,9 @@ abstract contract BaseTest is Test {
         vaultEngine.grantRole(_WARD_ROLE, address(liquidationTrigger));
         vaultEngine.grantRole(_WARD_ROLE, address(dutchAuction));
         vaultEngine.grantRole(_WARD_ROLE, address(balanceSheet));
+
+        // Stability fee wiring: accrued fees are credited to the Balance Sheet as surplus.
+        vaultEngine.file("feeRecipient", address(balanceSheet));
         usdr.grantRole(_WARD_ROLE, address(collateralAdapter));
         usdr.grantRole(_BURNER_ROLE, address(collateralAdapter));
 

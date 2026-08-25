@@ -161,7 +161,7 @@ contract OracleTest is BaseTest {
         osm.poke(RAIN_ILK);
         priceConverter.poke(RAIN_ILK);
 
-        (, , , uint256 spot, , ) = vaultEngine.ilks(RAIN_ILK);
+        (, , , uint256 spot, , , , ) = vaultEngine.ilks(RAIN_ILK);
         assertEq(spot, _RAY / 2, "spot = price / mat");
     }
 
@@ -179,21 +179,21 @@ contract OracleTest is BaseTest {
         osm.poke(RAIN_ILK);
         priceConverter.poke(RAIN_ILK);
 
-        (, , , uint256 spotBefore, , ) = vaultEngine.ilks(RAIN_ILK);
+        (, , , uint256 spotBefore, , , , ) = vaultEngine.ilks(RAIN_ILK);
         assertGt(spotBefore, 0, "live spot");
 
         // Void the OSM feed: the converter must zero the spot (freezing mints) rather than keep the stale value.
         osm.void(RAIN_ILK);
         priceConverter.poke(RAIN_ILK);
 
-        (, , , uint256 spotAfter, , ) = vaultEngine.ilks(RAIN_ILK);
+        (, , , uint256 spotAfter, , , , ) = vaultEngine.ilks(RAIN_ILK);
         assertEq(spotAfter, 0, "invalid feed freezes minting");
     }
 
     function test_fixedIlkPokesDollarWithoutOracle() public {
         priceConverter.poke(USDT_ILK);
 
-        (, , , uint256 spot, , ) = vaultEngine.ilks(USDT_ILK);
+        (, , , uint256 spot, , , , ) = vaultEngine.ilks(USDT_ILK);
         assertEq(spot, _RAY, "fixed $1 at 100% mat");
     }
 
@@ -225,7 +225,7 @@ contract OracleTest is BaseTest {
         osm.poke(RAIN_ILK);
         priceConverter.poke(RAIN_ILK);
 
-        (, , , uint256 spot, , ) = vaultEngine.ilks(RAIN_ILK);
+        (, , , uint256 spot, , , , ) = vaultEngine.ilks(RAIN_ILK);
         assertEq(spot, _RAY / factor, "spot inversely proportional to mat");
     }
 }

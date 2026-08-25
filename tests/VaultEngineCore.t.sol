@@ -135,7 +135,7 @@ contract VaultEngineCoreTest is BaseTest {
         vaultEngine.frob(vaultId, alice, alice, -int256(1000e18), -int256(500e18));
 
         (uint256 ink, uint256 art) = vaultEngine.urns(vaultId);
-        (uint256 globalArt, uint256 globalInk, , , , ) = vaultEngine.ilks(TEST_ILK);
+        (uint256 globalArt, uint256 globalInk, , , , , , ) = vaultEngine.ilks(TEST_ILK);
 
         assertEq(ink, 0, "ink zeroed");
         assertEq(art, 0, "art zeroed");
@@ -389,7 +389,7 @@ contract VaultEngineCoreTest is BaseTest {
         uint256 vaultId = _openTestVault(alice, ink, art);
 
         (uint256 storedInk, uint256 storedArt) = vaultEngine.urns(vaultId);
-        (uint256 globalArt, uint256 globalInk, , , , ) = vaultEngine.ilks(TEST_ILK);
+        (uint256 globalArt, uint256 globalInk, , , , , , ) = vaultEngine.ilks(TEST_ILK);
 
         assertEq(storedInk, ink, "ink stored");
         assertEq(storedArt, art, "art stored");

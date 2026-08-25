@@ -56,7 +56,7 @@ contract GovernanceTest is BaseTest {
         vm.warp(vm.getBlockTimestamp() + 48 hours);
         governor.execute(id);
 
-        (, , , , uint256 line, ) = vaultEngine.ilks(RAIN_ILK);
+        (, , , , uint256 line, , , ) = vaultEngine.ilks(RAIN_ILK);
         assertEq(line, 200_000 * _RAD, "change applied after delay");
 
         // Replay is impossible.

@@ -14,10 +14,12 @@ interface IVaultEngine {
      * @notice A collateral type and its risk settings.
      * @param globalArt Total normalized debt issued against this collateral [wad].
      * @param globalInk Total collateral locked in vaults of this collateral type [wad].
-     * @param rate Debt multiplier. Fixed at RAY (1.0) since USDR charges no stability fee [ray].
+     * @param rate Debt multiplier. Starts at RAY (1.0) and grows as stability fees accrue via {drip} [ray].
      * @param spot Maximum USDR mintable per unit of collateral (price factor) [ray].
      * @param line Debt ceiling for this collateral type [rad].
      * @param dust Minimum vault debt size [rad].
+     * @param duty Stability fee as a per-second compounding factor. RAY means zero fee [ray].
+     * @param rho Timestamp of the last stability fee accrual ({drip}).
      */
     struct Ilk {
         uint256 globalArt;
@@ -26,6 +28,8 @@ interface IVaultEngine {
         uint256 spot;
         uint256 line;
         uint256 dust;
+        uint256 duty;
+        uint256 rho;
     }
 
     /**
@@ -220,11 +224,30 @@ interface IVaultEngine {
     function nope(address operator) external;
 
     /**
-     * @notice Registers a new collateral type with its debt multiplier set to 1.0.
+     * @notice Registers a new collateral type with its debt multiplier set to 1.0, a zero stability fee
+     *         (`duty = RAY`) and its fee accrual clock started at the current timestamp.
      * @dev Only governance can call this. Reverts if the collateral type already exists.
      * @param ilkId Identifier of the collateral type.
      */
     function init(bytes32 ilkId) external;
+
+    /**
+     * @notice Accrues the stability fee for a collateral type: compounds `duty` over the time elapsed since the last
+     *         accrual (`rho`), folds the resulting delta into the ilk's `rate`, and credits the accrued fees to the
+     *         {feeRecipient} as internal USDR surplus (with total {debt} increased equally).
+     * @dev Permissionless and lazy: anyone may call at any time; `frob` (when changing debt), `bark` and duty changes
+     *      drip automatically. Idempotent within a block. After `cage`, drip is a no-op that returns the frozen rate
+     *      so settlement math is unaffected. Reverts if the ilk is uninitialized, or if fees would accrue while no
+     *      fee recipient is set.
+     * @param ilkId Identifier of the collateral type.
+     * @return newRate The debt multiplier after accrual [ray].
+     */
+    function drip(bytes32 ilkId) external returns (uint256 newRate);
+
+    /**
+     * @notice Returns the recipient of accrued stability fees (the Balance Sheet). Zero when unset.
+     */
+    function feeRecipient() external view returns (address);
 
     /**
      * @notice Updates a global parameter. Currently only the global debt ceiling {globalLine}.
@@ -234,8 +257,10 @@ interface IVaultEngine {
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Updates a per-collateral parameter {spot}, {line} or {dust}.
-     * @dev Only governance, or the Price Converter for {spot}, can call this.
+     * @notice Updates a per-collateral parameter {spot}, {line}, {dust} or {duty}.
+     * @dev Only governance, or the Price Converter for {spot}, can call this. Filing {duty} first accrues the
+     *      pending fee at the old duty ({drip}), so a new duty is never applied retroactively. {duty} must be at
+     *      least RAY.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
      * @param data New value.
@@ -358,13 +383,24 @@ interface IVaultEngine {
      * @return spot Maximum USDR mintable per unit of collateral [ray].
      * @return line Debt ceiling for this collateral type [rad].
      * @return dust Minimum vault debt size [rad].
+     * @return duty Stability fee per-second compounding factor [ray].
+     * @return rho Timestamp of the last stability fee accrual.
      */
     function ilks(
         bytes32 ilkId
     )
         external
         view
-        returns (uint256 globalArt, uint256 globalInk, uint256 rate, uint256 spot, uint256 line, uint256 dust);
+        returns (
+            uint256 globalArt,
+            uint256 globalInk,
+            uint256 rate,
+            uint256 spot,
+            uint256 line,
+            uint256 dust,
+            uint256 duty,
+            uint256 rho
+        );
 
     /**
      * @notice Returns a vault's locked collateral and normalized debt.

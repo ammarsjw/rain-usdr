@@ -106,6 +106,20 @@ const verifyRoles = async () => {
     await check("OracleSecurityModule", READER_ROLE, "READER_ROLE", addresses.CircuitBreaker, true, "CircuitBreaker");
     await check("OracleSecurityModule", READER_ROLE, "READER_ROLE", addresses.End, true, "End");
 
+    // Stability fee wiring: the Vault Engine's feeRecipient must be the Balance Sheet so accrued fees land as
+    // surplus.
+    {
+        const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", addresses.VaultEngine);
+        const feeRecipient = await vaultEngineInstance.feeRecipient();
+
+        if (feeRecipient.toLowerCase() !== addresses.BalanceSheet.toLowerCase()) {
+            console.error(`FAIL: VaultEngine.feeRecipient is ${feeRecipient}, expected BalanceSheet`);
+            failures += 1;
+        } else {
+            console.log("OK: VaultEngine.feeRecipient -> BalanceSheet");
+        }
+    }
+
     if (failures > 0) {
         console.error(`\nROLE VERIFICATION FAILED: ${failures} mismatch(es). DO NOT PROCEED.`);
         process.exit(1);

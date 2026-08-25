@@ -40,10 +40,10 @@ contract CircuitBreakerTest is BaseTest {
 
     function test_constructorGuardsAndLaunchParameters() public {
         vm.expectRevert(InvalidAddress.selector);
-        new CircuitBreaker(IOracleSecurityModule(address(0)), RAIN_ILK);
+        new CircuitBreaker(RAIN_ILK, IOracleSecurityModule(address(0)));
 
         vm.expectRevert(InvalidBytes.selector);
-        new CircuitBreaker(osm, bytes32(0));
+        new CircuitBreaker(bytes32(0), osm);
 
         assertEq(circuitBreaker.threshold(), _WAD / 4, "25% threshold");
         assertEq(circuitBreaker.calmPeriod(), 1800, "30 min calm");

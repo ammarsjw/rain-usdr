@@ -9,15 +9,8 @@ import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { Math } from "../libraries/Math.sol";
 import { _RAY, _WARD_ROLE } from "../shared/Constants.sol";
-import {
-    IlkAlreadyInitialized,
-    InvalidAddress,
-    NotLive,
-    SolvencyGateActive,
-    SystemPaused,
-    UnrecognizedParameter
-} from "../shared/Errors.sol";
-import { Cage } from "../shared/Events.sol";
+import { FeeRecipientNotSet, IlkAlreadyInitialized, InvalidAddress, InvalidDuty, NotLive, SolvencyGateActive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
+import { Cage, Drip } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -26,8 +19,11 @@ import { _revert } from "../shared/Globals.sol";
  * @notice The immutable core ledger. Master record of every piece of collateral and every unit of debt in the system.
  *         Enforces the fundamental rule that no vault can mint more USDR than its collateral allows. Its rules can
  *         never be changed after deployment.
- * @dev USDR charges no stability fee, so each ilk's `rate` is initialized to `RAY` (1.0) and never changes. Internal
- *      USDR balances are tracked in `rad` (45 decimals).
+ * @dev Each ilk's `rate` is initialized to `RAY` (1.0) and grows as stability fees accrue: `duty` is a per-second
+ *      compounding factor [ray] and the permissionless {drip} lazily folds `rpow(duty, now - rho) * rate` into the
+ *      ilk, crediting the accrued fees to the {feeRecipient} (the Balance Sheet) as surplus. `frob` (when changing
+ *      debt) and duty changes drip automatically; after `cage` the rate is frozen. Internal USDR balances are
+ *      tracked in `rad` (45 decimals).
  */
 contract VaultEngine is IVaultEngine, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -49,6 +45,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
 
     /// @inheritdoc IVaultEngine
     address public governor;
+
+    /// @inheritdoc IVaultEngine
+    address public feeRecipient;
 
     /// @inheritdoc IVaultEngine
     mapping(address owner => mapping(address operator => uint256 permission)) public can;
@@ -119,6 +118,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
         }
 
         ilks[ilkId].rate = _RAY;
+        ilks[ilkId].duty = _RAY;
+        ilks[ilkId].rho = block.timestamp;
 
         emit Init({ ilkId: ilkId });
     }
@@ -152,6 +153,12 @@ contract VaultEngine is IVaultEngine, AccessControl {
             solvencyEngine = data;
         } else if (what == "governor") {
             governor = data;
+        } else if (what == "feeRecipient") {
+            if (data == address(0)) {
+                _revert(InvalidAddress.selector);
+            }
+
+            feeRecipient = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -173,6 +180,15 @@ contract VaultEngine is IVaultEngine, AccessControl {
             ilks[ilkId].line = data;
         } else if (what == "dust") {
             ilks[ilkId].dust = data;
+        } else if (what == "duty") {
+            if (data < _RAY) {
+                _revert(InvalidDuty.selector);
+            }
+
+            // Accrue at the OLD duty first: a duty change must never apply retroactively over the elapsed window.
+            drip(ilkId);
+
+            ilks[ilkId].duty = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -207,6 +223,52 @@ contract VaultEngine is IVaultEngine, AccessControl {
         ilkOf[vaultId] = ilkId;
 
         emit Open({ ilkId: ilkId, owner: usr, vaultId: vaultId });
+    }
+
+    /**
+     * @inheritdoc IVaultEngine
+     */
+    function drip(bytes32 ilkId) public returns (uint256 newRate) {
+        Ilk storage ilk = ilks[ilkId];
+
+        uint256 prev = ilk.rate;
+
+        // The collateral type must have been initialized.
+        if (prev == 0) {
+            _revert(IlkNotInitialized.selector);
+        }
+
+        // After shutdown the rate is frozen: emergency settlement must see the rates as of cage time. A no-op return
+        // (rather than a revert) keeps post-cage callers working.
+        if (live != 1) {
+            return prev;
+        }
+
+        // Idempotent within a block.
+        if (block.timestamp == ilk.rho) {
+            return prev;
+        }
+
+        newRate = Math.rmul(Math.rpow(ilk.duty, block.timestamp - ilk.rho, _RAY), prev);
+
+        uint256 delta = newRate - prev;
+        uint256 rad = Math.umul(ilk.globalArt, delta);
+
+        // Fees are minted to the fee recipient (the Balance Sheet) as surplus at accrual time. Accruing a nonzero
+        // fee without a configured recipient would burn it into an unreachable balance, so it is a hard error.
+        if (rad != 0) {
+            if (feeRecipient == address(0)) {
+                _revert(FeeRecipientNotSet.selector);
+            }
+
+            usdr[feeRecipient] += rad;
+            debt += rad;
+        }
+
+        ilk.rate = newRate;
+        ilk.rho = block.timestamp;
+
+        emit Drip({ ilkId: ilkId, rate: newRate, rad: rad });
     }
 
     /**
@@ -273,6 +335,12 @@ contract VaultEngine is IVaultEngine, AccessControl {
 
         bytes32 ilkId = ilkOf[vaultId];
 
+        // Accrue the stability fee before any debt change so tab and dtab are computed at the current rate: the
+        // stale-rate window is impossible by construction. drip itself reverts on an uninitialized ilk.
+        if (dart != 0) {
+            drip(ilkId);
+        }
+
         Urn memory urn = urns[vaultId];
         Ilk memory ilk = ilks[ilkId];
 
@@ -306,9 +374,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
         ilk.globalArt = Math.add(ilk.globalArt, dart);
         ilk.globalInk = Math.add(ilk.globalInk, dink);
 
-        // NOTE: `rate` is fixed at RAY forever (USDR charges no stability fee), so `dtab`/`tab` are exact rad values
-        // and the dust/tab comparisons below remain correct only under that assumption. If a stability fee is ever
-        // introduced, this arithmetic must be revisited.
+        // NOTE: with a variable `rate` (stability fees), `dtab`/`tab` are exact rad values but no longer exact
+        // multiples of RAY. This mirrors Maker's vat semantics: `tab = rate * art` [rad] is compared against `dust`
+        // [rad] directly, which stays correct at any rate >= RAY and cannot be gamed by rounding.
         int256 dtab = Math.mul(ilk.rate, dart);
         uint256 tab = Math.umul(ilk.rate, urn.art);
 
