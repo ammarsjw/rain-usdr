@@ -22,7 +22,17 @@ import { PegStabilityModule } from "../../contracts/reserve/PegStabilityModule.s
 import { ReserveAccounting } from "../../contracts/reserve/ReserveAccounting.sol";
 import { SolvencyEngine } from "../../contracts/reserve/SolvencyEngine.sol";
 import { End } from "../../contracts/governance/End.sol";
-import { _BURNER_ROLE, _COMMITTER_ROLE, _RAD, _RAY, _READER_ROLE, _RECORDER_ROLE, _USDR_ILK, _WAD, _WARD_ROLE } from "../../contracts/shared/Constants.sol";
+import {
+    _BURNER_ROLE,
+    _COMMITTER_ROLE,
+    _RAD,
+    _RAY,
+    _READER_ROLE,
+    _RECORDER_ROLE,
+    _USDR_ILK,
+    _WAD,
+    _WARD_ROLE
+} from "../../contracts/shared/Constants.sol";
 
 import { MockERC20 } from "../mocks/MockERC20.sol";
 import { MockPriceSource } from "../mocks/MockPriceSource.sol";
@@ -30,8 +40,8 @@ import { MockPriceSource } from "../mocks/MockPriceSource.sol";
 /**
  * @title BaseTest
  * @author Rain Team
- * @notice Shared test harness that deploys and wires the full USDR system. Concrete test
- *         contracts inherit from this and add their own scenarios.
+ * @notice Shared test harness that deploys and wires the full USDR system. Concrete test contracts inherit from this
+ *         and add their own scenarios.
  */
 abstract contract BaseTest is Test {
     /* ========================== STATE VARIABLES ========================== */
@@ -98,8 +108,8 @@ abstract contract BaseTest is Test {
         dutchAuction = new DutchAuction(RAIN_ILK, vaultEngine);
         circuitBreaker = new CircuitBreaker(RAIN_ILK, osm);
 
-        // Wiring the core. Vault Engine ilks must exist before the PSM registers its ilks: PSM registration opens
-        // the module's dedicated vault in the Vault Engine.
+        // Wiring the core. Vault Engine ilks must exist before the PSM registers its ilks: PSM registration opens the
+        // module's dedicated vault in the Vault Engine.
         vaultEngine.init(RAIN_ILK);
         vaultEngine.init(USDT_ILK);
         vaultEngine.init(USDC_ILK);

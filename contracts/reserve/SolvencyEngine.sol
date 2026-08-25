@@ -20,13 +20,12 @@ import { _revert } from "../shared/Globals.sol";
  *         exceeds it. When the worst-case loss exceeds the configured fraction of the reserve (90% at launch), the
  *         engine flags a breach and the rest of the system gates every non-reserve-increasing operation until the
  *         invariant is restored. A keeper bot is expected to call {checkInvariant} regularly to keep the flag fresh.
- * @dev The stress scenario prices COLLATERAL: each volatile ilk's aggregate locked collateral is valued at the
- *      delayed oracle price read DIRECTLY from the Oracle Security Module (never reconstructed as spot times mat),
- *      marked down by the stress markdown (50%) and the stress liquidation depth (35%); the loss is any debt not
- *      covered by that stressed recoverable value. An unavailable price values the collateral at zero, so the
- *      invariant fails CLOSED. Exposure reported by the prediction market layer is consumed defensively: it is clamped
- *      to a governance-set cap and a reverting reporter falls back to the cap, so the invariant can never overflow or
- *      permanently revert.
+ * @dev The stress scenario prices COLLATERAL: each volatile ilk's aggregate locked collateral is valued at the delayed
+ *      oracle price read DIRECTLY from the Oracle Security Module (never reconstructed as spot times mat), marked down
+ *      by the stress markdown (50%) and the stress liquidation depth (35%); the loss is any debt not covered by that
+ *      stressed recoverable value. An unavailable price values the collateral at zero, so the invariant fails CLOSED.
+ *      Exposure reported by the prediction market layer is consumed defensively: it is clamped to a governance-set cap
+ *      and a reverting reporter falls back to the cap, so the invariant can never overflow or permanently revert.
  */
 contract SolvencyEngine is ISolvencyEngine, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -130,8 +129,8 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      */
     function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
         if (what == "externalExposure") {
-            // Wiring an exposure reporter without a nonzero cap would clamp every report to zero (fail-open); the
-            // cap must be configured first.
+            // Wiring an exposure reporter without a nonzero cap would clamp every report to zero (fail-open); the cap
+            // must be configured first.
             if (data != address(0) && exposureCap == 0) {
                 _revert(ExposureCapNotSet.selector);
             }
@@ -252,8 +251,8 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
 
             // Collateral market value [wad], priced DIRECTLY from the Oracle Security Module. Reconstructing the price
             // as spot * mat is forbidden: a mat change without a poke desynchronizes the two and the reconstructed
-            // price is wrong by exactly matNew / matOld. An unavailable or zero price values the collateral at
-            // zero -- the conservative direction (loss rises).
+            // price is wrong by exactly matNew / matOld. An unavailable or zero price values the collateral at zero,
+            // which is the conservative direction (loss rises).
             uint256 collateralValue;
 
             (bytes32 val, bool has) = osm.peek(ilkId);

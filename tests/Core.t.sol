@@ -2,12 +2,19 @@
 
 pragma solidity 0.8.30;
 
-import { VaultEngine } from "../contracts/core/VaultEngine.sol";
 import { ICollateralAdapter } from "../contracts/interfaces/ICollateralAdapter.sol";
 import { ILiquidationTrigger } from "../contracts/interfaces/ILiquidationTrigger.sol";
 import { IVaultEngine } from "../contracts/interfaces/IVaultEngine.sol";
 import { Math } from "../contracts/libraries/Math.sol";
-import { FeeRecipientNotSet, IlkAlreadyInitialized, InvalidAddress, InvalidAmount, InvalidDuty, NotLive, UnrecognizedParameter } from "../contracts/shared/Errors.sol";
+import {
+    FeeRecipientNotSet,
+    IlkAlreadyInitialized,
+    InvalidAddress,
+    InvalidAmount,
+    InvalidDuty,
+    NotLive,
+    UnrecognizedParameter
+} from "../contracts/shared/Errors.sol";
 import { _RAD, _RAY, _USDR_ILK } from "../contracts/shared/Constants.sol";
 
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -422,8 +429,8 @@ contract VaultEngineCoreTest is BaseTest {
 /**
  * @title TokenAdapterTest
  * @author Rain Team
- * @notice Adversarial coverage of the Collateral Adapter and USDR token: decimal conversion, balance-delta
- *         enforcement (H-2), mint/burn authority and lifecycle guards.
+ * @notice Adversarial coverage of the Collateral Adapter and USDR token: decimal conversion, balance-delta enforcement
+ *         (H-2), mint/burn authority and lifecycle guards.
  */
 contract TokenAdapterTest is BaseTest {
     address internal alice = address(0xA11CE);
@@ -431,8 +438,8 @@ contract TokenAdapterTest is BaseTest {
     /* ========================== 1. FEE-ON-TRANSFER ========================== */
 
     function test_joinRevertsOnFeeOnTransferToken() public {
-        // A 1% fee token registered as collateral must be unusable: join measures the received delta and refuses
-        // any shortfall, so the shared adapter can never be silently under-collateralized.
+        // A 1% fee token registered as collateral must be unusable: join measures the received delta and refuses any
+        // shortfall, so the shared adapter can never be silently under-collateralized.
         MockFeeOnTransferERC20 feeToken = new MockFeeOnTransferERC20("Fee Token", "FEE", 18, 100);
         bytes32 feeIlk = "FEE-A";
 
@@ -576,7 +583,7 @@ contract TokenAdapterTest is BaseTest {
         vm.expectRevert(InvalidAmount.selector);
         usdr.burn(alice, 0);
 
-        // The adapter (BURNER_ROLE) burns without allowance -- repayment UX.
+        // The adapter (BURNER_ROLE) burns without allowance, repayment UX.
         vm.prank(address(collateralAdapter));
         usdr.burn(alice, 1e18);
 
@@ -598,7 +605,7 @@ contract TokenAdapterTest is BaseTest {
         assertEq(usdr.balanceOf(alice), 60e18, "ERC-20 burned");
         assertEq(vaultEngine.usdr(alice), 40e18 * _RAY, "internal credited");
 
-        // Internal -> ERC-20 (requires hope, granted in Base? no -- the adapter moves the caller's balance).
+        // Internal -> ERC-20 (requires hope, granted in Base? no, the adapter moves the caller's balance).
         vaultEngine.hope(address(collateralAdapter));
         collateralAdapter.exit(_USDR_ILK, alice, 40e18);
         vm.stopPrank();
@@ -630,9 +637,8 @@ contract TokenAdapterTest is BaseTest {
 /**
  * @title StabilityFeeTest
  * @author Rain Team
- * @notice Coverage of stability fee accrual: drip idempotency and compounding, fee crediting, frob and bark
- *         auto-drip, non-retroactive duty changes, dust and liquidation math at rate > RAY, and the post-cage
- *         freeze.
+ * @notice Coverage of stability fee accrual: drip idempotency and compounding, fee crediting, frob and bark auto-drip,
+ *         non-retroactive duty changes, dust and liquidation math at rate > RAY, and the post-cage freeze.
  */
 contract StabilityFeeTest is BaseTest {
     bytes32 internal constant TEST_ILK = "TEST-A";
@@ -763,7 +769,7 @@ contract StabilityFeeTest is BaseTest {
 
         // Reuse the shared engine by unsetting is impossible (file rejects zero), so deploy expectations directly:
         // this test uses a dedicated assertion on the shared engine by checking the error path via a mock is
-        // unnecessary -- instead verify the error surfaces from a brand-new engine.
+        // unnecessary, instead verify the error surfaces from a brand-new engine.
         vm.stopPrank();
 
         // Deploy a minimal standalone engine.
@@ -897,8 +903,8 @@ contract StabilityFeeTest is BaseTest {
     }
 
     function test_barkUsesFreshRateAndThresholdMathAtRateAboveRay() public {
-        // RAIN priced at 1: spot = 0.25 (mat 400%). A vault at 800 ink / 190 art is safe with headroom, then fees
-        // push it below the bark threshold with NO price move.
+        // RAIN priced at 1: spot = 0.25 (mat 400%). A vault at 800 ink / 190 art is safe with headroom, then fees push
+        // it below the bark threshold with NO price move.
         _setRainPrice(1e18);
 
         uint256 vaultId = _openRainVault(address(this), 800e18, 190e18);
@@ -909,8 +915,8 @@ contract StabilityFeeTest is BaseTest {
         vm.expectRevert(ILiquidationTrigger.NotUnsafe.selector);
         liquidationTrigger.bark(vaultId, address(this));
 
-        // A year of ~100% APY roughly doubles the debt: the vault becomes barkable purely through accrual. bark
-        // must drip first (fresh rate) so the unsafe check and the tab see the accrued debt.
+        // A year of ~100% APY roughly doubles the debt: the vault becomes barkable purely through accrual. bark must
+        // drip first (fresh rate) so the unsafe check and the tab see the accrued debt.
         skip(365 days);
 
         uint256 id = liquidationTrigger.bark(vaultId, address(this));
@@ -956,8 +962,8 @@ contract StabilityFeeTest is BaseTest {
 /**
  * @title CoreAuditTest
  * @author Rain Team
- * @notice Audit regressions exercising the core ledger: draw-at-mat boundaries, multi-vault independence and
- *         vault existence/permission guards.
+ * @notice Audit regressions exercising the core ledger: draw-at-mat boundaries, multi-vault independence and vault
+ *         existence/permission guards.
  */
 contract CoreAuditTest is BaseTest {
     /* ========================== HELPERS ========================== */
@@ -965,8 +971,8 @@ contract CoreAuditTest is BaseTest {
     /// @dev Pushes `price` [wad] through the OSM (two pokes) and into the Vault Engine's spot.
     function _setRainPrice(uint256 price) internal {
         rainPriceSource.setPrice(price);
-        // The OSM snaps its delay anchor down to the HOP boundary, so warp to fresh boundaries. Read the clock via
-        // the cheatcode: the compiler may otherwise rematerialize a stale block.timestamp across warps under via-ir.
+        // The OSM snaps its delay anchor down to the HOP boundary, so warp to fresh boundaries. Read the clock via the
+        // cheatcode: the compiler may otherwise rematerialize a stale block.timestamp across warps under via-ir.
         vm.warp(((vm.getBlockTimestamp() / 1800) + 2) * 1800);
         osm.poke(RAIN_ILK);
         vm.warp(vm.getBlockTimestamp() + 3600);

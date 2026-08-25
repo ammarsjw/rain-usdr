@@ -6,9 +6,8 @@ import { IBalanceSheet } from "../contracts/interfaces/IBalanceSheet.sol";
 import { IPegStabilityModule } from "../contracts/interfaces/IPegStabilityModule.sol";
 import { IReserveAccounting } from "../contracts/interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../contracts/interfaces/ISolvencyEngine.sol";
-import { IVaultEngine } from "../contracts/interfaces/IVaultEngine.sol";
 import { InvalidAmount, SolvencyGateActive, UnrecognizedParameter } from "../contracts/shared/Errors.sol";
-import { _RAD, _RAY, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
+import { _RAD, _RAY, _WAD } from "../contracts/shared/Constants.sol";
 
 import { BaseTest } from "./shared/BaseTest.sol";
 import { MockExternalExposure } from "./mocks/MockExternalExposure.sol";
@@ -18,8 +17,8 @@ import { MockExternalExposure } from "./mocks/MockExternalExposure.sol";
 /**
  * @title BalanceSheetTest
  * @author Rain Team
- * @notice Coverage of the treasury: sin queue lifecycle, heal bounds, keeper reward suck, the fill-before-burn
- *         surplus rule and the dynamic hump target.
+ * @notice Coverage of the treasury: sin queue lifecycle, heal bounds, keeper reward suck, the fill-before-burn surplus
+ *         rule and the dynamic hump target.
  */
 contract BalanceSheetTest is BaseTest {
     /* ========================== 1. FILE ========================== */
@@ -165,8 +164,8 @@ contract BalanceSheetTest is BaseTest {
 /**
  * @title ReserveTest
  * @author Rain Team
- * @notice Adversarial coverage of the reserve stack: the H-1 direct-OSM pricing (mat-change immunity), the M-3
- *         lazy redemption gate, parameter bounds (L-4), volatile ilk validation (L-5) and escrow guards (L-1).
+ * @notice Adversarial coverage of the reserve stack: the H-1 direct-OSM pricing (mat-change immunity), the M-3 lazy
+ *         redemption gate, parameter bounds (L-4), volatile ilk validation (L-5) and escrow guards (L-1).
  */
 contract ReserveTest is BaseTest {
     /* ========================== HELPERS ========================== */
@@ -203,15 +202,15 @@ contract ReserveTest is BaseTest {
     /* ========================== 1. DIRECT OSM PRICING ========================== */
 
     function test_worstCaseLossImmuneToMatChange() public {
-        // THE rev-4 headline scenario. Loss must be identical before and after a mat change with no poke: the
-        // engine prices collateral straight from the OSM, so mat desynchronization cannot bend it.
+        // THE rev-4 headline scenario. Loss must be identical before and after a mat change with no poke: the engine
+        // prices collateral straight from the OSM, so mat desynchronization cannot bend it.
         _setRainPrice(1e18);
         _openVault(user, 800e18, 200e18);
 
         uint256 lossBefore = solvencyEngine.worstCaseLoss();
         assertEq(lossBefore, 60e18, "baseline: 200 - 800*0.5*0.35");
 
-        // Governance responds to rising risk by RAISING mat (the standard action) -- no poke yet.
+        // Governance responds to rising risk by RAISING mat (the standard action), no poke yet.
         priceConverter.file(RAIN_ILK, "mat", 8 * _RAY);
         assertEq(solvencyEngine.worstCaseLoss(), lossBefore, "raising mat cannot disable the invariant");
 
@@ -249,8 +248,8 @@ contract ReserveTest is BaseTest {
         psm.buyStable(USDT_ILK, keeper, 5e6);
         vm.stopPrank();
 
-        // NOTE: the revert rolls the recompute back with the rest of the transaction -- the persistent flag is
-        // still refreshed by keepers and by any SUCCESSFUL redemption; what the lazy gate guarantees is that no
+        // NOTE: the revert rolls the recompute back with the rest of the transaction, the persistent flag is still
+        // refreshed by keepers and by any SUCCESSFUL redemption; what the lazy gate guarantees is that no
         // redemption can ever pass on stale data, which the revert above just proved.
         assertFalse(solvencyEngine.breached(), "flag untouched by the reverted attempt");
     }
@@ -397,8 +396,8 @@ contract ReserveTest is BaseTest {
 /**
  * @title ReserveAuditTest
  * @author Rain Team
- * @notice Audit regressions exercising the reserve stack: PSM round trips, the solvency invariant and gate,
- *         external exposure clamping, sin queue timing and surplus distribution around the hump.
+ * @notice Audit regressions exercising the reserve stack: PSM round trips, the solvency invariant and gate, external
+ *         exposure clamping, sin queue timing and surplus distribution around the hump.
  */
 contract ReserveAuditTest is BaseTest {
     /* ========================== HELPERS ========================== */
@@ -406,8 +405,8 @@ contract ReserveAuditTest is BaseTest {
     /// @dev Pushes `price` [wad] through the OSM (two pokes) and into the Vault Engine's spot.
     function _setRainPrice(uint256 price) internal {
         rainPriceSource.setPrice(price);
-        // The OSM snaps its delay anchor down to the HOP boundary, so warp to fresh boundaries. Read the clock via
-        // the cheatcode: the compiler may otherwise rematerialize a stale block.timestamp across warps under via-ir.
+        // The OSM snaps its delay anchor down to the HOP boundary, so warp to fresh boundaries. Read the clock via the
+        // cheatcode: the compiler may otherwise rematerialize a stale block.timestamp across warps under via-ir.
         vm.warp(((vm.getBlockTimestamp() / 1800) + 2) * 1800);
         osm.poke(RAIN_ILK);
         vm.warp(vm.getBlockTimestamp() + 3600);
@@ -483,16 +482,16 @@ contract ReserveAuditTest is BaseTest {
         vm.prank(user);
         vaultEngine.frob(vaultId, user, user, 0, -1e18);
 
-        // Redemption recomputes the invariant lazily (no stale-flag window): while the reserve is still thin the
-        // gate holds even without any keeper call.
+        // Redemption recomputes the invariant lazily (no stale-flag window): while the reserve is still thin the gate
+        // holds even without any keeper call.
         vm.startPrank(keeper);
         usdr.approve(address(psm), 5e18);
         vm.expectRevert(SolvencyGateActive.selector);
         psm.buyStable(USDT_ILK, keeper, 5e6);
         vm.stopPrank();
 
-        // Reserve-increasing PSM flow stays open. Reserve becomes 100 -> threshold 90 > loss (59 after the wipe),
-        // and the next redemption's lazy recompute clears the breach by itself -- again no keeper needed.
+        // Reserve-increasing PSM flow stays open. Reserve becomes 100 -> threshold 90 > loss (59 after the wipe), and
+        // the next redemption's lazy recompute clears the breach by itself, again no keeper needed.
         _sellUsdt(keeper, 80e6);
 
         vm.startPrank(keeper);

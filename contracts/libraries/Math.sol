@@ -134,9 +134,8 @@ library Math {
 
     /**
      * @dev Fixed-point exponentiation by squaring: computes `x ** n` where `x` is a fixed-point number scaled by
-     *      `base`. Used to compound a per-second `duty` factor over the
-     *      elapsed time in {VaultEngine.drip}. Reverts (via the invalid opcode inside the assembly block) on
-     *      overflow.
+     *      `base`. Used to compound a per-second `duty` factor over the elapsed time in {VaultEngine.drip}. Reverts
+     *      (via the invalid opcode inside the assembly block) on overflow.
      * @param x Fixed-point base scaled by `base` (e.g. a per-second rate factor in ray).
      * @param n Exponent (e.g. elapsed seconds).
      * @param base Fixed-point scalar (e.g. RAY).

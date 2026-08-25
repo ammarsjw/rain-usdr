@@ -151,7 +151,7 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
         }
 
         // Emergency pause check (full stop).
-        // Note: This is never gated by the solvency engine: selling stables INCREASES the reserve, so it remains
+        // Note: this is never gated by the solvency engine: selling stables INCREASES the reserve, so it remains
         // available during a solvency breach.
         if (governor != address(0) && IGovernor(governor).paused()) {
             _revert(SystemPaused.selector);

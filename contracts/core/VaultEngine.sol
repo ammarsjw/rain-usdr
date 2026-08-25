@@ -9,7 +9,16 @@ import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { Math } from "../libraries/Math.sol";
 import { _RAY, _WARD_ROLE } from "../shared/Constants.sol";
-import { FeeRecipientNotSet, IlkAlreadyInitialized, InvalidAddress, InvalidDuty, NotLive, SolvencyGateActive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
+import {
+    FeeRecipientNotSet,
+    IlkAlreadyInitialized,
+    InvalidAddress,
+    InvalidDuty,
+    NotLive,
+    SolvencyGateActive,
+    SystemPaused,
+    UnrecognizedParameter
+} from "../shared/Errors.sol";
 import { Cage, Drip } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -22,8 +31,8 @@ import { _revert } from "../shared/Globals.sol";
  * @dev Each ilk's `rate` is initialized to `RAY` (1.0) and grows as stability fees accrue: `duty` is a per-second
  *      compounding factor [ray] and the permissionless {drip} lazily folds `rpow(duty, now - rho) * rate` into the
  *      ilk, crediting the accrued fees to the {feeRecipient} (the Balance Sheet) as surplus. `frob` (when changing
- *      debt) and duty changes drip automatically; after `cage` the rate is frozen. Internal USDR balances are
- *      tracked in `rad` (45 decimals).
+ *      debt) and duty changes drip automatically; after `cage` the rate is frozen. Internal USDR balances are tracked
+ *      in `rad` (45 decimals).
  */
 contract VaultEngine is IVaultEngine, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -215,8 +224,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
             _revert(IlkNotInitialized.selector);
         }
 
-        // Vault ids are sequential and never reused. Ownership is immutable: transferring a position is not
-        // supported.
+        // Vault ids are sequential and never reused. Ownership is immutable: transferring a position is not supported.
         vaultId = ++vaultCount;
 
         ownerOf[vaultId] = usr;
@@ -254,8 +262,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
         uint256 delta = newRate - prev;
         uint256 rad = Math.umul(ilk.globalArt, delta);
 
-        // Fees are minted to the fee recipient (the Balance Sheet) as surplus at accrual time. Accruing a nonzero
-        // fee without a configured recipient would burn it into an unreachable balance, so it is a hard error.
+        // Fees are minted to the fee recipient (the Balance Sheet) as surplus at accrual time. Accruing a nonzero fee
+        // without a configured recipient would burn it into an unreachable balance, so it is a hard error.
         if (rad != 0) {
             if (feeRecipient == address(0)) {
                 _revert(FeeRecipientNotSet.selector);
@@ -375,8 +383,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
         ilk.globalInk = Math.add(ilk.globalInk, dink);
 
         // NOTE: with a variable `rate` (stability fees), `dtab`/`tab` are exact rad values but no longer exact
-        // multiples of RAY. `tab = rate * art` [rad] is compared against `dust`
-        // [rad] directly, which stays correct at any rate >= RAY and cannot be gamed by rounding.
+        // multiples of RAY. `tab = rate * art` [rad] is compared against `dust` [rad] directly, which stays correct at
+        // any rate >= RAY and cannot be gamed by rounding.
         int256 dtab = Math.mul(ilk.rate, dart);
         uint256 tab = Math.umul(ilk.rate, urn.art);
 

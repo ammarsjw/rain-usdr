@@ -15,8 +15,8 @@ import { BaseTest } from "./shared/BaseTest.sol";
 /**
  * @title GovernanceTest
  * @author Rain Team
- * @notice Adversarial coverage of the Governor: timelock immutability (M-4), schedule/execute/cancel lifecycle,
- *         and the real 72-hour pause auto-expiry (L-6).
+ * @notice Adversarial coverage of the Governor: timelock immutability (M-4), schedule/execute/cancel lifecycle, and
+ *         the real 72-hour pause auto-expiry (L-6).
  */
 contract GovernanceTest is BaseTest {
     /* ========================== 1. IMMUTABLE DELAY ========================== */
@@ -106,7 +106,7 @@ contract GovernanceTest is BaseTest {
         governor.pause("all");
         assertTrue(governor.paused(), "paused");
 
-        // 72 hours later the pause is over for every consumer -- with NO unpause transaction.
+        // 72 hours later the pause is over for every consumer, with NO unpause transaction.
         vm.warp(vm.getBlockTimestamp() + 72 hours);
         assertFalse(governor.paused(), "auto-expired");
 
@@ -139,7 +139,7 @@ contract GovernanceTest is BaseTest {
 
         governor.pause("all");
 
-        // frob blocked -- including repayment (full stop is stricter than the solvency gate).
+        // frob blocked, including repayment (full stop is stricter than the solvency gate).
         vm.prank(user);
         vm.expectRevert(SystemPaused.selector);
         vaultEngine.frob(vaultId, user, user, 0, -int256(1e18));

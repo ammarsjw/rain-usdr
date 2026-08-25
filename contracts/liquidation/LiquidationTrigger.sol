@@ -207,8 +207,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             // Unsafe check: the vault's collateral value must be below `barkFactor` of its debt. `spot` [ray] already
             // embeds the ilk's required ratio (mat), so `ink * spot < art * rate` is the at-mat condition; scaling the
             // debt side by barkFactor [wad] moves the trigger to barkFactor of mat (e.g. 65% of 400% = 260%). Units:
-            // ink [wad] * spot [ray] = [rad]; art [wad] * rate [ray] = [rad]. With a variable rate, `art * rate` is
-            // no longer a multiple of RAY, so dividing by WAD before multiplying by barkFactor would truncate;
+            // ink [wad] * spot [ray] = [rad]; art [wad] * rate [ray] = [rad]. With a variable rate, `art * rate` is no
+            // longer a multiple of RAY, so dividing by WAD before multiplying by barkFactor would truncate;
             // Math.mulDiv keeps full 512-bit precision at any rate >= RAY.
             if (spot == 0 || ink * spot >= Math.mulDiv(art * rate, milk.barkFactor, _WAD)) {
                 _revert(NotUnsafe.selector);

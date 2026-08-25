@@ -45,8 +45,8 @@ contract OracleTest is BaseTest {
     }
 
     function test_osmWorstCaseDelayIsOneSecondAtBoundary() public {
-        // M-1 (documented): a poke at boundary+1799 permits the next poke one second later. This is
-        // the exact behaviour SLAs must be sized to; the test pins it so any future change is deliberate.
+        // M-1 (documented): a poke at boundary+1799 permits the next poke one second later. This is the exact
+        // behaviour SLAs must be sized to; the test pins it so any future change is deliberate.
         _warpToBoundary(1799);
         rainPriceSource.setPrice(1e18);
         osm.poke(RAIN_ILK);
@@ -55,8 +55,8 @@ contract OracleTest is BaseTest {
         rainPriceSource.setPrice(9e18); // Manipulated price...
         osm.poke(RAIN_ILK); // ...accepted one second later.
 
-        // And it is already promoted to cur (the previous nxt was the $1 price poked one second ago; cur is what
-        // the FIRST poke queued -- read both to pin the exact promotion semantics).
+        // And it is already promoted to cur (the previous nxt was the $1 price poked one second ago; cur is what the
+        // FIRST poke queued, read both to pin the exact promotion semantics).
         (bytes32 curVal, bool has) = osm.peek(RAIN_ILK);
         assertTrue(has, "cur valid");
 
