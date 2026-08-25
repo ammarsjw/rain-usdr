@@ -195,7 +195,7 @@ contract AuditTest is BaseTest {
         liquidationTrigger.bark(999, keeper);
     }
 
-    /* ========================== 4. DART PRECISION (H-3) ========================== */
+    /* ========================== 4. DART PRECISION ========================== */
 
     function test_barkDartPrecisionMakerOrdering() public {
         _setRainPrice(1e18);

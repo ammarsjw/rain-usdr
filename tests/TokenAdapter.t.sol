@@ -21,7 +21,7 @@ import { MockFeeOnTransferERC20 } from "./mocks/MockFeeOnTransferERC20.sol";
 contract TokenAdapterTest is BaseTest {
     address internal alice = address(0xA11CE);
 
-    /* ========================== 1. H-2: FEE-ON-TRANSFER ========================== */
+    /* ========================== 1. FEE-ON-TRANSFER ========================== */
 
     function test_joinRevertsOnFeeOnTransferToken() public {
         // A 1% fee token registered as collateral must be unusable: join measures the received delta and refuses

@@ -16,7 +16,7 @@ import { BaseTest } from "./Base.t.sol";
  *         and the real 72-hour pause auto-expiry (L-6).
  */
 contract GovernanceTest is BaseTest {
-    /* ========================== 1. M-4: IMMUTABLE DELAY ========================== */
+    /* ========================== 1. IMMUTABLE DELAY ========================== */
 
     function test_delayIsImmutableNoFileExists() public {
         // The file(bytes32,uint256) selector must not exist on the Governor at all: the timelock can never be
@@ -97,7 +97,7 @@ contract GovernanceTest is BaseTest {
         governor.execute(id);
     }
 
-    /* ========================== 3. L-6: REAL PAUSE AUTO-EXPIRY ========================== */
+    /* ========================== 3. REAL PAUSE AUTO-EXPIRY ========================== */
 
     function test_pauseAutoExpiresForConsumers() public {
         governor.pause("all");

@@ -223,7 +223,7 @@ contract VaultEngineCoreTest is BaseTest {
         assertEq(art, 400e18, "repaid despite zero ceilings");
     }
 
-    /* ========================== 4. OVERFLOW BEHAVIOUR (M-5) ========================== */
+    /* ========================== 4. OVERFLOW BEHAVIOUR ========================== */
 
     function test_frobSafetyCheckOverflowRevertsDecodably() public {
         // ink * spot overflows 2^256 at a reachable collateral size: the revert must be the library's decodable

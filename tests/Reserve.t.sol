@@ -49,7 +49,7 @@ contract ReserveTest is BaseTest {
         vm.stopPrank();
     }
 
-    /* ========================== 1. H-1: DIRECT OSM PRICING ========================== */
+    /* ========================== 1. DIRECT OSM PRICING ========================== */
 
     function test_worstCaseLossImmuneToMatChange() public {
         // THE rev-4 headline scenario. Loss must be identical before and after a mat change with no poke: the
@@ -81,7 +81,7 @@ contract ReserveTest is BaseTest {
         assertEq(solvencyEngine.worstCaseLoss(), 200e18, "no price = zero collateral value");
     }
 
-    /* ========================== 2. M-3: LAZY REDEMPTION GATE ========================== */
+    /* ========================== 2. LAZY REDEMPTION GATE ========================== */
 
     function test_redemptionGateHoldsWithoutAnyKeeper() public {
         // Price collapse with the keeper dead: buyStable itself must detect the breach.
@@ -104,7 +104,7 @@ contract ReserveTest is BaseTest {
         assertFalse(solvencyEngine.breached(), "flag untouched by the reverted attempt");
     }
 
-    /* ========================== 3. PARAMETER BOUNDS (L-4) ========================== */
+    /* ========================== 3. PARAMETER BOUNDS ========================== */
 
     function test_stressParameterBounds() public {
         vm.expectRevert(ISolvencyEngine.ParameterOutOfBounds.selector);
@@ -127,7 +127,7 @@ contract ReserveTest is BaseTest {
         solvencyEngine.file("reserveFactor", _WAD);
     }
 
-    /* ========================== 4. L-5: VOLATILE ILK VALIDATION ========================== */
+    /* ========================== 4. VOLATILE ILK VALIDATION ========================== */
 
     function test_addVolatileIlkValidatesExistence() public {
         vm.expectRevert();
@@ -145,7 +145,7 @@ contract ReserveTest is BaseTest {
         assertFalse(solvencyEngine.isVolatile("NEW-A"), "removed");
     }
 
-    /* ========================== 5. L-1: ESCROW GUARD ========================== */
+    /* ========================== 5. ESCROW GUARD ========================== */
 
     function test_recordDecreaseCannotBreachEscrow() public {
         _setRainPrice(1e18);
@@ -164,7 +164,7 @@ contract ReserveTest is BaseTest {
         reserveAccounting.recordDecrease(100e18);
     }
 
-    /* ========================== 6. M-2: EXPOSURE CAP ORDERING ========================== */
+    /* ========================== 6. EXPOSURE CAP ORDERING ========================== */
 
     function test_exposureReporterRequiresCapFirst() public {
         MockExternalExposure exposure = new MockExternalExposure();

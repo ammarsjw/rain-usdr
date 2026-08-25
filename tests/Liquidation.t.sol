@@ -99,7 +99,7 @@ contract LiquidationTest is BaseTest {
         assertEq(vaultEngine.usdr(keeper) - before, (113 * _RAD * 2) / 100, "kick reward");
     }
 
-    /* ========================== 2. M-6: BREAKER + PAUSE ========================== */
+    /* ========================== 2. BREAKER + PAUSE ========================== */
 
     function test_stoppedLevelsGateKickTakeRedo() public {
         _setRainPrice(1e18);

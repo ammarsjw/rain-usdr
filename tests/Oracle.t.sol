@@ -31,7 +31,7 @@ contract OracleTest is BaseTest {
         vm.warp(((vm.getBlockTimestamp() / 1800) + 1) * 1800 + offset);
     }
 
-    /* ========================== 1. OSM DELAY MECHANICS (M-1) ========================== */
+    /* ========================== 1. OSM DELAY MECHANICS ========================== */
 
     function test_osmRejectsPokeWithinSameWindow() public {
         _warpToBoundary(0);
@@ -129,7 +129,7 @@ contract OracleTest is BaseTest {
         osm.read(RAIN_ILK);
     }
 
-    /* ========================== 2. PRICE CONVERTER (M-7, M-8) ========================== */
+    /* ========================== 2. PRICE CONVERTER ========================== */
 
     function test_matBelowRayRejected() public {
         // M-8: a sub-100% collateralization ratio would authorize under-collateralized minting at origination.
