@@ -66,7 +66,7 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
-     * @notice Initializes the breaker with its launch settings.
+     * @notice Initializes the breaker.
      * @param ilkId_ Identifier of the collateral type to watch.
      * @param pip_ Address of the Oracle Security Module to watch.
      */

@@ -17,9 +17,9 @@ import { _revert } from "../shared/Globals.sol";
  * @title SolvencyEngine
  * @author Rain Team
  * @notice The guardian. Computes the protocol's worst-case loss under stress and verifies that the stable reserve
- *         exceeds it. When the worst-case loss exceeds the configured fraction of the reserve (90% at launch), the
- *         engine flags a breach and the rest of the system gates every non-reserve-increasing operation until the
- *         invariant is restored. A keeper bot is expected to call {checkInvariant} regularly to keep the flag fresh.
+ *         exceeds it. When the worst-case loss exceeds the configured fraction of the reserve, the engine flags a
+ *         breach and the rest of the system gates every non-reserve-increasing operation until the invariant is
+ *         restored. A keeper bot is expected to call {checkInvariant} regularly to keep the flag fresh.
  * @dev The stress scenario prices COLLATERAL: each volatile ilk's aggregate locked collateral is valued at the delayed
  *      oracle price read DIRECTLY from the Oracle Security Module (never reconstructed as spot times mat), marked down
  *      by the stress markdown (50%) and the stress liquidation depth (35%); the loss is any debt not covered by that
@@ -66,7 +66,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
-     * @notice Initializes the engine with its launch stress assumptions.
+     * @notice Initializes the engine.
      * @param vaultEngine_ Address of the Vault Engine.
      * @param reserveAccounting_ Address of the reserve accounting contract.
      */

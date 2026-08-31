@@ -57,7 +57,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
-     * @notice Initializes the trigger with the launch throttle.
+     * @notice Initializes the trigger.
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {

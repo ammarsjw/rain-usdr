@@ -160,7 +160,7 @@ interface ISolvencyEngine {
     function osm() external view returns (IOracleSecurityModule);
 
     /**
-     * @notice Returns the prediction market layer's exposure reporter. May be unset at launch.
+     * @notice Returns the prediction market layer's exposure reporter.
      */
     function externalExposure() external view returns (IExternalExposure);
 
