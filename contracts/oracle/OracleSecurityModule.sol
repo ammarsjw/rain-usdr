@@ -6,8 +6,9 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceSource } from "../interfaces/IPriceSource.sol";
+import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { _READER_ROLE, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, NotLive } from "../shared/Errors.sol";
+import { InvalidAddress, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -36,6 +37,9 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     /// @inheritdoc IOracleSecurityModule
     uint16 public constant HOP = 1800;
 
+    /// @inheritdoc IOracleSecurityModule
+    address public solvencyEngine;
+
     /// @dev Oracle state per collateral type.
     mapping(bytes32 ilkId => Ilk ilk) private _ilks;
 
@@ -52,6 +56,19 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     }
 
     /* ========================== FUNCTIONS ========================== */
+
+    /**
+     * @inheritdoc IOracleSecurityModule
+     */
+    function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
+        if (what == "solvencyEngine") {
+            solvencyEngine = data;
+        } else {
+            _revert(UnrecognizedParameter.selector);
+        }
+
+        emit File({ what: what, addr: data });
+    }
 
     /**
      * @inheritdoc IOracleSecurityModule
@@ -126,6 +143,14 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
             ilk.delay = uint64(block.timestamp - (block.timestamp % HOP));
 
             emit Poke({ ilkId: ilkId, current: ilk.cur.val, next: ilk.nxt.val });
+
+            // Soft solvency refresh: a price advance is where a breach FIRST becomes visible (the one input nobody
+            // controls), so the breach flag is recomputed immediately rather than waiting for the next keeper cycle.
+            // This NEVER reverts: censoring a price update because it carries bad news is how systems die, so the
+            // call is wrapped and a mis-wired engine can never block the feed.
+            if (solvencyEngine != address(0)) {
+                try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
+            }
         } else {
             // The source refused to report a valid price: surface it for monitoring without reverting.
             emit PokeFailed({ ilkId: ilkId, src: address(ilk.src) });

@@ -97,7 +97,7 @@ interface IBalanceSheet {
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency {buybackReceiver} or {reserveAccounting}.
+     * @notice Sets an address dependency {buybackReceiver}, {reserveAccounting} or {solvencyEngine}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -185,4 +185,9 @@ interface IBalanceSheet {
      * @notice Returns the recipient of surplus distributions, the RAIN buyback-and-burn process.
      */
     function buybackReceiver() external view returns (address);
+
+    /**
+     * @notice Returns the Solvency Engine gating surplus distributions. Zero when unset.
+     */
+    function solvencyEngine() external view returns (address);
 }

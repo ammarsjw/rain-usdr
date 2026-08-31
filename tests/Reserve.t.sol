@@ -373,7 +373,125 @@ contract ReserveTest is BaseTest {
         vm.stopPrank();
     }
 
-    /* ========================== 8. FUZZ ========================== */
+    /* ========================== 8. SOLVENCY GATE HOOKS ========================== */
+
+    function test_frobHardGateHoldsWithoutAnyKeeper() public {
+        // No reserve at all. The FIRST draw passes: the gate recomputes on pre-frob state, where loss is still 0.
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 800e18, 200e18);
+
+        // Now the ilk carries a stressed loss of 60 against a zero reserve. NOTE: no checkInvariant call anywhere,
+        // the stale flag still says healthy -- frob itself must detect the breach.
+        assertFalse(solvencyEngine.breached(), "flag stale-healthy");
+
+        // Drawing more debt is blocked.
+        vm.prank(user);
+        vm.expectRevert(SolvencyGateActive.selector);
+        vaultEngine.frob(vaultId, user, user, 0, 1);
+
+        // Withdrawing collateral is blocked too.
+        vm.prank(user);
+        vm.expectRevert(SolvencyGateActive.selector);
+        vaultEngine.frob(vaultId, user, user, -1, 0);
+
+        // Risk-DECREASING changes always stay available: repayment and top-ups must never be gated (death-spiral
+        // protection).
+        vm.prank(user);
+        vaultEngine.frob(vaultId, user, user, 0, -int256(50e18));
+
+        rain.mint(user, 10e18);
+        vm.startPrank(user);
+        rain.approve(address(collateralAdapter), 10e18);
+        collateralAdapter.join(RAIN_ILK, user, 10e18);
+        vaultEngine.frob(vaultId, user, user, int256(10e18), 0);
+        vm.stopPrank();
+    }
+
+    function test_frobGateClearsOnceReserveCovers() public {
+        // 199 of debt against 800 RAIN leaves mat headroom for one more 1-USDR draw (cap at spot 0.25 is 200).
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 800e18, 199e18);
+
+        // Blocked against an empty reserve (stressed loss 199 - 70 = 129 > 0).
+        vm.prank(user);
+        vm.expectRevert(SolvencyGateActive.selector);
+        vaultEngine.frob(vaultId, user, user, 0, int256(1e18));
+
+        // Seeding the reserve past the stressed loss (129 / 0.9 ~ 144) reopens the gate with no keeper involved.
+        _sellUsdt(keeper, 150e6);
+
+        vm.prank(user);
+        vaultEngine.frob(vaultId, user, user, 0, int256(1e18));
+    }
+
+    function test_distributeSurplusHardGateBlocksWhileBreached() public {
+        balanceSheet.file("humpFloor", 1 * _RAD);
+        balanceSheet.file("buybackReceiver", address(0xB0B));
+
+        // A stressed loss of 60 against an empty reserve: breached. Surplus sits above target.
+        _setRainPrice(1e18);
+        _openVault(user, 800e18, 200e18);
+        vaultEngine.suck(address(this), address(balanceSheet), 10 * _RAD);
+
+        // NOTE: stale flag says healthy; distributeSurplus recomputes and must refuse to ship value out.
+        assertFalse(solvencyEngine.breached(), "flag stale-healthy");
+
+        vm.expectRevert(SolvencyGateActive.selector);
+        balanceSheet.distributeSurplus();
+
+        // Once the reserve covers the stressed loss, distribution flows again.
+        _sellUsdt(keeper, 100e6);
+
+        assertEq(balanceSheet.distributeSurplus(), 9 * _RAD, "released after recovery");
+    }
+
+    function test_pokeSoftRefreshFlagsBreachWithoutReverting() public {
+        // Healthy at $1: loss 60 <= threshold 90.
+        _setRainPrice(1e18);
+        _openVault(user, 800e18, 200e18);
+        _sellUsdt(keeper, 100e6);
+
+        solvencyEngine.checkInvariant();
+        assertFalse(solvencyEngine.breached(), "healthy at 1.0");
+
+        // The crash arrives through the feed. The pokes themselves must refresh the flag: no keeper, no
+        // checkInvariant call. At $0.2 the loss is 200 - 800*0.2*0.175 = 172 > 90.
+        _setRainPrice(0.2e18);
+
+        assertTrue(solvencyEngine.breached(), "poke surfaced the breach");
+
+        // And the poke path itself stayed alive through the breach (the refresh is soft): another poke works.
+        _setRainPrice(0.19e18);
+    }
+
+    function test_dripSoftRefreshFlagsBreachWithoutReverting() public {
+        // Healthy but tight: loss 60, reserve 68, threshold 61.2.
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 800e18, 200e18);
+        _sellUsdt(keeper, 68e6);
+
+        solvencyEngine.checkInvariant();
+        assertFalse(solvencyEngine.breached(), "healthy before accrual");
+
+        // ~10% APY. A year of fees pushes the debt to ~220 and the loss to ~80 > 61.2: accrual alone must surface
+        // the breach, with no keeper and no user action.
+        vaultEngine.file(RAIN_ILK, "duty", 1000000003022265980097387650);
+        vm.warp(vm.getBlockTimestamp() + 365 days);
+
+        vaultEngine.drip(RAIN_ILK);
+
+        assertTrue(solvencyEngine.breached(), "drip surfaced the breach");
+
+        // The gate downstream now holds: risk-increasing frobs are blocked, repayment is not.
+        vm.prank(user);
+        vm.expectRevert(SolvencyGateActive.selector);
+        vaultEngine.frob(vaultId, user, user, 0, int256(1e18));
+
+        vm.prank(user);
+        vaultEngine.frob(vaultId, user, user, 0, -int256(1e18));
+    }
+
+    /* ========================== 9. FUZZ ========================== */
 
     function testFuzz_psmRoundTripAlwaysExact(uint32 amtSeed) public {
         uint256 amt = (uint256(amtSeed) % 400_000e6) + 1;

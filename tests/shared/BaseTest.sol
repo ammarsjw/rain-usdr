@@ -151,9 +151,12 @@ abstract contract BaseTest is Test {
         solvencyEngine.file("osm", address(osm));
         osm.grantRole(_READER_ROLE, address(solvencyEngine));
 
-        // Wiring the solvency gate.
+        // Wiring the solvency gate: hard gates (frob, PSM redemption, surplus distribution) and soft refresh hooks
+        // (OSM poke, drip inside the Vault Engine).
         vaultEngine.file("solvencyEngine", address(solvencyEngine));
         psm.file("solvencyEngine", address(solvencyEngine));
+        balanceSheet.file("solvencyEngine", address(solvencyEngine));
+        osm.file("solvencyEngine", address(solvencyEngine));
 
         // Wiring the liquidation stack (launch parameters from the spec).
         priceCurve.file("tau", 3600);

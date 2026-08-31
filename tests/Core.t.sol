@@ -997,6 +997,15 @@ contract CoreAuditTest is BaseTest {
     function test_frobDrawAtExactlyMatSucceedsAboveFails() public {
         _setRainPrice(1e18);
 
+        // Seed the stable reserve: frob now recomputes the solvency invariant on every risk-increasing change, and
+        // a 100 USDR draw against 400 RAIN carries a stressed loss of 30 (100 - 400 * 0.5 * 0.35 * 1). Without a
+        // reserve the gate (correctly) fires before the safety check this test targets.
+        usdt.mint(keeper, 100e6);
+        vm.startPrank(keeper);
+        usdt.approve(address(psm), 100e6);
+        psm.sellStable(USDT_ILK, keeper, 100e6);
+        vm.stopPrank();
+
         // 400 RAIN at $1 with 400% mat allows exactly 100 USDR.
         uint256 vaultId = _openVault(user, 400e18, 100e18);
 

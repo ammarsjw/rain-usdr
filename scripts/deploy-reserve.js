@@ -87,7 +87,8 @@ const deployReserve = async () => {
         )
     ).wait();
 
-    // Wiring the solvency gate: risk-increasing frobs and PSM redemptions consult the Solvency Engine.
+    // Wiring the solvency gate: risk-increasing frobs, PSM redemptions and surplus distributions consult the
+    // Solvency Engine (hard gates); OSM pokes and drip refresh the breach flag softly.
     await (
         await vaultEngineInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("solvencyEngine"),
@@ -96,6 +97,12 @@ const deployReserve = async () => {
     ).wait();
     await (
         await psmInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("solvencyEngine"),
+            solvencyEngineAddress
+        )
+    ).wait();
+    await (
+        await osmInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("solvencyEngine"),
             solvencyEngineAddress
         )
@@ -119,6 +126,12 @@ const deployReserve = async () => {
         await balanceSheetInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("reserveAccounting"),
             reserveAccountingAddress
+        )
+    ).wait();
+    await (
+        await balanceSheetInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("solvencyEngine"),
+            solvencyEngineAddress
         )
     ).wait();
 

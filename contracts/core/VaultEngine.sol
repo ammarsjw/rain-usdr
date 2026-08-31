@@ -277,6 +277,15 @@ contract VaultEngine is IVaultEngine, AccessControl {
         ilk.rho = block.timestamp;
 
         emit Drip({ ilkId: ilkId, rate: newRate, rad: rad });
+
+        // Soft solvency refresh: fee accrual raises outstanding debt and therefore the worst-case loss with no user
+        // action. Recompute the breach flag so a breach surfaces even between keeper checks. This NEVER reverts:
+        // accrual is measurement, not a voluntary risk increase, and drip must stay callable (it is invoked inside
+        // frob and on every duty change). The call is wrapped so a mis-wired engine can never brick accrual, and it
+        // is skipped when no fee accrued (rad == 0) since the loss is then unchanged.
+        if (rad != 0 && solvencyEngine != address(0)) {
+            try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
+        }
     }
 
     /**
@@ -363,18 +372,21 @@ contract VaultEngine is IVaultEngine, AccessControl {
             _revert(SystemPaused.selector);
         }
 
-        // Solvency gate: when the Solvency Engine is wired and reports a breach of the reserve invariant,
-        // risk-increasing changes (drawing debt or withdrawing collateral) against VOLATILE collateral are blocked.
-        // Repayment (dart < 0) and collateral top-ups (dink > 0) always remain available because they reduce risk.
-        // Stable (PSM) ilks are exempt here: PSM inflows are reserve-increasing and must never be gated, while PSM
-        // redemptions are gated inside the PSM itself.
+        // Solvency gate (HARD breach): risk-increasing changes (drawing debt or withdrawing collateral) against
+        // VOLATILE collateral are blocked while the reserve invariant is breached. The invariant is RECOMPUTED here
+        // rather than trusting the keeper-maintained flag: a stale flag (keeper down during a price collapse) would
+        // otherwise let a draw slip through against reserves that can no longer cover the stressed loss. This mirrors
+        // the lazy gate in {PegStabilityModule.buyStable}. Repayment (dart < 0) and collateral top-ups (dink > 0)
+        // always remain available because they reduce risk. Stable (PSM) ilks are exempt: PSM inflows are
+        // reserve-increasing and must never be gated, while PSM redemptions are gated inside the PSM itself.
         if (
-            (dart > 0 || dink < 0) &&
-            solvencyEngine != address(0) &&
-            ISolvencyEngine(solvencyEngine).isBreached() &&
-            ISolvencyEngine(solvencyEngine).isVolatile(ilkId)
+            (dart > 0 || dink < 0) && solvencyEngine != address(0) && ISolvencyEngine(solvencyEngine).isVolatile(ilkId)
         ) {
-            _revert(SolvencyGateActive.selector);
+            ISolvencyEngine(solvencyEngine).checkInvariant();
+
+            if (ISolvencyEngine(solvencyEngine).isBreached()) {
+                _revert(SolvencyGateActive.selector);
+            }
         }
 
         urn.ink = Math.add(urn.ink, dink);

@@ -65,12 +65,14 @@ contract LiquidationTest is BaseTest {
     /* ========================== 1. BARK CAPACITY (hole/dirt) ========================== */
 
     function test_barkRespectsHoleAndDigsFreesCapacity() public {
-        // Both vaults and the bidder are set up BEFORE the crash: _setRainPrice warps hours forward, and the auction
-        // must still be fresh (tail = 1800s) when the take executes.
+        // Both vaults and the bidder are set up BEFORE the crash: _setRainPrice warps hours forward, and the
+        // auction must still be fresh (tail = 1800s) when the take executes. The bidder is funded FIRST: selling
+        // stables seeds the reserve, and frob's hard solvency gate now recomputes the invariant on every draw, so
+        // the vaults' stressed loss must already be covered when they open.
         _setRainPrice(1e18);
+        _fundBidder(address(0xB1D), 300e6);
         uint256 vaultId = _openVault(user, 800e18, 200e18);
         uint256 second = _openVault(keeper, 400e18, 100e18);
-        _fundBidder(address(0xB1D), 300e6);
 
         _setRainPrice(0.6e18);
 

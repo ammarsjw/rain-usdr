@@ -6,9 +6,10 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 
 import { IBalanceSheet } from "../interfaces/IBalanceSheet.sol";
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
+import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, SolvencyGateActive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -43,6 +44,9 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
 
     /// @inheritdoc IBalanceSheet
     address public buybackReceiver;
+
+    /// @inheritdoc IBalanceSheet
+    address public solvencyEngine;
 
     /// @inheritdoc IBalanceSheet
     IReserveAccounting public reserveAccounting;
@@ -95,6 +99,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             buybackReceiver = data;
         } else if (what == "reserveAccounting") {
             reserveAccounting = IReserveAccounting(data);
+        } else if (what == "solvencyEngine") {
+            solvencyEngine = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -179,6 +185,18 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         // an error, it returns 0 instead of reverting.
         if (surplus <= target) {
             return 0;
+        }
+
+        // Solvency gate (HARD breach): a distribution ships value out of the protocol, so it is blocked while the
+        // reserve invariant is breached. The invariant is RECOMPUTED here rather than trusting the keeper-maintained
+        // flag, the same lazy gate as PSM redemption: surplus must never leave toward buyback while the stressed loss
+        // exceeds what the reserve can cover.
+        if (solvencyEngine != address(0)) {
+            ISolvencyEngine(solvencyEngine).checkInvariant();
+
+            if (ISolvencyEngine(solvencyEngine).isBreached()) {
+                _revert(SolvencyGateActive.selector);
+            }
         }
 
         if (buybackReceiver == address(0)) {

@@ -30,6 +30,13 @@ interface IOracleSecurityModule {
     /* ========================== EVENTS ========================== */
 
     /**
+     * @dev Emitted when an address dependency is updated.
+     * @param what Name of the parameter.
+     * @param addr New address.
+     */
+    event File(bytes32 indexed what, address addr);
+
+    /**
      * @dev Emitted when a collateral's price updates are frozen.
      * @param ilkId Identifier of the collateral type.
      */
@@ -82,6 +89,15 @@ interface IOracleSecurityModule {
     error NoCurrentValue();
 
     /* ========================== FUNCTIONS ========================== */
+
+    /**
+     * @notice Sets an address dependency {solvencyEngine}.
+     * @dev The Solvency Engine is consulted SOFTLY after every successful poke: the breach flag is refreshed but a
+     *      failure can never block the price update.
+     * @param what Name of the parameter.
+     * @param data New address.
+     */
+    function file(bytes32 what, address data) external;
 
     /**
      * @notice Freezes a collateral's price updates.
@@ -175,4 +191,9 @@ interface IOracleSecurityModule {
      * @notice Returns the update delay in seconds.
      */
     function HOP() external view returns (uint16);
+
+    /**
+     * @notice Returns the Solvency Engine softly refreshed on every successful poke. Zero when unset.
+     */
+    function solvencyEngine() external view returns (address);
 }
