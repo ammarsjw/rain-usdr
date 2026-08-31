@@ -87,8 +87,8 @@ const deployReserve = async () => {
         )
     ).wait();
 
-    // Wiring the solvency gate: risk-increasing frobs, PSM redemptions and surplus distributions consult the
-    // Solvency Engine (hard gates); OSM pokes and drip refresh the breach flag softly.
+    // Wiring the solvency gate: risk-increasing frobs, PSM redemptions and surplus distributions consult the Solvency
+    // Engine (hard gates); OSM pokes and drip refresh the breach flag softly.
     await (
         await vaultEngineInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("solvencyEngine"),

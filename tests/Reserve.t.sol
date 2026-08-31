@@ -239,7 +239,7 @@ contract ReserveTest is BaseTest {
         _openVault(user, 800e18, 200e18);
         _sellUsdt(keeper, 20e6);
 
-        // NOTE: no checkInvariant call anywhere. The stale flag says healthy.
+        // NOTE: No checkInvariant call anywhere. The stale flag says healthy.
         assertFalse(solvencyEngine.breached(), "flag stale-healthy");
 
         vm.startPrank(keeper);
@@ -248,9 +248,9 @@ contract ReserveTest is BaseTest {
         psm.buyStable(USDT_ILK, keeper, 5e6);
         vm.stopPrank();
 
-        // NOTE: the revert rolls the recompute back with the rest of the transaction, the persistent flag is still
-        // refreshed by keepers and by any SUCCESSFUL redemption; what the lazy gate guarantees is that no
-        // redemption can ever pass on stale data, which the revert above just proved.
+        // NOTE: The revert rolls the recompute back with the rest of the transaction, the persistent flag is still
+        // refreshed by keepers and by any SUCCESSFUL redemption; what the lazy gate guarantees is that no redemption
+        // can ever pass on stale data, which the revert above just proved.
         assertFalse(solvencyEngine.breached(), "flag untouched by the reverted attempt");
     }
 
@@ -380,8 +380,9 @@ contract ReserveTest is BaseTest {
         _setRainPrice(1e18);
         uint256 vaultId = _openVault(user, 800e18, 200e18);
 
-        // Now the ilk carries a stressed loss of 60 against a zero reserve. NOTE: no checkInvariant call anywhere,
-        // the stale flag still says healthy -- frob itself must detect the breach.
+        // Now the ilk carries a stressed loss of 60 against a zero reserve.
+        // NOTE: No checkInvariant call anywhere, the stale flag still says healthy and frob itself must detect the
+        // breach.
         assertFalse(solvencyEngine.breached(), "flag stale-healthy");
 
         // Drawing more debt is blocked.
@@ -395,7 +396,7 @@ contract ReserveTest is BaseTest {
         vaultEngine.frob(vaultId, user, user, -1, 0);
 
         // Risk-DECREASING changes always stay available: repayment and top-ups must never be gated (death-spiral
-        // protection).
+        // ).
         vm.prank(user);
         vaultEngine.frob(vaultId, user, user, 0, -int256(50e18));
 
@@ -433,7 +434,7 @@ contract ReserveTest is BaseTest {
         _openVault(user, 800e18, 200e18);
         vaultEngine.suck(address(this), address(balanceSheet), 10 * _RAD);
 
-        // NOTE: stale flag says healthy; distributeSurplus recomputes and must refuse to ship value out.
+        // NOTE: Stale flag says healthy; distributeSurplus recomputes and must refuse to ship value out.
         assertFalse(solvencyEngine.breached(), "flag stale-healthy");
 
         vm.expectRevert(SolvencyGateActive.selector);
@@ -454,8 +455,8 @@ contract ReserveTest is BaseTest {
         solvencyEngine.checkInvariant();
         assertFalse(solvencyEngine.breached(), "healthy at 1.0");
 
-        // The crash arrives through the feed. The pokes themselves must refresh the flag: no keeper, no
-        // checkInvariant call. At $0.2 the loss is 200 - 800*0.2*0.175 = 172 > 90.
+        // The crash arrives through the feed. The pokes themselves must refresh the flag: no keeper, no checkInvariant
+        // call. At $0.2 the loss is 200 - 800*0.2*0.175 = 172 > 90.
         _setRainPrice(0.2e18);
 
         assertTrue(solvencyEngine.breached(), "poke surfaced the breach");
@@ -473,8 +474,8 @@ contract ReserveTest is BaseTest {
         solvencyEngine.checkInvariant();
         assertFalse(solvencyEngine.breached(), "healthy before accrual");
 
-        // ~10% APY. A year of fees pushes the debt to ~220 and the loss to ~80 > 61.2: accrual alone must surface
-        // the breach, with no keeper and no user action.
+        // ~10% APY. A year of fees pushes the debt to ~220 and the loss to ~80 > 61.2: accrual alone must surface the
+        // breach, with no keeper and no user action.
         vaultEngine.file(RAIN_ILK, "duty", 1000000003022265980097387650);
         vm.warp(vm.getBlockTimestamp() + 365 days);
 

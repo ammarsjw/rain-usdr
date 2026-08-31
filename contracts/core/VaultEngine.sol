@@ -281,8 +281,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
         // Soft solvency refresh: fee accrual raises outstanding debt and therefore the worst-case loss with no user
         // action. Recompute the breach flag so a breach surfaces even between keeper checks. This NEVER reverts:
         // accrual is measurement, not a voluntary risk increase, and drip must stay callable (it is invoked inside
-        // frob and on every duty change). The call is wrapped so a mis-wired engine can never brick accrual, and it
-        // is skipped when no fee accrued (rad == 0) since the loss is then unchanged.
+        // frob and on every duty change). The call is wrapped so a mis-wired engine can never brick accrual, and it is
+        // skipped when no fee accrued (rad == 0) since the loss is then unchanged.
         if (rad != 0 && solvencyEngine != address(0)) {
             try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
         }
@@ -394,7 +394,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
         ilk.globalArt = Math.add(ilk.globalArt, dart);
         ilk.globalInk = Math.add(ilk.globalInk, dink);
 
-        // NOTE: with a variable `rate` (stability fees), `dtab`/`tab` are exact rad values but no longer exact
+        // NOTE: With a variable `rate` (stability fees), `dtab`/`tab` are exact rad values but no longer exact
         // multiples of RAY. `tab = rate * art` [rad] is compared against `dust` [rad] directly, which stays correct at
         // any rate >= RAY and cannot be gamed by rounding.
         int256 dtab = Math.mul(ilk.rate, dart);
@@ -447,7 +447,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @inheritdoc IVaultEngine
      */
     function grab(uint256 vaultId, address v, address w, int256 dink, int256 dart) external onlyRole(_WARD_ROLE) {
-        // NOTE: deliberately callable after shutdown (no live check). The emergency settlement module (End) seizes
+        // NOTE: Deliberately callable after shutdown (no live check). The emergency settlement module (End) seizes
         // positions through this function after cage.
         if (ownerOf[vaultId] == address(0)) {
             _revert(VaultNotFound.selector);
@@ -476,7 +476,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @inheritdoc IVaultEngine
      */
     function heal(uint256 rad) external {
-        // NOTE: deliberately callable after shutdown (no live check). Emergency settlement heals the Balance Sheet's
+        // NOTE: Deliberately callable after shutdown (no live check). Emergency settlement heals the Balance Sheet's
         // surplus against bad debt after cage (End.thaw() requires it).
         sin[msg.sender] -= rad;
         usdr[msg.sender] -= rad;

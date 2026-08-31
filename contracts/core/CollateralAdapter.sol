@@ -176,7 +176,7 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
             IUSDR(address(ilk.token)).mint(user, amount);
         } else {
             // Converting token decimals to the internal 18 decimal representation.
-            // NOTE: exit takes the amount in TOKEN decimals, so for 6-decimal ilks any internal balance below 1e12
+            // NOTE: Exit takes the amount in TOKEN decimals, so for 6-decimal ilks any internal balance below 1e12
             // (one token unit scaled to 18 decimals) is unreachable by exit. Such sub-unit ledger dust can only arise
             // from internal transfers (flux), never from join/frob flows, and is bounded by one token unit per holder;
             // it stays on the ledger rather than being silently rounded away.

@@ -14,15 +14,15 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title OracleSecurityModule
  * @author Rain Team
- * @notice The delayed price feed. Holds prices back by roughly 30 minutes so that if a price is manipulated, there is
- *         time to detect and respond before the system acts on it. Stores two prices per collateral type: the current
- *         one (which the system uses) and the next one (which becomes current after the delay). A single deployed
- *         instance serves every priced collateral: tokens are registered dynamically, each with its own price source.
+ * @notice The delayed price feed. Holds prices back by {delay} so that if a price is manipulated, there is time to
+ *         detect and respond before the system acts on it. Stores two prices per collateral type: the current one
+ *         (which the system uses) and the next one (which becomes current after the delay). A single deployed instance
+ *         serves every priced collateral: tokens are registered dynamically, each with its own price source.
  *
  *         NOTE: GUARANTEED-DELAY BOUND means pokes are aligned to fixed half-hour boundaries. A poke landing at the
  *         very end of a window (boundary + 1799s) permits the next poke one second later, at the next boundary. The
  *         MINIMUM interval between a price entering `nxt` and being promoted to `cur` is therefore 1 second in the
- *         worst case, NOT 30 minutes; 30 minutes is the AVERAGE cadence, and a manipulated price can reach `cur` in as
+ *         worst case, NOT {delay}; {delay} is the AVERAGE cadence, and a manipulated price can reach `cur` in as
  *         little as one second after first appearing. Incident-response SLAs and monitoring must be sized to the
  *         1-second bound, never the 30-minute average. Keepers poking promptly at each boundary keep the effective
  *         delay near the full window.
@@ -128,7 +128,7 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
             _revert(NotLive.selector);
         }
 
-        // At least 30 minutes must have passed since the last update.
+        // At least {delay} must have passed since the last update.
         if (!pass(ilkId)) {
             _revert(NotPassed.selector);
         }
@@ -146,8 +146,8 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
 
             // Soft solvency refresh: a price advance is where a breach FIRST becomes visible (the one input nobody
             // controls), so the breach flag is recomputed immediately rather than waiting for the next keeper cycle.
-            // This NEVER reverts: censoring a price update because it carries bad news is how systems die, so the
-            // call is wrapped and a mis-wired engine can never block the feed.
+            // This NEVER reverts: censoring a price update because it carries bad news is how systems die, so the call
+            // is wrapped and a mis-wired engine can never block the feed.
             if (solvencyEngine != address(0)) {
                 try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
             }
