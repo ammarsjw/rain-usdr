@@ -375,10 +375,10 @@ contract VaultEngine is IVaultEngine, AccessControl {
         // Solvency gate (HARD breach): risk-increasing changes (drawing debt or withdrawing collateral) against
         // VOLATILE collateral are blocked while the reserve invariant is breached. The invariant is RECOMPUTED here
         // rather than trusting the keeper-maintained flag: a stale flag (keeper down during a price collapse) would
-        // otherwise let a draw slip through against reserves that can no longer cover the stressed loss. This mirrors
-        // the lazy gate in {PegStabilityModule.buyStable}. Repayment (dart < 0) and collateral top-ups (dink > 0)
-        // always remain available because they reduce risk. Stable (PSM) ilks are exempt: PSM inflows are
-        // reserve-increasing and must never be gated, while PSM redemptions are gated inside the PSM itself.
+        // otherwise let a draw slip through against reserves that can no longer cover the stressed loss. Repayment
+        // (dart < 0) and collateral top-ups (dink > 0) always remain available because they reduce risk. Stable (PSM)
+        // ilks are exempt: PSM inflows are reserve-increasing and must never be gated, while PSM redemptions are gated
+        // inside the PSM itself.
         if (
             (dart > 0 || dink < 0) && solvencyEngine != address(0) && ISolvencyEngine(solvencyEngine).isVolatile(ilkId)
         ) {
