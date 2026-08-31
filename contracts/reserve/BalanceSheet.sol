@@ -21,8 +21,7 @@ import { _revert } from "../shared/Globals.sol";
  * @dev Uses no surplus or debt auctions. USDR uses a RAIN buyback-and-burn for surplus and a controlled backstop for
  *      bad debt instead. The strict "fill before burn" rule is enforced in `distributeSurplus`. Bad debt entering via
  *      `fess` sits in a time-indexed queue for `wait` seconds before it can be healed so surplus cannot be netted
- *      against debt whose auction is still running. USDR has no debt auctions, so there is no `Ash` (on-auction debt)
- *      term anywhere in the accounting.
+ *      against debt whose auction is still running.
  */
 contract BalanceSheet is IBalanceSheet, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -144,8 +143,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             _revert(InsufficientSurplus.selector);
         }
 
-        // Only debt released from the queue may be healed. USDR has no debt auctions, so there is no on-auction (Ash)
-        // term to subtract, only the queued portion.
+        // Only debt released from the queue may be healed. USDR has no debt auctions, so there is no on-auction term
+        // to subtract, only the queued portion.
         if (rad > VAULT_ENGINE.sin(address(this)) - totalQueuedSin) {
             _revert(InsufficientDebt.selector);
         }
