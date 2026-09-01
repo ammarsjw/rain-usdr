@@ -23,6 +23,7 @@ const deployReserve = async () => {
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
     const collateralAdapterAddress = process.env.COLLATERAL_ADAPTER_ADDRESS;
     const osmAddress = process.env.OSM_ADDRESS;
+    const buybackReceiverAddress = process.env.BUYBACK_RECEIVER_ADDRESS;
 
     // Fixed point scalars.
     const WAD = 10n ** 18n;
@@ -38,17 +39,21 @@ const deployReserve = async () => {
 
     // Deploying the reserve stack.
     const reserveAccountingConstructorArguments = [];
-    const reserveAccountingAddress = await deployContract(reserveAccountingName, reserveAccountingConstructorArguments);
+    const reserveAccountingAddress = "0x3dF64925A6Cc051EE064Eb13a8B0c7d265434b59";
+    // const reserveAccountingAddress = await deployContract(reserveAccountingName, reserveAccountingConstructorArguments);
 
     const solvencyEngineConstructorArguments = [vaultEngineAddress, reserveAccountingAddress];
-    const solvencyEngineAddress = await deployContract(solvencyEngineName, solvencyEngineConstructorArguments);
+    const solvencyEngineAddress = "0x2484d495258C3e281217995D30Bda16BeF6192dF";
+    // const solvencyEngineAddress = await deployContract(solvencyEngineName, solvencyEngineConstructorArguments);
 
     const balanceSheetConstructorArguments = [vaultEngineAddress];
-    const balanceSheetAddress = await deployContract(balanceSheetName, balanceSheetConstructorArguments);
+    const balanceSheetAddress = "0xd39Cbe13dB0Ce332bAcAaE654030EbFe3670af58";
+    // const balanceSheetAddress = await deployContract(balanceSheetName, balanceSheetConstructorArguments);
 
-    // Deploying the Peg Stability Module.
+    // // Deploying the Peg Stability Module.
     const psmConstructorArguments = [collateralAdapterAddress, reserveAccountingAddress];
-    const psmAddress = await deployContract(psmName, psmConstructorArguments);
+    const psmAddress = "0x083158DD1d9fEBC35A5ecc75Cb9f5c337Fd862d4";
+    // const psmAddress = await deployContract(psmName, psmConstructorArguments);
 
     // Setting up the reserve stack.
     const reserveAccountingInstance = await hardhat.ethers.getContractAt(
@@ -59,111 +64,103 @@ const deployReserve = async () => {
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
 
     // Allowing the Solvency Engine to commit escrow in Reserve Accounting.
-    await (await reserveAccountingInstance.grantRole(COMMITTER_ROLE, solvencyEngineAddress)).wait();
+    // await (await reserveAccountingInstance.grantRole(COMMITTER_ROLE, solvencyEngineAddress)).wait();
 
     // Registering the stablecoin ilks on the PSM and authorizing it as a reserve recorder.
     const psmInstance = await hardhat.ethers.getContractAt(psmName, psmAddress);
-    await (await psmInstance.init(usdtIlk)).wait();
-    await (await psmInstance.init(usdcIlk)).wait();
-    await (await reserveAccountingInstance.grantRole(RECORDER_ROLE, psmAddress)).wait();
+    // await (await psmInstance.init(usdtIlk)).wait();
+    // await (await psmInstance.init(usdcIlk)).wait();
+    // await (await reserveAccountingInstance.grantRole(RECORDER_ROLE, psmAddress)).wait();
 
     // Registering RAIN as a volatile collateral in the solvency stress calculation and wiring the direct OSM
     // price source (worst-case loss reads prices straight from the OSM, never spot * mat).
-    await (await solvencyEngineInstance.addVolatileIlk(rainIlk)).wait();
-    await (
-        await solvencyEngineInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("osm"), osmAddress)
-    ).wait();
+    // await (await solvencyEngineInstance.addVolatileIlk(rainIlk)).wait();
+    // await (
+    //     await solvencyEngineInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("osm"), osmAddress)
+    // ).wait();
 
     // Granting the Solvency Engine read access on the OSM.
     const osmInstance = await hardhat.ethers.getContractAt("OracleSecurityModule", osmAddress);
-    await (await osmInstance.grantRole(READER_ROLE, solvencyEngineAddress)).wait();
+    // await (await osmInstance.grantRole(READER_ROLE, solvencyEngineAddress)).wait();
 
     // Setting the prediction-market exposure cap BEFORE any reporter is wired ($250k launch cap): an unset (zero)
     // cap would clamp every report to zero, silently suppressing real exposure.
-    await (
-        await solvencyEngineInstance["file(bytes32,uint256)"](
-            hardhat.ethers.encodeBytes32String("exposureCap"),
-            250000n * WAD
-        )
-    ).wait();
+    // await (
+    //     await solvencyEngineInstance["file(bytes32,uint256)"](
+    //         hardhat.ethers.encodeBytes32String("exposureCap"),
+    //         250000n * WAD
+    //     )
+    // ).wait();
 
     // Wiring the solvency gate: risk-increasing frobs, PSM redemptions and surplus distributions consult the Solvency
     // Engine (hard gates); OSM pokes and drip refresh the breach flag softly.
-    await (
-        await vaultEngineInstance["file(bytes32,address)"](
-            hardhat.ethers.encodeBytes32String("solvencyEngine"),
-            solvencyEngineAddress
-        )
-    ).wait();
-    await (
-        await psmInstance["file(bytes32,address)"](
-            hardhat.ethers.encodeBytes32String("solvencyEngine"),
-            solvencyEngineAddress
-        )
-    ).wait();
-    await (
-        await osmInstance["file(bytes32,address)"](
-            hardhat.ethers.encodeBytes32String("solvencyEngine"),
-            solvencyEngineAddress
-        )
-    ).wait();
+    // await (
+    //     await vaultEngineInstance["file(bytes32,address)"](
+    //         hardhat.ethers.encodeBytes32String("solvencyEngine"),
+    //         solvencyEngineAddress
+    //     )
+    // ).wait();
+    // await (
+    //     await psmInstance["file(bytes32,address)"](
+    //         hardhat.ethers.encodeBytes32String("solvencyEngine"),
+    //         solvencyEngineAddress
+    //     )
+    // ).wait();
+    // await (
+    //     await osmInstance["file(bytes32,address)"](
+    //         hardhat.ethers.encodeBytes32String("solvencyEngine"),
+    //         solvencyEngineAddress
+    //     )
+    // ).wait();
 
     // Balance Sheet: bad debt queue delay, surplus buffer floor ($500k) and dynamic rate (10% of the reserve).
     const balanceSheetInstance = await hardhat.ethers.getContractAt(balanceSheetName, balanceSheetAddress);
-    await (
-        await balanceSheetInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("wait"), 561600n)
-    ).wait(); // 6.5 days.
-    await (
-        await balanceSheetInstance["file(bytes32,uint256)"](
-            hardhat.ethers.encodeBytes32String("humpFloor"),
-            500000n * RAD
-        )
-    ).wait();
-    await (
-        await balanceSheetInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("humpRate"), WAD / 10n)
-    ).wait();
-    await (
-        await balanceSheetInstance["file(bytes32,address)"](
-            hardhat.ethers.encodeBytes32String("reserveAccounting"),
-            reserveAccountingAddress
-        )
-    ).wait();
-    await (
-        await balanceSheetInstance["file(bytes32,address)"](
-            hardhat.ethers.encodeBytes32String("solvencyEngine"),
-            solvencyEngineAddress
-        )
-    ).wait();
+    // await (
+    //     await balanceSheetInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("wait"), 561600n)
+    // ).wait(); // 6.5 days.
+    // await (
+    //     await balanceSheetInstance["file(bytes32,uint256)"](
+    //         hardhat.ethers.encodeBytes32String("humpFloor"),
+    //         500000n * RAD
+    //     )
+    // ).wait();
+    // await (
+    //     await balanceSheetInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("humpRate"), WAD / 10n)
+    // ).wait();
+    // await (
+    //     await balanceSheetInstance["file(bytes32,address)"](
+    //         hardhat.ethers.encodeBytes32String("reserveAccounting"),
+    //         reserveAccountingAddress
+    //     )
+    // ).wait();
+    // await (
+    //     await balanceSheetInstance["file(bytes32,address)"](
+    //         hardhat.ethers.encodeBytes32String("solvencyEngine"),
+    //         solvencyEngineAddress
+    //     )
+    // ).wait();
 
-    // Buyback receiver. Surplus distribution reverts without it;
-    // it must be an explicit deployment input, not a post-launch afterthought.
-    const buybackReceiverAddress = process.env.BUYBACK_RECEIVER_ADDRESS;
-
-    if (!buybackReceiverAddress) {
-        throw new Error("BUYBACK_RECEIVER_ADDRESS not set: the buyback receiver is a required launch parameter.");
-    }
-
-    await (
-        await balanceSheetInstance["file(bytes32,address)"](
-            hardhat.ethers.encodeBytes32String("buybackReceiver"),
-            buybackReceiverAddress
-        )
-    ).wait();
+    // await (
+    //     await balanceSheetInstance["file(bytes32,address)"](
+    //         hardhat.ethers.encodeBytes32String("buybackReceiver"),
+    //         buybackReceiverAddress
+    //     )
+    // ).wait();
 
     // Authorizing the Balance Sheet to heal and suck on the ledger.
-    await (await vaultEngineInstance.grantRole(WARD_ROLE, balanceSheetAddress)).wait();
+    // await (await vaultEngineInstance.grantRole(WARD_ROLE, balanceSheetAddress)).wait();
 
     // Stability fee wiring: accrued fees (drip) are credited to the Balance Sheet as surplus. Each ilk's duty stays
     // at its zero-fee default (RAY) until governance files one, e.g. ~2% APY = 1000000000627937192491029810n (ray,
     // per-second factor 1.02^(1/31536000)).
-    await (
-        await vaultEngineInstance["file(bytes32,address)"](
-            hardhat.ethers.encodeBytes32String("feeRecipient"),
-            balanceSheetAddress
-        )
-    ).wait();
+    // await (
+    //     await vaultEngineInstance["file(bytes32,address)"](
+    //         hardhat.ethers.encodeBytes32String("feeRecipient"),
+    //         balanceSheetAddress
+    //     )
+    // ).wait();
 
-    console.log("Reserve setup complete");
+    // console.log("Reserve setup complete");
 
     // Updating env.
     updateEnv("RESERVE_ACCOUNTING_ADDRESS", reserveAccountingAddress);
