@@ -24,9 +24,8 @@ import { _revert } from "../shared/Globals.sol";
  * @notice The emergency settlement module. When governance pulls the plug, this contract freezes the system, settles
  *         every vault at the last oracle price, hands vault owners their excess collateral back, and finally lets
  *         every USDR holder redeem the remaining collateral pro-rata. This contract runs on a single balance sheet;
- *         the Vault Engine's cage drips every ilk before freezing its rates (audit M-1), so no accrued fee is
- *         silently forgiven at shutdown and the settlement math below is exact at any accrued rate (`tab / rate`,
- *         `art * rate * tag`).
+ *         the Vault Engine's cage drips every ilk before freezing its rates, so no accrued fee is silently forgiven at
+ *         shutdown and the settlement math below is exact at any accrued rate (`tab / rate`, `art * rate * tag`).
  * @dev Settlement runs in ordered phases:
  *      1. `cage()` - freeze the Vault Engine, the Liquidation Trigger and the Price Converter.
  *      2. `cage(ilkId)` - fix each collateral type's settlement price and snapshot its debt.
@@ -181,11 +180,11 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
 
         art[ilkId] = globalArt;
 
-        // Halting this collateral's auction house (audit C-2): after global settlement the auction price keeps
-        // decaying while the settlement price below is fixed forever, so any still-running auction becomes a
-        // risk-free arbitrage against USDR redeemers once the curve crosses break-even — and collateral bought there
-        // leaves the redemption pool permanently. `yank` is deliberately not live-gated, so `skip` still reclaims
-        // in-flight auctions after the halt. Ilks with no auction house configured (e.g. PSM stables) skip this.
+        // Halting this collateral's auction house: after global settlement the auction price keeps decaying while the
+        // settlement price below is fixed forever, so any still-running auction becomes a risk-free arbitrage against
+        // USDR redeemers once the curve crosses break-even and collateral bought there leaves the redemption pool
+        // permanently. `yank` is deliberately not live-gated, so `skip` still reclaims in-flight auctions after the
+        // halt. Ilks with no auction house configured (e.g. PSM stables) skip this.
         (address clipAddress, , , , ) = liquidationTrigger.ilks(ilkId);
 
         if (clipAddress != address(0) && IDutchAuction(clipAddress).live() == 1) {
@@ -242,13 +241,13 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         // same terms as everyone else.
         uint256 restoredArt = tab / rate;
 
-        // The reinstated debt must also be added back to this ilk's settlement snapshot (audit H-4): `thaw` fixes the
-        // total debt from the Vault Engine (which includes the restored debt via grab), so leaving the snapshot short
-        // makes `flow` divide a short numerator by a full denominator — understating the redemption price and
-        // stranding the difference in this contract forever.
+        // The reinstated debt must also be added back to this ilk's settlement snapshot: `thaw` fixes the total debt
+        // from the Vault Engine (which includes the restored debt via grab), so leaving the snapshot short makes
+        // `flow` divide a short numerator by a full denominator understating the redemption price and stranding the
+        // difference in this contract forever.
         art[ilkId] += restoredArt;
 
-        // Overflow guards on the signed casts (Maker parity, audit L-4).
+        // Overflow guards on the signed casts.
         if (int256(lot) < 0 || int256(restoredArt) < 0) {
             _revert(InvalidAmount.selector);
         }
@@ -278,7 +277,7 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
 
         gap[ilkId] += owe - wad;
 
-        // Overflow guards on the signed casts (Maker parity, audit L-4).
+        // Overflow guards on the signed casts.
         if (int256(wad) < 0 || int256(urnArt) < 0) {
             _revert(InvalidAmount.selector);
         }
@@ -312,7 +311,7 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
 
         bytes32 ilkId = VAULT_ENGINE.ilkOf(vaultId);
 
-        // Overflow guard on the signed cast (Maker parity, audit L-4).
+        // Overflow guard on the signed cast.
         if (int256(ink) < 0) {
             _revert(InvalidAmount.selector);
         }

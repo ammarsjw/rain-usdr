@@ -135,7 +135,7 @@ const deployReserve = async () => {
         )
     ).wait();
 
-    // Buyback receiver (audit L-6 class: correct code, never configured). Surplus distribution reverts without it;
+    // Buyback receiver. Surplus distribution reverts without it;
     // it must be an explicit deployment input, not a post-launch afterthought.
     const buybackReceiverAddress = process.env.BUYBACK_RECEIVER_ADDRESS;
 

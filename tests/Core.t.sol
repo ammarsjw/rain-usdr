@@ -6,7 +6,16 @@ import { ICollateralAdapter } from "../contracts/interfaces/ICollateralAdapter.s
 import { ILiquidationTrigger } from "../contracts/interfaces/ILiquidationTrigger.sol";
 import { IVaultEngine } from "../contracts/interfaces/IVaultEngine.sol";
 import { Math } from "../contracts/libraries/Math.sol";
-import { FeeRecipientNotSet, IlkAlreadyInitialized, InvalidAddress, InvalidAmount, InvalidAssignment, InvalidDuty, NotLive, UnrecognizedParameter } from "../contracts/shared/Errors.sol";
+import {
+    FeeRecipientNotSet,
+    IlkAlreadyInitialized,
+    InvalidAddress,
+    InvalidAmount,
+    InvalidAssignment,
+    InvalidDuty,
+    NotLive,
+    UnrecognizedParameter
+} from "../contracts/shared/Errors.sol";
 import { _RAD, _RAY, _USDR_ILK } from "../contracts/shared/Constants.sol";
 
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";

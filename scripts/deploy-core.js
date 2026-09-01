@@ -66,7 +66,7 @@ const deployCore = async () => {
     await (await vaultEngineInstance.init(usdtIlk)).wait();
     await (await vaultEngineInstance.init(usdcIlk)).wait();
 
-    // Permanently pinning the stable (PSM) ilks' stability fee to zero (audit C-1): the PSM's 1:1 accounting is only
+    // Permanently pinning the stable (PSM) ilks' stability fee to zero: the PSM's 1:1 accounting is only
     // sound at rate == RAY, and PSM.init refuses any ilk that is not fee-exempt.
     await (await vaultEngineInstance.exemptFee(usdtIlk)).wait();
     await (await vaultEngineInstance.exemptFee(usdcIlk)).wait();

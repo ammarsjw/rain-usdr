@@ -42,8 +42,7 @@ contract PriceCurve is IPriceCurve, AccessControl {
     function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "tau") {
             // tau == 0 would make price() return 0 for every duration: every take reverts, redo cannot recover, and
-            // all collateral in auction is unsellable until a nonzero tau is filed (audit M-8). Maker's
-            // LinearDecrease has the identical missing guard; refusing the value is strictly safer.
+            // all collateral in auction is unsellable until a nonzero tau is filed.
             if (data == 0) {
                 _revert(InvalidAmount.selector);
             }

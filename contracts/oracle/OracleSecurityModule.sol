@@ -19,12 +19,9 @@ import { _revert } from "../shared/Globals.sol";
  *         (which the system uses) and the next one (which becomes current after the delay). A single deployed instance
  *         serves every priced collateral: tokens are registered dynamically, each with its own price source.
  *
- *         The delay is a HARD bound (audit M-4): the last poke's exact timestamp is stored unsnapped, so the next
- *         poke is only accepted a full {HOP} after the previous one. A price entering `nxt` therefore always resides
- *         there for at least {HOP} before it can be promoted to `cur` — there is no boundary alignment and no
- *         one-second worst case. (Maker's OSM snaps the poke time down to the HOP boundary, making its real
- *         worst-case residency one second; USDR has no legacy keeper fleet whose cadence that alignment would
- *         preserve, so the stronger guarantee is free.)
+ *         The delay is a HARD bound: the last poke's exact timestamp is stored unsnapped, so the next poke is only
+ *         accepted a full {HOP} after the previous one. A price entering `nxt` therefore always resides there for at
+ *         least {HOP} before it can be promoted to `cur`. There is no boundary alignment and no one-second worst case.
  * @dev A single multi-collateral module keyed by ilk identifier. The per-ilk price source is any {IPriceSource}
  *      implementation, such as a dedicated Uniswap time-weighted average wrapper, a Chainlink feed wrapper, or any
  *      future adapter, so the module never needs to know what kind of oracle backs a token. Sources are switchable by
@@ -140,9 +137,9 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
             ilk.cur = ilk.nxt;
             ilk.nxt = Feed(uint128(uint256(wut)), 1);
 
-            // Stored UNSNAPPED (audit M-4): snapping down to the HOP boundary (Maker parity) would let a poke at
-            // boundary+1799 be followed one second later, collapsing the guaranteed nxt->cur residency to 1 second.
-            // The exact timestamp makes {HOP} a hard minimum interval between pokes.
+            // Stored UNSNAPPED: snapping down to the HOP boundary would let a poke at boundary+1799 be followed one
+            // second later, collapsing the guaranteed nxt->cur residency to 1 second. The exact timestamp makes {HOP}
+            // a hard minimum interval between pokes.
             ilk.delay = uint64(block.timestamp);
 
             emit Poke({ ilkId: ilkId, current: ilk.cur.val, next: ilk.nxt.val });

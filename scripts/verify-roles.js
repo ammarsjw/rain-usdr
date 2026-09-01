@@ -3,7 +3,7 @@ const hardhat = require("hardhat");
 const { BURNER_ROLE, COMMITTER_ROLE, READER_ROLE, RECORDER_ROLE, WARD_ROLE } = require("./helpers/shared/constants");
 
 /**
- * Verifies the post-deployment access-control surface (audit C-3):
+ * Verifies the post-deployment access-control surface:
  * - The Governor is a WARD_ROLE holder on every deployed contract.
  * - The deployer holds WARD_ROLE nowhere.
  * - Role-specific holders (BURNER, COMMITTER, RECORDER, READER) are exactly the expected contracts.

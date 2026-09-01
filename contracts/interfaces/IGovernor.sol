@@ -123,8 +123,8 @@ interface IGovernor {
 
     /**
      * @notice Halts every pausable operation during an emergency.
-     * @dev Deliberately unscoped: every consumer reads the same {paused} boolean, so a pause is always a full stop
-     *      (audit M-3 — a recorded-but-unenforced scope was removed). Auto-expires after 72 hours.
+     * @dev Deliberately unscoped: every consumer reads the same {paused} boolean, so a pause is always a full stop.
+     *      Auto-expires after 72 hours.
      */
     function pause() external;
 

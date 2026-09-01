@@ -19,8 +19,7 @@ import { _revert } from "../shared/Globals.sol";
  *      never be shortened or removed by a compromised governance key. The pause auto-expires after 72 hours, that is
  *      {paused} returns false once the window elapses even without an {unpause} call. The pause is deliberately
  *      UNSCOPED: every consumer reads the same boolean, so a pause always halts everything that is pausable. A scoped
- *      pause was considered and removed (audit M-3) — recording a scope that no consumer enforces gives governance a
- *      scalpel-shaped handle on a sledgehammer, which is how a "PSM-only" pause silently freezes liquidations too.
+ *      pause was considered and removed, which is how a "PSM-only" pause silently freezes liquidations too.
  */
 contract Governor is IGovernor, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -155,7 +154,7 @@ contract Governor is IGovernor, AccessControl {
             _revert(AlreadyPaused.selector);
         }
 
-        // NOTE: a ward can re-pause after expiry (or after an early unpause), chaining windows beyond 72 hours. The
+        // NOTE: A ward can re-pause after expiry (or after an early unpause), chaining windows beyond 72 hours. The
         // auto-expiry bounds a SINGLE pause, not governance's total authority; repeated pauses are visible on-chain
         // and are a matter for governance process, not contract code.
         _paused = true;

@@ -1,7 +1,7 @@
 const hardhat = require("hardhat");
 
 /**
- * Verifies the post-deployment risk-parameter surface (audit L-6).
+ * Verifies the post-deployment risk-parameter surface.
  *
  * Complements verify-roles.js (access control) with a systemic gate against the recurring
  * "correct code, never configured" class (rev-2 hump, rev-4 exposureCap, rev-5 buybackReceiver):
@@ -86,7 +86,7 @@ const verifyConfig = async () => {
 
     assertEq("VaultEngine.ilks(RAIN-A).dust", (await vaultEngine.ilks(rainIlk)).dust, 100n * RAD);
 
-    // C-1 invariant: every PSM stable ilk is permanently fee-exempt; the volatile ilk is not.
+    // Invariant: every PSM stable ilk is permanently fee-exempt; the volatile ilk is not.
     assertEq("VaultEngine.noFee(USDT-A)", await vaultEngine.noFee(usdtIlk), true);
     assertEq("VaultEngine.noFee(USDC-A)", await vaultEngine.noFee(usdcIlk), true);
     assertEq("VaultEngine.noFee(RAIN-A)", await vaultEngine.noFee(rainIlk), false);

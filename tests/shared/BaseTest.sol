@@ -22,7 +22,17 @@ import { PegStabilityModule } from "../../contracts/reserve/PegStabilityModule.s
 import { ReserveAccounting } from "../../contracts/reserve/ReserveAccounting.sol";
 import { SolvencyEngine } from "../../contracts/reserve/SolvencyEngine.sol";
 import { End } from "../../contracts/governance/End.sol";
-import { _BURNER_ROLE, _COMMITTER_ROLE, _RAD, _RAY, _READER_ROLE, _RECORDER_ROLE, _USDR_ILK, _WAD, _WARD_ROLE } from "../../contracts/shared/Constants.sol";
+import {
+    _BURNER_ROLE,
+    _COMMITTER_ROLE,
+    _RAD,
+    _RAY,
+    _READER_ROLE,
+    _RECORDER_ROLE,
+    _USDR_ILK,
+    _WAD,
+    _WARD_ROLE
+} from "../../contracts/shared/Constants.sol";
 
 import { MockERC20 } from "../mocks/MockERC20.sol";
 import { MockPriceSource } from "../mocks/MockPriceSource.sol";

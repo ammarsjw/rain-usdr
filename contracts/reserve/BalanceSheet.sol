@@ -184,10 +184,10 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         uint256 badDebt = VAULT_ENGINE.sin(address(this));
 
         // Unqueued bad debt must be healed before any distribution. This is a routine keeper race (a liquidation
-        // window always carries some sin), not an error, so it no-ops instead of reverting (audit M-6) — the same
-        // philosophy as the below-target case: keepers retry, automation stays quiet, nothing is lost. When the
-        // queue exceeds the engine sin (a fess without matched engine debt), unqueued debt is zero and the queue
-        // reservation below still holds back the full queued amount.
+        // window always carries some sin), not an error, so it no-ops instead of reverting which is the same
+        // philosophy as the below-target case: keepers retry, automation stays quiet, nothing is lost. When the queue
+        // exceeds the engine sin (a fess without matched engine debt), unqueued debt is zero and the queue reservation
+        // below still holds back the full queued amount.
         if (badDebt > totalQueuedSin) {
             return 0;
         }
@@ -195,14 +195,14 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         uint256 target = humpTarget();
 
         // Queued sin cannot be healed yet, but it is real bad debt: the surplus that will heal it once the queue
-        // releases must never be shipped out. It is reserved on top of the buffer target (audit M-6).
+        // releases must never be shipped out. It is reserved on top of the buffer target.
         target += totalQueuedSin;
 
-        // Reserve-backing assertion (audit H-3): every fee-exempt (PSM stable) ilk's debt is the bookkeeping
-        // counterpart of stablecoins in the reserve, so the reserve must cover that debt before ANY surplus leaves
-        // the protocol. A shortfall means unbacked USDR was minted somewhere (e.g. a fee accrued on a stable ilk):
-        // distributing in that state converts the hole into permanently burned RAIN. Unlike the cases above this is
-        // a genuine alarm, not a keeper race, so it reverts loudly.
+        // Reserve-backing assertion: every fee-exempt (PSM stable) ilk's debt is the bookkeeping counterpart of
+        // stablecoins in the reserve, so the reserve must cover that debt before ANY surplus leaves the protocol. A
+        // shortfall means unbacked USDR was minted somewhere (e.g. a fee accrued on a stable ilk): distributing in
+        // that state converts the hole into permanently burned RAIN. Unlike the cases above this is a genuine alarm,
+        // not a keeper race, so it reverts loudly.
         if (address(reserveAccounting) != address(0)) {
             uint256 stableDebt;
             uint256 length = VAULT_ENGINE.ilkIdsLength();
@@ -250,8 +250,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
 
         VAULT_ENGINE.move(address(this), buybackReceiver, excess);
 
-        // Refreshing the lagged reserve snapshot AFTER the distribution (audit M-5): the snapshot a distribution is
-        // measured against is always at least {_RESERVE_LAG} old, so a redeem-shrink-distribute round trip inside one
+        // Refreshing the lagged reserve snapshot AFTER the distribution: the snapshot a distribution is measured
+        // against is always at least {_RESERVE_LAG} old, so a redeem-shrink-distribute round trip inside one
         // transaction (or one snapshot window) cannot lower the target it faces.
         _snapshotReserve();
 
@@ -267,8 +267,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
 
     /**
      * @dev Records the current total reserve as the lagged snapshot, at most once per {_RESERVE_LAG}. Permissionless
-     *      via {snapshotReserve} (keepers keep it fresh) and called after every distribution. Because the snapshot
-     *      can only move once per lag window, a distribution never faces a target shrunk by same-window PSM outflow.
+     *      via {snapshotReserve} (keepers keep it fresh) and called after every distribution. Because the snapshot can
+     *      only move once per lag window, a distribution never faces a target shrunk by same-window PSM outflow.
      */
     function _snapshotReserve() private {
         if (block.timestamp >= laggedReserveAt + _RESERVE_LAG && address(reserveAccounting) != address(0)) {
@@ -284,11 +284,11 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
      */
     function humpTarget() public view returns (uint256 target) {
         // Dynamic buffer target: the greater of the static floor and `humpRate` of the total stable reserve. The
-        // reserve is tracked in wad, the buffer in rad, so the rate product is scaled up by RAY.
-        // The dynamic term reads the LARGER of the live reserve and a snapshot at least {_RESERVE_LAG} old (audit
-        // M-5): `totalReserve` moves with permissionless PSM flows, so without the lag a user could redeem first,
-        // shrink the target, and drain more surplus in the same transaction. Growing the target (selling stables in)
-        // takes effect immediately — only shrinking it is lagged. The floor remains the authoritative lower bound.
+        // reserve is tracked in wad, the buffer in rad, so the rate product is scaled up by RAY. The dynamic term
+        // reads the LARGER of the live reserve and a snapshot at least {_RESERVE_LAG} old : `totalReserve` moves with
+        // permissionless PSM flows, so without the lag a user could redeem first, shrink the target, and drain more
+        // surplus in the same transaction. Growing the target (selling stables in) takes effect immediately and only
+        // shrinking it is lagged. The floor remains the authoritative lower bound.
         target = humpFloor;
 
         if (address(reserveAccounting) != address(0)) {

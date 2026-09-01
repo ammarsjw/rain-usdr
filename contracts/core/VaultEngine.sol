@@ -9,7 +9,17 @@ import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { Math } from "../libraries/Math.sol";
 import { _RAY, _WARD_ROLE } from "../shared/Constants.sol";
-import { FeeRecipientNotSet, IlkAlreadyInitialized, InvalidAddress, InvalidAssignment, InvalidDuty, NotLive, SolvencyGateActive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
+import {
+    FeeRecipientNotSet,
+    IlkAlreadyInitialized,
+    InvalidAddress,
+    InvalidAssignment,
+    InvalidDuty,
+    NotLive,
+    SolvencyGateActive,
+    SystemPaused,
+    UnrecognizedParameter
+} from "../shared/Errors.sol";
 import { Cage, Drip } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -29,10 +39,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
     /* ========================== CONSTANTS ========================== */
 
     /// @dev Upper bound on a per-second stability-fee factor `duty` [ray]: `2^(1/31536000)` scaled to ray, i.e.
-    ///      exactly 100% APY — double the highest stability fee Maker governance has ever come near (~50% APY).
-    ///      Bounding `duty` at file time is what stops a single fat-fingered value (audit H-2: e.g. 1.5e27 intending
-    ///      1.0000000015e27) from making `rpow` overflow minutes later, after which `drip` reverts forever and every
-    ///      vault in the ilk becomes unrepayable. Any value this bound accepts stays computable for centuries.
+    ///      exactly 100% APY. Bounding `duty` at file time is what stops a single fat-fingered value from making
+    ///      `rpow` overflow minutes later, after which `drip` reverts forever and every vault in the ilk becomes
+    ///      unrepayable. Any value this bound accepts stays computable for centuries.
     uint256 private constant _MAX_DUTY = 1000000021979553151239153027;
 
     /* ========================== STATE VARIABLES ========================== */
@@ -199,8 +208,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
         } else if (what == "dust") {
             ilks[ilkId].dust = data;
         } else if (what == "duty") {
-            // The collateral type must have been initialized. Checked explicitly: the drip below used to provide
-            // this guard, but it is now non-fatal and would swallow the revert.
+            // The collateral type must have been initialized. Checked explicitly: the drip below used to provide this
+            // guard, but it is now non-fatal and would swallow the revert.
             if (ilks[ilkId].rate == 0) {
                 _revert(IlkNotInitialized.selector);
             }
@@ -209,26 +218,25 @@ contract VaultEngine is IVaultEngine, AccessControl {
                 _revert(InvalidDuty.selector);
             }
 
-            // Upper bound (audit H-2): an unbounded duty (e.g. a fat-fingered 1.5e27 = 50%/second) makes `rpow`
-            // overflow within minutes, after which drip reverts forever and every vault in the ilk becomes
-            // unrepayable. Bounding at file time keeps every accepted duty safely computable for centuries.
+            // Upper bound: an unbounded duty (e.g. a fat-fingered 1.5e27 = 50%/second) makes `rpow` overflow within
+            // minutes, after which drip reverts forever and every vault in the ilk becomes unrepayable. Bounding at
+            // file time keeps every accepted duty safely computable for centuries.
             if (data > _MAX_DUTY) {
                 _revert(InvalidDuty.selector);
             }
 
-            // Fee-exempt guard (audit C-1): stable (PSM) ilks must never accrue a stability fee. The PSM moves debt
-            // 1:1 with its stable inventory and holds no internal USDR, so ANY rate above RAY strands the entire
-            // reserve (redemptions underflow, deposits fail the safety check) and mints unbacked surplus. Maker
-            // guarantees this structurally by never Jug.init-ing a PSM ilk; this mapping restores that invariant.
+            // Fee-exempt guard: stable (PSM) ilks must never accrue a stability fee. The PSM moves debt 1:1 with its
+            // stable inventory and holds no internal USDR, so ANY rate above RAY strands the entire reserve
+            // (redemptions underflow, deposits fail the safety check) and mints unbacked surplus.
             if (noFee[ilkId] && data != _RAY) {
                 _revert(InvalidDuty.selector);
             }
 
-            // Accrue at the OLD duty first: a duty change must never apply retroactively over the elapsed window.
-            // The drip is non-fatal (audit H-2): if accrual itself reverts (e.g. rpow overflow from a legacy bad
-            // duty), governance must still be able to file a sane duty as the escape hatch — a reverting drip must
-            // never lock the one parameter that can fix it. The skipped window then accrues at the NEW duty, which
-            // is the acceptable cost of keeping the ilk recoverable.
+            // Accrue at the OLD duty first: a duty change must never apply retroactively over the elapsed window. The
+            // drip is non-fatal: if accrual itself reverts (e.g. rpow overflow from a legacy bad duty), governance
+            // must still be able to file a sane duty as the escape hatch and a reverting drip must never lock the one
+            // parameter that can fix it. The skipped window then accrues at the NEW duty, which is the acceptable cost
+            // of keeping the ilk recoverable.
             try this.drip(ilkId) {} catch {}
 
             ilks[ilkId].duty = data;
@@ -353,9 +361,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @inheritdoc IVaultEngine
      */
     function cage() external onlyRole(_WARD_ROLE) {
-        // Settle every ilk's accrued fees BEFORE freezing (audit M-1): rates are frozen at cage time, so any fee
-        // still undripped here would be silently forgiven — every vault would settle against less debt than it owes
-        // and the shortfall would land on redeemers through a lower redemption price. Dripping in the contract
+        // Settle every ilk's accrued fees BEFORE freezing: rates are frozen at cage time, so any fee still undripped
+        // here would be silently forgiven, which would make it so every vault would settle against less debt than it
+        // owes and the shortfall would land on redeemers through a lower redemption price. Dripping in the contract
         // (rather than trusting a shutdown spell to remember) makes the settlement accounting exact by construction.
         // Each drip is non-fatal so one pathological ilk can never block the emergency shutdown itself.
         uint256 length = ilkIds.length;
@@ -425,11 +433,10 @@ contract VaultEngine is IVaultEngine, AccessControl {
         bytes32 ilkId = ilkOf[vaultId];
 
         // Accrue the stability fee before ANY vault change so tab and dtab are computed at the current rate: the
-        // stale-rate window is impossible by construction. Unconditional (audit H-1): a pure collateral withdrawal
-        // (dink < 0, dart == 0) prices the safety check with `tab = art * rate`, and a stale rate there understates
-        // the debt by the entire undripped accrual — the one branch where staleness authorizes extra risk. drip
-        // itself reverts on an uninitialized ilk and is idempotent within a block, so the extra call costs one warm
-        // read when already fresh.
+        // stale-rate window is impossible by construction. Unconditional: a pure collateral withdrawal (dink < 0,
+        // dart == 0) prices the safety check with `tab = art * rate`, and a stale rate there understates the debt by
+        // the entire undripped accrual. drip itself reverts on an uninitialized ilk and is idempotent within a block,
+        // so the extra call costs one warm read when already fresh.
         drip(ilkId);
 
         Urn memory urn = urns[vaultId];

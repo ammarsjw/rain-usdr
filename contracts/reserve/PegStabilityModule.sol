@@ -16,7 +16,14 @@ import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _USDR_ILK, _WARD_ROLE } from "../shared/Constants.sol";
-import { IlkAlreadyInitialized, InvalidAddress, InvalidAmount, SolvencyGateActive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
+import {
+    IlkAlreadyInitialized,
+    InvalidAddress,
+    InvalidAmount,
+    SolvencyGateActive,
+    SystemPaused,
+    UnrecognizedParameter
+} from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -105,11 +112,10 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(InvalidAddress.selector);
         }
 
-        // The ilk must be permanently fee-exempt with a clean rate (audit C-1): the PSM's 1:1 accounting is only
-        // sound at `rate == RAY`. Any accrued fee makes redemptions underflow the module's zero internal balance and
-        // deposits fail the safety check, stranding the entire stable reserve, while the accrual itself mints
-        // unbacked surplus. Requiring the exemption AT REGISTRATION means no later governance action can arm a fee
-        // on a PSM ilk — the same invariant Maker gets structurally by never Jug.init-ing a PSM ilk.
+        // The ilk must be permanently fee-exempt with a clean rate: the PSM's 1:1 accounting is only sound at
+        // `rate == RAY`. Any accrued fee makes redemptions underflow the module's zero internal balance and deposits
+        // fail the safety check, stranding the entire stable reserve, while the accrual itself mints unbacked surplus.
+        // Requiring the exemption AT REGISTRATION means no later governance action can arm a fee on a PSM ilk.
         (, , uint256 rate, , , , uint256 duty, ) = VAULT_ENGINE.ilks(ilkId);
 
         if (!VAULT_ENGINE.noFee(ilkId) || rate != _RAY || duty != _RAY) {
@@ -161,9 +167,9 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(SystemPaused.selector);
         }
 
-        // Defense-in-depth (audit C-1): the 1:1 frob below is only correct at `rate == RAY`. The fee exemption
-        // enforced at init makes this unreachable; if it is ever observed the module mis-accounts on every leg, so
-        // failing loudly beats corrupting the reserve accounting.
+        // Defense-in-depth: the 1:1 frob below is only correct at `rate == RAY`. The fee exemption enforced at init
+        // makes this unreachable; if it is ever observed the module mis-accounts on every leg, so failing loudly beats
+        // corrupting the reserve accounting.
         _requireRatePar(ilkId);
 
         // Exactly 1:1: the user receives stableAmt18 USDR for stableAmt stablecoins. No fee.
@@ -215,7 +221,7 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             }
         }
 
-        // Defense-in-depth (audit C-1): the 1:1 frob below is only correct at `rate == RAY`.
+        // Defense-in-depth: the 1:1 frob below is only correct at `rate == RAY`.
         _requireRatePar(ilkId);
 
         // Exactly 1:1: the user pays stableAmt18 USDR for stableAmt stablecoins. No fee.
@@ -239,8 +245,8 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
     }
 
     /**
-     * @dev Reverts unless the ilk's debt multiplier is exactly RAY. The module's 1:1 vault accounting is only sound
-     *      at par; see the C-1 guards in {init} and {VaultEngine.exemptFee}.
+     * @dev Reverts unless the ilk's debt multiplier is exactly RAY. The module's 1:1 vault accounting is only sound at
+     *      par; see the guards in {init} and {VaultEngine.exemptFee}.
      * @param ilkId Identifier of the stable collateral type.
      */
     function _requireRatePar(bytes32 ilkId) private view {

@@ -92,10 +92,10 @@ contract PriceConverter is IPriceConverter, AccessControl {
         }
 
         if (what == "par") {
-            // par == 0 would make poke revert on division for every ilk, freezing all spots at their last values —
-            // the dangerous direction, since a stale spot keeps authorizing mints (audit L-2). And because file
-            // requires live == 1, a zeroed par could never be repaired after cage. Guarding here matches the
-            // contract's own standard elsewhere (MatBelowOne, WouldOrphanIlk).
+            // `par == 0` would make poke revert on division for every ilk, freezing all spots at their last values
+            // since a stale spot keeps authorizing mints. And because file requires live == 1, a zeroed par could
+            // never be repaired after cage. Guarding here matches the contract's own standard elsewhere (MatBelowOne,
+            // WouldOrphanIlk).
             if (data == 0) {
                 _revert(InvalidAmount.selector);
             }
