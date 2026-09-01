@@ -209,10 +209,10 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(SystemPaused.selector);
         }
 
-        // Solvency gate: redemption DECREASES the reserve, so it is blocked while the invariant is breached. The
-        // invariant is recomputed HERE, at redemption time, rather than trusting the keeper-maintained flag: a stable
-        // flag (keeper down during a price collapse) would otherwise hand early redeemers a bank-run ordering
-        // advantage, letting them exit whole at par against a stale escrow while a live loss stands.
+        // Solvency gate (HARD breach): redemption DECREASES the reserve, so it is blocked while the invariant is
+        // breached. The invariant is recomputed HERE, at redemption time, rather than trusting the keeper-maintained
+        // flag: a stable flag (keeper down during a price collapse) would otherwise hand early redeemers a bank-run
+        // ordering advantage, letting them exit whole at par against a stale escrow while a live loss stands.
         if (solvencyEngine != address(0)) {
             ISolvencyEngine(solvencyEngine).checkInvariant();
 
