@@ -22,17 +22,7 @@ import { PegStabilityModule } from "../../contracts/reserve/PegStabilityModule.s
 import { ReserveAccounting } from "../../contracts/reserve/ReserveAccounting.sol";
 import { SolvencyEngine } from "../../contracts/reserve/SolvencyEngine.sol";
 import { End } from "../../contracts/governance/End.sol";
-import {
-    _BURNER_ROLE,
-    _COMMITTER_ROLE,
-    _RAD,
-    _RAY,
-    _READER_ROLE,
-    _RECORDER_ROLE,
-    _USDR_ILK,
-    _WAD,
-    _WARD_ROLE
-} from "../../contracts/shared/Constants.sol";
+import { _BURNER_ROLE, _COMMITTER_ROLE, _RAD, _RAY, _READER_ROLE, _RECORDER_ROLE, _USDR_ILK, _WAD, _WARD_ROLE } from "../../contracts/shared/Constants.sol";
 
 import { MockERC20 } from "../mocks/MockERC20.sol";
 import { MockPriceSource } from "../mocks/MockPriceSource.sol";
@@ -113,6 +103,10 @@ abstract contract BaseTest is Test {
         vaultEngine.init(RAIN_ILK);
         vaultEngine.init(USDT_ILK);
         vaultEngine.init(USDC_ILK);
+
+        // Permanently pinning the stable (PSM) ilks' stability fee to zero (audit C-1). PSM.init requires this.
+        vaultEngine.exemptFee(USDT_ILK);
+        vaultEngine.exemptFee(USDC_ILK);
 
         // Deploying the PSMs and the Governor.
         psm = new PegStabilityModule(collateralAdapter, reserveAccounting);

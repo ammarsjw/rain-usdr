@@ -66,6 +66,12 @@ interface IVaultEngine {
     event Init(bytes32 indexed ilkId);
 
     /**
+     * @dev Emitted when a collateral type is permanently marked fee-exempt (its `duty` pinned to RAY).
+     * @param ilkId Identifier of the collateral type.
+     */
+    event ExemptFee(bytes32 indexed ilkId);
+
+    /**
      * @dev Emitted when a new vault is opened.
      * @param ilkId Identifier of the collateral type the vault is bound to.
      * @param owner Owner of the new vault.
@@ -230,6 +236,34 @@ interface IVaultEngine {
      * @param ilkId Identifier of the collateral type.
      */
     function init(bytes32 ilkId) external;
+
+    /**
+     * @notice Permanently marks a collateral type fee-exempt: filing any `duty` other than RAY on it reverts from
+     *         then on. Required for every PSM (stable) ilk — the PSM's 1:1 accounting is only sound at `rate == RAY`,
+     *         and any accrued fee would strand the stable reserve and mint unbacked surplus.
+     * @dev Only governance can call this. One-way: there is deliberately no un-exempt path. Reverts if the ilk is
+     *      uninitialized or if its rate or duty has already left RAY (the invariant it pins is already broken).
+     * @param ilkId Identifier of the collateral type.
+     */
+    function exemptFee(bytes32 ilkId) external;
+
+    /**
+     * @notice Returns whether a collateral type is fee-exempt (its `duty` permanently pinned to RAY).
+     * @param ilkId Identifier of the collateral type.
+     */
+    function noFee(bytes32 ilkId) external view returns (bool);
+
+    /**
+     * @notice Returns the registered collateral type identifier at `index`. Ilks are appended at {init} and never
+     *         removed; the array lets {cage} (and off-chain consumers) enumerate every ilk.
+     * @param index Position in the registration order.
+     */
+    function ilkIds(uint256 index) external view returns (bytes32);
+
+    /**
+     * @notice Returns the number of registered collateral types.
+     */
+    function ilkIdsLength() external view returns (uint256);
 
     /**
      * @notice Accrues the stability fee for a collateral type: compounds `duty` over the time elapsed since the last

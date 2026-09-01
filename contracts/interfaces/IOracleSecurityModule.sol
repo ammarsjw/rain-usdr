@@ -101,6 +101,10 @@ interface IOracleSecurityModule {
 
     /**
      * @notice Freezes a collateral's price updates.
+     * @dev CAUTION (audit L-3): stop blocks {poke} only; {peek}/{read} keep serving the LAST STORED price as live
+     *      (`has == true`), so consumers continue trusting a frozen value. Use stop when the stored price is trusted
+     *      and updates must halt (e.g. source maintenance). For a suspected-compromised feed use {void}, which is
+     *      fail-closed: it wipes the stored prices so consumers value the collateral at zero.
      * @param ilkId Identifier of the collateral type.
      */
     function stop(bytes32 ilkId) external;

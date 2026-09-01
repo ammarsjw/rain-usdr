@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 
 import { IOracleSecurityModule } from "../contracts/interfaces/IOracleSecurityModule.sol";
 import { IPriceConverter } from "../contracts/interfaces/IPriceConverter.sol";
-import { InvalidAddress, NotLive } from "../contracts/shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, NotLive } from "../contracts/shared/Errors.sol";
 import { _RAY, _READER_ROLE } from "../contracts/shared/Constants.sol";
 
 import { BaseTest } from "./shared/BaseTest.sol";
@@ -44,24 +44,33 @@ contract OracleTest is BaseTest {
         osm.poke(RAIN_ILK);
     }
 
-    function test_osmWorstCaseDelayIsOneSecondAtBoundary() public {
-        // M-1 (documented): a poke at boundary+1799 permits the next poke one second later. This is the exact
-        // behaviour SLAs must be sized to; the test pins it so any future change is deliberate.
+    function test_osmDelayIsHardBoundEvenAtBoundary() public {
+        // Audit M-4 (fixed): the poke timestamp is stored UNSNAPPED, so a poke landing at the very end of a window
+        // (boundary + 1799) does NOT permit another poke one second later. The minimum nxt->cur residency is a hard
+        // {HOP}, and SLAs may be sized to the full 30 minutes.
         _warpToBoundary(1799);
         rainPriceSource.setPrice(1e18);
         osm.poke(RAIN_ILK);
 
+        // One second later (the old worst case): rejected.
         vm.warp(vm.getBlockTimestamp() + 1);
         rainPriceSource.setPrice(9e18); // Manipulated price...
-        osm.poke(RAIN_ILK); // ...accepted one second later.
+        vm.expectRevert(IOracleSecurityModule.NotPassed.selector);
+        osm.poke(RAIN_ILK); // ...must wait the full HOP.
 
-        // And it is already promoted to cur (the previous nxt was the $1 price poked one second ago; cur is what the
-        // FIRST poke queued, read both to pin the exact promotion semantics).
-        (bytes32 curVal, bool has) = osm.peek(RAIN_ILK);
-        assertTrue(has, "cur valid");
+        // HOP - 1 seconds after the first poke: still rejected.
+        vm.warp(vm.getBlockTimestamp() + 1798);
+        vm.expectRevert(IOracleSecurityModule.NotPassed.selector);
+        osm.poke(RAIN_ILK);
+
+        // Exactly HOP after the first poke: accepted, and only now is the manipulated price queued in nxt.
+        vm.warp(vm.getBlockTimestamp() + 1);
+        osm.poke(RAIN_ILK);
 
         (bytes32 nxtVal, ) = osm.peep(RAIN_ILK);
-        assertEq(uint256(nxtVal), 9e18, "manipulated price is one promotion away after 1 second");
+        assertEq(uint256(nxtVal), 9e18, "manipulated price spent zero seconds shortcutting the window");
+
+        (bytes32 curVal, ) = osm.peek(RAIN_ILK);
         assertEq(uint256(curVal), 1e18, "prior price current");
     }
 
@@ -210,6 +219,17 @@ contract OracleTest is BaseTest {
 
         vm.expectRevert(NotLive.selector);
         priceConverter.file("par", _RAY);
+    }
+
+    function test_parZeroRejected() public {
+        // Audit L-2: par == 0 would brick poke for every ilk (division by par), freezing all spots at their last
+        // values — the dangerous direction — and file's live-gate means it could never be repaired after a cage.
+        vm.expectRevert(InvalidAmount.selector);
+        priceConverter.file("par", 0);
+
+        // Sane values still pass and poke keeps working.
+        priceConverter.file("par", _RAY);
+        priceConverter.poke(USDT_ILK);
     }
 
     /* ========================== 3. FUZZ ========================== */

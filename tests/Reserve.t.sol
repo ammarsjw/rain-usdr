@@ -6,10 +6,13 @@ import { IBalanceSheet } from "../contracts/interfaces/IBalanceSheet.sol";
 import { IPegStabilityModule } from "../contracts/interfaces/IPegStabilityModule.sol";
 import { IReserveAccounting } from "../contracts/interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../contracts/interfaces/ISolvencyEngine.sol";
-import { InvalidAmount, SolvencyGateActive, UnrecognizedParameter } from "../contracts/shared/Errors.sol";
-import { _RAD, _RAY, _WAD } from "../contracts/shared/Constants.sol";
+import { InvalidAmount, InvalidDuty, SolvencyGateActive, UnrecognizedParameter } from "../contracts/shared/Errors.sol";
+import { _RAD, _RAY, _RECORDER_ROLE, _WAD } from "../contracts/shared/Constants.sol";
+
+import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import { BaseTest } from "./shared/BaseTest.sol";
+import { MockERC20 } from "./mocks/MockERC20.sol";
 import { MockExternalExposure } from "./mocks/MockExternalExposure.sol";
 
 /* ========================== BALANCE SHEET ========================== */
@@ -106,13 +109,37 @@ contract BalanceSheetTest is BaseTest {
 
     /* ========================== 3. SURPLUS DISTRIBUTION ========================== */
 
-    function test_distributeRevertsOnOutstandingBadDebt() public {
+    function test_distributeNoOpsOnUnqueuedBadDebt() public {
+        // Audit M-6 (fixed): unqueued sin (e.g. a suck keeper reward) is a routine keeper race, so distribution
+        // no-ops (Maker-consistent) instead of hard-reverting and alarming automation through every liquidation.
         balanceSheet.file("buybackReceiver", address(0xB0B));
 
         vaultEngine.suck(address(balanceSheet), address(balanceSheet), 10 * _RAD);
 
-        vm.expectRevert(IBalanceSheet.OutstandingBadDebt.selector);
-        balanceSheet.distributeSurplus();
+        assertEq(balanceSheet.distributeSurplus(), 0, "no-op while unqueued sin outstanding");
+
+        // Healing the sin re-enables distribution of the remaining surplus (all of it: hump target is 0 here).
+        balanceSheet.heal(10 * _RAD);
+        vaultEngine.suck(address(this), address(balanceSheet), 5 * _RAD);
+
+        assertEq(balanceSheet.distributeSurplus(), 5 * _RAD, "distribution resumes once healed");
+    }
+
+    function test_distributeReservesQueuedSinInsteadOfBlocking() public {
+        // Audit M-6 (fixed): queued sin cannot be healed yet, but the surplus that will heal it must not leave.
+        // Instead of blocking ALL distribution for the whole wait window, the queued amount is reserved on top of
+        // the hump target and only the genuine excess ships.
+        balanceSheet.file("buybackReceiver", address(0xB0B));
+        balanceSheet.file("wait", 1 days);
+
+        // 30 surplus on the sheet; 10 of queued bad debt arrives via fess (no matched engine sin needed for the
+        // reservation logic itself — fess only books the queue).
+        vaultEngine.suck(address(this), address(balanceSheet), 30 * _RAD);
+        balanceSheet.fess(10 * _RAD);
+
+        // Note: fess books queue-side only; engine sin for the balance sheet is what distribute reads as badDebt.
+        // Here badDebt == 0 but totalQueuedSin == 10: the queued amount is still reserved.
+        assertEq(balanceSheet.distributeSurplus(), 20 * _RAD, "only surplus above the queued reservation ships");
     }
 
     function test_distributeRequiresReceiver() public {
@@ -718,5 +745,167 @@ contract ReserveAuditTest is BaseTest {
         uint256 excess = balanceSheet.distributeSurplus();
         assertEq(excess, 15 * _RAD, "excess above target released");
         assertEq(vaultEngine.usdr(address(0xB0B)), 15 * _RAD, "receiver credited");
+    }
+
+    /* ========================== 5. PSM FEE EXEMPTION (C-1) ========================== */
+
+    function test_dutyOnStableIlkIsRejected() public {
+        // Audit C-1: the PSM's 1:1 accounting is only sound at rate == RAY. The stable ilks are fee-exempt from
+        // BaseTest wiring (as in deploy), so ANY duty above RAY — including the minimal RAY + 1 — must be rejected.
+        vm.expectRevert(InvalidDuty.selector);
+        vaultEngine.file(USDT_ILK, "duty", _RAY + 1);
+
+        vm.expectRevert(InvalidDuty.selector);
+        vaultEngine.file(USDC_ILK, "duty", 1000000001547125957863212448);
+
+        // Refiling the zero-fee duty is a legal no-op.
+        vaultEngine.file(USDT_ILK, "duty", _RAY);
+    }
+
+    function test_psmRoundTripStaysExactAfterYearsAndDrips() public {
+        // Audit C-1 (the measured blast radius, inverted): with the exemption in place, drips over long horizons
+        // must leave the PSM's round trip bit-exact — the audit's broken scenario redeemed 0 of 100,000.
+        _sellUsdt(user, 100_000e6);
+
+        skip(3650 days);
+
+        vaultEngine.drip(USDT_ILK);
+
+        (, , uint256 rate, , , , , ) = vaultEngine.ilks(USDT_ILK);
+        assertEq(rate, _RAY, "stable rate pinned at RAY after 10 years");
+
+        // Full redemption succeeds to the last unit.
+        vm.startPrank(user);
+        usdr.approve(address(psm), 100_000e18);
+        psm.buyStable(USDT_ILK, user, 100_000e6);
+        vm.stopPrank();
+
+        assertEq(usdt.balanceOf(user), 100_000e6, "100% redeemable");
+        assertEq(reserveAccounting.totalReserve(), 0, "reserve fully unwound");
+    }
+
+    function test_psmInitRequiresFeeExemptIlk() public {
+        // A new stable ilk that is NOT fee-exempt must be refused by PSM.init: registration is where the C-1
+        // invariant is anchored, so it can never be forgotten in a later deploy.
+        MockERC20 dai = new MockERC20("Dai", "DAI", 18);
+        bytes32 daiIlk = "DAI-A";
+
+        collateralAdapter.init(daiIlk, IERC20Metadata(address(dai)));
+        vaultEngine.init(daiIlk);
+
+        vm.expectRevert(IPegStabilityModule.StableIlkNotFeeExempt.selector);
+        psm.init(daiIlk);
+
+        // Exempting it makes registration pass.
+        vaultEngine.exemptFee(daiIlk);
+        psm.init(daiIlk);
+
+        (, , uint256 vaultId) = psm.ilks(daiIlk);
+        assertGt(vaultId, 0, "registered once exempt");
+    }
+
+    /* ========================== 6. RESERVE BACKING NET (H-3) ========================== */
+
+    function test_distributeRevertsWhenReserveNoLongerBacksStableDebt() public {
+        // Audit H-3 (system-level net): if the stable reserve ever stops covering the PSM ilks' debt — unbacked
+        // USDR exists — no surplus may leave toward the buyback. The primary C-1 guard makes the fee path
+        // unreachable, so the imbalance is simulated directly on the reserve ledger.
+        balanceSheet.file("reserveAccounting", address(reserveAccounting));
+        balanceSheet.file("buybackReceiver", address(0xB0B));
+
+        _sellUsdt(user, 1_000e6);
+
+        vaultEngine.suck(address(this), address(balanceSheet), 100 * _RAD);
+
+        // Healthy state distributes fine (hump target 0).
+        assertEq(balanceSheet.distributeSurplus(), 100 * _RAD, "backed distribution passes");
+
+        // The reserve shrinks with NO matching PSM debt change: stable debt (1000) > reserve (600).
+        reserveAccounting.grantRole(_RECORDER_ROLE, address(this));
+        reserveAccounting.recordDecrease(400e18);
+
+        vaultEngine.suck(address(this), address(balanceSheet), 50 * _RAD);
+
+        vm.expectRevert(IBalanceSheet.ReserveBackingShortfall.selector);
+        balanceSheet.distributeSurplus();
+
+        // Restoring the backing restores distribution.
+        reserveAccounting.recordIncrease(400e18);
+        assertEq(balanceSheet.distributeSurplus(), 50 * _RAD, "distribution resumes once backed");
+    }
+
+    /* ========================== 7. HUMP TARGET GAMING (M-5) ========================== */
+
+    function test_humpTargetCannotBeShrunkBySameWindowRedemption() public {
+        // Audit M-5: the dynamic hump term used to read the LIVE reserve, so redeem-shrink-distribute in one
+        // transaction lowered the target and drained extra surplus. The term now reads max(live, lagged snapshot).
+        balanceSheet.file("reserveAccounting", address(reserveAccounting));
+        balanceSheet.file("buybackReceiver", address(0xB0B));
+        balanceSheet.file("humpRate", _WAD / 10);
+
+        // Reserve 200k -> dynamic target 20k [rad]. Snapshot it (one lag window must have elapsed since genesis).
+        _sellUsdt(user, 200_000e6);
+        skip(1 days);
+        balanceSheet.snapshotReserve();
+        assertEq(balanceSheet.laggedReserve(), 200_000e18, "snapshot taken");
+
+        uint256 target = balanceSheet.humpTarget();
+        assertEq(target, 20_000e18 * _RAY, "10% of reserve");
+
+        // The attacker redeems 150k in the same window: the live reserve drops to 50k, but the target must not.
+        vm.startPrank(user);
+        usdr.approve(address(psm), 150_000e18);
+        psm.buyStable(USDT_ILK, user, 150_000e6);
+        vm.stopPrank();
+
+        assertEq(balanceSheet.humpTarget(), target, "target unchanged by same-window outflow");
+
+        // Surplus of 20,300: only 300 above the un-gamed target may leave.
+        vaultEngine.suck(address(this), address(balanceSheet), 20_300e18 * _RAY);
+        assertEq(balanceSheet.distributeSurplus(), 300e18 * _RAY, "drain capped by the lagged target");
+
+        // Growth takes effect immediately (max semantics): selling stables in RAISES the target with no lag
+        // (reserve 50k + 250k = 300k -> 30k target).
+        _sellUsdt(user, 250_000e6);
+        assertEq(balanceSheet.humpTarget(), 30_000e18 * _RAY, "growth is instant");
+
+        // Shrinkage only lands after the lag window, via a fresh snapshot (300k - 200k = 100k live).
+        vm.startPrank(user);
+        usdr.approve(address(psm), 200_000e18);
+        psm.buyStable(USDT_ILK, user, 200_000e6);
+        vm.stopPrank();
+
+        balanceSheet.snapshotReserve();
+        assertEq(balanceSheet.laggedReserve(), 200_000e18, "same-window snapshot refused");
+
+        skip(1 days);
+        balanceSheet.snapshotReserve();
+        assertEq(balanceSheet.laggedReserve(), 100_000e18, "shrinkage lands after the lag");
+        assertEq(balanceSheet.humpTarget(), 10_000e18 * _RAY, "target follows after the lag");
+    }
+
+    /* ========================== 8. EXPOSURE CAP SYMMETRIC GUARD (H-5) ========================== */
+
+    function test_exposureCapCannotBeZeroedWhileReporterWired() public {
+        // Audit H-5: rev-4 guarded the wiring call but not the cap setter — zeroing the cap afterwards restored the
+        // fail-open (reverting reporter -> exposure 0, honest report -> clamped to 0).
+        MockExternalExposure exposure = new MockExternalExposure();
+
+        solvencyEngine.file("exposureCap", 1_000e18);
+        solvencyEngine.file("externalExposure", address(exposure));
+
+        vm.expectRevert(ISolvencyEngine.ExposureCapNotSet.selector);
+        solvencyEngine.file("exposureCap", 0);
+
+        // The fail-open shape the guard prevents: a reverting reporter must keep falling back to a NONZERO cap.
+        exposure.setShouldRevert(true);
+        assertEq(solvencyEngine.worstCaseLoss(), 1_000e18, "fail-closed at the cap");
+
+        // Nonzero cap changes stay legal, and zero is accepted once the reporter is unwired first.
+        solvencyEngine.file("exposureCap", 500e18);
+        solvencyEngine.file("externalExposure", address(0));
+        solvencyEngine.file("exposureCap", 0);
+
+        assertEq(solvencyEngine.worstCaseLoss(), 0, "explicit two-step disable");
     }
 }

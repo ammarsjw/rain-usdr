@@ -19,13 +19,12 @@ import { _revert } from "../shared/Globals.sol";
  *         (which the system uses) and the next one (which becomes current after the delay). A single deployed instance
  *         serves every priced collateral: tokens are registered dynamically, each with its own price source.
  *
- *         NOTE: GUARANTEED-DELAY BOUND means pokes are aligned to fixed half-hour boundaries. A poke landing at the
- *         very end of a window (boundary + 1799s) permits the next poke one second later, at the next boundary. The
- *         MINIMUM interval between a price entering `nxt` and being promoted to `cur` is therefore 1 second in the
- *         worst case, NOT {delay}; {delay} is the AVERAGE cadence, and a manipulated price can reach `cur` in as
- *         little as one second after first appearing. Incident-response SLAs and monitoring must be sized to the
- *         1-second bound, never the 30-minute average. Keepers poking promptly at each boundary keep the effective
- *         delay near the full window.
+ *         The delay is a HARD bound (audit M-4): the last poke's exact timestamp is stored unsnapped, so the next
+ *         poke is only accepted a full {HOP} after the previous one. A price entering `nxt` therefore always resides
+ *         there for at least {HOP} before it can be promoted to `cur` — there is no boundary alignment and no
+ *         one-second worst case. (Maker's OSM snaps the poke time down to the HOP boundary, making its real
+ *         worst-case residency one second; USDR has no legacy keeper fleet whose cadence that alignment would
+ *         preserve, so the stronger guarantee is free.)
  * @dev A single multi-collateral module keyed by ilk identifier. The per-ilk price source is any {IPriceSource}
  *      implementation, such as a dedicated Uniswap time-weighted average wrapper, a Chainlink feed wrapper, or any
  *      future adapter, so the module never needs to know what kind of oracle backs a token. Sources are switchable by
@@ -140,7 +139,11 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
         if (ok && uint256(wut) != 0) {
             ilk.cur = ilk.nxt;
             ilk.nxt = Feed(uint128(uint256(wut)), 1);
-            ilk.delay = uint64(block.timestamp - (block.timestamp % HOP));
+
+            // Stored UNSNAPPED (audit M-4): snapping down to the HOP boundary (Maker parity) would let a poke at
+            // boundary+1799 be followed one second later, collapsing the guaranteed nxt->cur residency to 1 second.
+            // The exact timestamp makes {HOP} a hard minimum interval between pokes.
+            ilk.delay = uint64(block.timestamp);
 
             emit Poke({ ilkId: ilkId, current: ilk.cur.val, next: ilk.nxt.val });
 

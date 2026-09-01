@@ -6,13 +6,7 @@ import { CircuitBreaker } from "../contracts/liquidation/CircuitBreaker.sol";
 import { IDutchAuction } from "../contracts/interfaces/IDutchAuction.sol";
 import { ILiquidationTrigger } from "../contracts/interfaces/ILiquidationTrigger.sol";
 import { IOracleSecurityModule } from "../contracts/interfaces/IOracleSecurityModule.sol";
-import {
-    InvalidAddress,
-    InvalidBytes,
-    NotLive,
-    SystemPaused,
-    UnrecognizedParameter
-} from "../contracts/shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, InvalidBytes, NotLive, SystemPaused, UnrecognizedParameter } from "../contracts/shared/Errors.sol";
 import { _RAD, _RAY, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
 
 import { BaseTest } from "./shared/BaseTest.sol";
@@ -158,7 +152,7 @@ contract LiquidationTest is BaseTest {
 
         // Pausing: in-flight takes must stop (the rev-4 scenario where keepers extracted collateral at bad-feed prices
         // during a paused incident). The governor is already wired into the auction house in Base.
-        governor.pause("all");
+        governor.pause();
 
         (, uint256 price, , ) = dutchAuction.getStatus(id);
         vm.prank(address(0xB1D));
@@ -892,5 +886,32 @@ contract LiquidationAuditTest is BaseTest {
 
         (, , , uint256 tabAfter) = dutchAuction.getStatus(id);
         assertEq(tabAfter, chost, "remainder adjusted down to exactly chost");
+    }
+
+    /* ========================== TAU GUARD (M-8) ========================== */
+
+    function test_tauZeroRejected() public {
+        // Audit M-8: tau == 0 makes price() return 0 for every duration — every take reverts, redo cannot recover,
+        // and all auctioned collateral is unsellable until governance re-files. The value must be refused at file
+        // time (Maker's LinearDecrease accepts it; USDR does not).
+        vm.expectRevert(InvalidAmount.selector);
+        priceCurve.file("tau", 0);
+
+        // Sane updates still pass, and a live auction remains takeable.
+        priceCurve.file("tau", 7200);
+
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
+        _setRainPrice(0.6e18);
+
+        uint256 id = liquidationTrigger.bark(vaultId, keeper);
+
+        vaultEngine.suck(address(this), address(this), 500 * _RAD);
+        vaultEngine.hope(address(dutchAuction));
+
+        dutchAuction.take(id, type(uint256).max, type(uint256).max, address(this), "");
+
+        (, uint256 tab, , , , , ) = dutchAuction.sales(id);
+        assertEq(tab, 0, "auction fully takeable under the new tau");
     }
 }

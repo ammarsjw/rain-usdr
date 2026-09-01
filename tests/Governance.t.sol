@@ -103,7 +103,7 @@ contract GovernanceTest is BaseTest {
     /* ========================== 3. REAL PAUSE AUTO-EXPIRY ========================== */
 
     function test_pauseAutoExpiresForConsumers() public {
-        governor.pause("all");
+        governor.pause();
         assertTrue(governor.paused(), "paused");
 
         // 72 hours later the pause is over for every consumer, with NO unpause transaction.
@@ -137,7 +137,7 @@ contract GovernanceTest is BaseTest {
         vaultEngine.frob(vaultId, user, user, int256(400e18), int256(100e18));
         vm.stopPrank();
 
-        governor.pause("all");
+        governor.pause();
 
         // frob blocked, including repayment (full stop is stricter than the solvency gate).
         vm.prank(user);
@@ -158,7 +158,7 @@ contract GovernanceTest is BaseTest {
     }
 
     function test_unpauseAuthBeforeAndAfterWindow() public {
-        governor.pause("all");
+        governor.pause();
 
         // A stranger cannot unpause early.
         vm.prank(address(0xBAD));
@@ -170,7 +170,7 @@ contract GovernanceTest is BaseTest {
         assertFalse(governor.paused(), "governance early unpause");
 
         // Re-pause; after the window ANYONE can clear the stale flag.
-        governor.pause("all");
+        governor.pause();
         vm.warp(vm.getBlockTimestamp() + 72 hours);
 
         vm.prank(address(0xBAD));
@@ -179,18 +179,18 @@ contract GovernanceTest is BaseTest {
     }
 
     function test_doublePauseReverts() public {
-        governor.pause("all");
+        governor.pause();
 
         vm.expectRevert(IGovernor.AlreadyPaused.selector);
-        governor.pause("again");
+        governor.pause();
     }
 
     function test_repauseAfterExpiryWorks() public {
-        governor.pause("all");
+        governor.pause();
         vm.warp(vm.getBlockTimestamp() + 72 hours);
 
         // The old pause auto-expired, so a fresh pause is legitimate (new incident, new window).
-        governor.pause("second");
+        governor.pause();
         assertTrue(governor.paused(), "fresh pause after expiry");
     }
 }
@@ -344,6 +344,100 @@ contract SettlementTest is BaseTest {
 
         uint256 owed = (((uint256(113e18) * _RAY) / _RAY) * end.tag(RAIN_ILK)) / _RAY;
         assertEq(ink, 400e18 - owed, "underwater remainder");
+    }
+
+    function test_cageIlkHaltsAuctionHouse() public {
+        // Audit C-2: End.cage(ilkId) must cage the ilk's auction house. Before the fix, in-flight auctions kept
+        // decaying against the FIXED settlement price — a risk-free, unbounded arbitrage against redeemers once the
+        // curve crossed break-even, with the bought collateral permanently leaving the redemption pool.
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
+
+        // Crash and bark: an auction is in flight at settlement time.
+        _setRainPrice(0.6e18);
+        uint256 auctionId = liquidationTrigger.bark(vaultId, keeper);
+
+        assertEq(dutchAuction.live(), 1, "auction house live pre-settlement");
+
+        end.cage();
+        end.cage(RAIN_ILK);
+
+        // The structural precondition of the exploit is gone.
+        assertEq(dutchAuction.live(), 0, "auction house caged with the ilk");
+
+        // No keeper can take (or redo) the in-flight auction after settlement, at any price.
+        vm.warp(vm.getBlockTimestamp() + 1700); // Deep into the decay curve, past the old break-even.
+        vm.prank(keeper);
+        vm.expectRevert(NotLive.selector);
+        dutchAuction.take(auctionId, type(uint256).max, type(uint256).max, keeper, "");
+
+        vm.prank(keeper);
+        vm.expectRevert(NotLive.selector);
+        dutchAuction.redo(auctionId, keeper);
+
+        // Settlement itself is unaffected: yank is deliberately un-gated, so skip still reclaims the auction.
+        end.skip(RAIN_ILK, auctionId);
+
+        (uint256 ink, uint256 art) = vaultEngine.urns(vaultId);
+        assertEq(ink, 400e18, "full collateral back in the redemption pool");
+        assertEq(art, 113e18, "debt (incl. penalty) restored");
+    }
+
+    function test_skipRestoresArtSnapshotSoFixIsExact() public {
+        // Audit H-4: skip reinstates the auction's debt into the vault (grab) AND must add it back to the ilk's
+        // settlement snapshot. Before the fix, thaw's total debt included the restored debt while art[ilk] did not,
+        // so flow divided a short numerator by a full denominator — understating fix and stranding collateral in
+        // End forever (measured ~53% stranded in the audit).
+        _setRainPrice(1e18);
+
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
+        _sellUsdt(keeper, 100e6);
+
+        // Bark the vault so ALL RAIN debt is in-flight at settlement (the worst case for the old code: the RAIN
+        // snapshot would have been zero).
+        _setRainPrice(0.6e18);
+        uint256 auctionId = liquidationTrigger.bark(vaultId, keeper);
+        uint256 barkEra = vm.getBlockTimestamp();
+
+        end.cage();
+        end.cage(RAIN_ILK);
+        end.cage(USDT_ILK);
+
+        uint256 snapshotBefore = end.art(RAIN_ILK);
+        assertEq(snapshotBefore, 0, "bark removed all ilk debt pre-snapshot");
+
+        end.skip(RAIN_ILK, auctionId);
+
+        // The snapshot now carries the restored debt.
+        assertEq(end.art(RAIN_ILK), 113e18, "snapshot restored with the reclaimed debt");
+
+        end.skim(vaultId);
+
+        (, , uint256 psmVaultId) = psm.ilks(USDT_ILK);
+        end.skim(psmVaultId);
+
+        // Thaw requires the Balance Sheet's surplus healed away: release the bark-era sin queue (wait = 0 in this
+        // harness) and net the skip-created surplus against it.
+        balanceSheet.flog(barkEra);
+        balanceSheet.heal(vaultEngine.usdr(address(balanceSheet)));
+
+        end.thaw();
+        end.flow(RAIN_ILK);
+
+        // Maker-parity fix: art * rate * tag / debt, with art INCLUDING the restored debt.
+        (, , uint256 rate, , , , , ) = vaultEngine.ilks(RAIN_ILK);
+        uint256 wad = (((uint256(113e18) * rate) / _RAY) * end.tag(RAIN_ILK)) / _RAY;
+        uint256 expectedFix = ((wad - end.gap(RAIN_ILK)) * _RAY) / (end.debt() / _RAY);
+
+        assertEq(end.fix(RAIN_ILK), expectedFix, "fix computed on the full snapshot");
+
+        // The conservation identity H-4 broke: the ENTIRE fixed debt redeemed at fix reclaims exactly the RAIN End
+        // holds (sub-wei truncation dust aside) — nothing is stranded. Before the fix, the snapshot missed the
+        // restored debt, fix was understated by ~50%, and most of the pot was unreachable forever.
+        uint256 held = vaultEngine.collateral(RAIN_ILK, address(end));
+        uint256 claimable = ((end.debt() / _RAY) * end.fix(RAIN_ILK)) / _RAY;
+
+        assertApproxEqAbs(claimable, held, 1e6, "full debt redemption drains the pot");
     }
 
     /* ========================== 3. PHASE GUARDS ========================== */
