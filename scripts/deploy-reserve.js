@@ -135,6 +135,21 @@ const deployReserve = async () => {
         )
     ).wait();
 
+    // Buyback receiver. Surplus distribution reverts without it;
+    // it must be an explicit deployment input, not a post-launch afterthought.
+    const buybackReceiverAddress = process.env.BUYBACK_RECEIVER_ADDRESS;
+
+    if (!buybackReceiverAddress) {
+        throw new Error("BUYBACK_RECEIVER_ADDRESS not set: the buyback receiver is a required launch parameter.");
+    }
+
+    await (
+        await balanceSheetInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("buybackReceiver"),
+            buybackReceiverAddress
+        )
+    ).wait();
+
     // Authorizing the Balance Sheet to heal and suck on the ledger.
     await (await vaultEngineInstance.grantRole(WARD_ROLE, balanceSheetAddress)).wait();
 

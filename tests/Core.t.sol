@@ -11,6 +11,7 @@ import {
     IlkAlreadyInitialized,
     InvalidAddress,
     InvalidAmount,
+    InvalidAssignment,
     InvalidDuty,
     NotLive,
     UnrecognizedParameter
@@ -700,6 +701,13 @@ contract StabilityFeeTest is BaseTest {
         vaultEngine.drip("UNKNOWN-A");
     }
 
+    function test_fileDutyRevertsOnUninitializedIlk() public {
+        // The drip inside file("duty") is non-fatal now, so the uninitialized-ilk guard must hold explicitly:
+        // filing a duty on an unknown ilk must not silently succeed.
+        vm.expectRevert(IVaultEngine.IlkNotInitialized.selector);
+        vaultEngine.file("UNKNOWN-A", "duty", _RAY);
+    }
+
     function test_dripIdempotentWithinBlock() public {
         vaultEngine.file(TEST_ILK, "duty", DUTY_5PCT);
         _openTestVault(alice, 1000e18, 500e18);
@@ -831,7 +839,10 @@ contract StabilityFeeTest is BaseTest {
         assertEq(vaultEngine.usdr(alice), 100e18 * _RAY + 100e18 * expectedRate, "second draw at accrued rate");
     }
 
-    function test_frobCollateralOnlyChangeDoesNotRequireDrip() public {
+    function test_frobDripsUnconditionallyIncludingCollateralOnlyChanges() public {
+        // Audit H-1: a pure collateral change must ALSO drip. The dangerous branch is a withdrawal (dink < 0,
+        // dart == 0): its safety check prices the debt as art * rate, and a stale rate there understates the debt by
+        // the entire undripped accrual, authorizing withdrawals the true debt would forbid.
         vaultEngine.file(TEST_ILK, "duty", DUTY_5PCT);
 
         uint256 vaultId = _openTestVault(alice, 1000e18, 100e18);
@@ -839,7 +850,7 @@ contract StabilityFeeTest is BaseTest {
 
         skip(30 days);
 
-        // Pure collateral top-up (dart == 0): no drip needed, rate untouched.
+        // Collateral top-up (dart == 0): the rate must be brought current anyway.
         vaultEngine.slip(TEST_ILK, alice, int256(10e18));
 
         vm.prank(alice);
@@ -847,7 +858,33 @@ contract StabilityFeeTest is BaseTest {
 
         (, , , , , , , uint256 rhoAfter) = vaultEngine.ilks(TEST_ILK);
 
-        assertEq(rhoAfter, rhoBefore, "no drip on collateral-only frob");
+        assertEq(rhoAfter, rhoBefore + 30 days, "collateral-only frob drips");
+        assertGt(_rate(TEST_ILK), _RAY, "rate accrued");
+    }
+
+    function test_collateralWithdrawalPricedAtFreshRate() public {
+        // Audit H-1, the attack shape: draw at rate RAY, wait years without any drip, then withdraw collateral down
+        // to the minimum the STALE rate would allow. With the fix, frob drips first, so the withdrawal is checked
+        // against the true accrued debt and reverts.
+        vaultEngine.file(TEST_ILK, "duty", DUTY_5PCT);
+
+        uint256 vaultId = _openTestVault(alice, 1000e18, 100e18);
+
+        // 10 years undripped: nobody touches the ilk.
+        skip(3650 days);
+
+        // Stale-rate math would allow withdrawing down to 100 ink (spot = 1, art = 100, rate stale at RAY).
+        // True rate after 10 years at 5% APY is ~1.628: minimum safe ink is ~163.
+        vm.prank(alice);
+        vm.expectRevert(IVaultEngine.NotSafe.selector);
+        vaultEngine.frob(vaultId, alice, alice, -int256(900e18), 0);
+
+        // A withdrawal that IS safe at the true rate still works (leave 200 > ~163).
+        vm.prank(alice);
+        vaultEngine.frob(vaultId, alice, alice, -int256(800e18), 0);
+
+        // And the rate was genuinely accrued in the process.
+        assertGt(_rate(TEST_ILK), (_RAY * 162) / 100, "true rate applied");
     }
 
     function test_fileDutyDripsFirstNoRetroactiveApplication() public {
@@ -931,6 +968,134 @@ contract StabilityFeeTest is BaseTest {
         (, uint256 tab, , , , , ) = dutchAuction.sales(id);
 
         assertGt(tab, 190e18 * rate, "tab includes accrued fees plus penalty");
+    }
+
+    /* ========================== 5. FEE EXEMPTION (C-1) ========================== */
+
+    function test_exemptFeePinsDutyToRay() public {
+        // Audit C-1: a fee-exempt ilk rejects any duty above RAY, forever. Filing RAY itself stays legal (no-op).
+        vaultEngine.exemptFee(TEST_ILK);
+
+        vm.expectRevert(InvalidDuty.selector);
+        vaultEngine.file(TEST_ILK, "duty", DUTY_5PCT);
+
+        vm.expectRevert(InvalidDuty.selector);
+        vaultEngine.file(TEST_ILK, "duty", _RAY + 1);
+
+        vaultEngine.file(TEST_ILK, "duty", _RAY);
+
+        (, , uint256 rate, , , , uint256 duty, ) = vaultEngine.ilks(TEST_ILK);
+        assertEq(duty, _RAY, "duty pinned");
+        assertEq(rate, _RAY, "rate pinned");
+    }
+
+    function test_exemptFeeGuards() public {
+        // Uninitialized ilk: rejected.
+        vm.expectRevert(IVaultEngine.IlkNotInitialized.selector);
+        vaultEngine.exemptFee("GHOST-A");
+
+        // An ilk whose duty has already left RAY: rejected (the invariant the flag pins is already broken).
+        vaultEngine.file(TEST_ILK, "duty", DUTY_5PCT);
+
+        vm.expectRevert(InvalidAssignment.selector);
+        vaultEngine.exemptFee(TEST_ILK);
+
+        // Resetting duty alone is not enough once fees have accrued into the rate.
+        _openTestVault(alice, 1000e18, 100e18);
+        skip(365 days);
+        vaultEngine.drip(TEST_ILK);
+        vaultEngine.file(TEST_ILK, "duty", _RAY);
+
+        vm.expectRevert(InvalidAssignment.selector);
+        vaultEngine.exemptFee(TEST_ILK);
+
+        // Ward-only.
+        vm.prank(alice);
+        vm.expectRevert();
+        vaultEngine.exemptFee(TEST_ILK);
+    }
+
+    /* ========================== 6. DUTY BOUND & ESCAPE HATCH (H-2) ========================== */
+
+    function test_dutyUpperBoundRejectsBrickingValues() public {
+        // Audit H-2: unbounded duty values brick the ilk via rpow overflow. The classic fat-finger (1.5e27 = 50%
+        // per SECOND, intending 1.0000000015e27) and the audit's 2.0e27 case must both be rejected at file time.
+        vm.expectRevert(InvalidDuty.selector);
+        vaultEngine.file(TEST_ILK, "duty", 2 * _RAY);
+
+        vm.expectRevert(InvalidDuty.selector);
+        vaultEngine.file(TEST_ILK, "duty", 15e26);
+
+        // The maximum legal duty (100% APY) is accepted and stays computable over long horizons.
+        vaultEngine.file(TEST_ILK, "duty", DUTY_100PCT);
+        _openTestVault(alice, 1000e18, 100e18);
+
+        skip(3650 days);
+
+        uint256 newRate = vaultEngine.drip(TEST_ILK);
+        assertGt(newRate, 1000 * _RAY, "10 years at 100% APY is roughly 2^10");
+
+        vm.expectRevert(InvalidDuty.selector);
+        vaultEngine.file(TEST_ILK, "duty", DUTY_100PCT + 1);
+    }
+
+    function test_fileDutyRemainsUsableEvenIfDripReverts() public {
+        // Audit H-2 (escape hatch): file("duty") drips first, and on a standalone engine with fees accrued but no
+        // feeRecipient, that drip REVERTS. Filing a duty must survive it (non-fatal drip) so governance can always
+        // reconfigure — the deadlock was: bad duty -> drip reverts -> file reverts -> unrecoverable.
+        VaultEngineHarness engine = new VaultEngineHarness();
+
+        engine.init(TEST_ILK);
+        engine.file("globalLine", 1_000_000_000 * _RAD);
+        engine.file(TEST_ILK, "line", 1_000_000_000 * _RAD);
+        engine.file(TEST_ILK, "spot", _RAY);
+        engine.file(TEST_ILK, "duty", DUTY_5PCT);
+        engine.slip(TEST_ILK, alice, int256(1000e18));
+
+        vm.startPrank(alice);
+        uint256 vaultId = engine.open(TEST_ILK, alice);
+        engine.frob(vaultId, alice, alice, int256(1000e18), int256(500e18));
+        vm.stopPrank();
+
+        skip(365 days);
+
+        // Direct drip reverts (fees accrued, no recipient) — the poisoned state.
+        vm.expectRevert(FeeRecipientNotSet.selector);
+        engine.drip(TEST_ILK);
+
+        // Filing a sane duty still works: the inner drip failure is swallowed, the duty lands.
+        engine.file(TEST_ILK, "duty", _RAY);
+
+        (, , , , , , uint256 duty, ) = engine.ilks(TEST_ILK);
+        assertEq(duty, _RAY, "duty recovered despite reverting drip");
+    }
+
+    /* ========================== 7. CAGE SETTLES FEES (M-1) ========================== */
+
+    function test_cageDripsAllIlksSoNoFeeIsForgiven() public {
+        // Audit M-1: fees undripped at cage time used to be silently forgiven (rates freeze), shorting redeemers.
+        // cage() must drip every registered ilk first so settlement sees the exact accrued debt.
+        vaultEngine.file(TEST_ILK, "duty", DUTY_5PCT);
+        _openTestVault(alice, 1000e18, 500e18);
+
+        uint256 debtBefore = vaultEngine.debt();
+
+        // A year passes with NO drip from anyone.
+        skip(365 days);
+
+        vaultEngine.cage();
+
+        // The rate was accrued through cage itself, not frozen stale.
+        uint256 rate = _rate(TEST_ILK);
+        assertGt(rate, (_RAY * 104) / 100, "accrual settled at cage");
+
+        // The fee revenue landed on the fee recipient and in total debt — nothing forgiven.
+        assertGt(vaultEngine.debt(), debtBefore, "debt includes the accrued year");
+        assertGt(vaultEngine.usdr(address(balanceSheet)), 0, "fee revenue credited");
+
+        // And the rate is frozen from here on.
+        skip(365 days);
+        assertEq(vaultEngine.drip(TEST_ILK), rate, "rate frozen post-cage");
     }
 
     /* ========================== HELPERS ========================== */

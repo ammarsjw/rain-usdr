@@ -66,6 +66,11 @@ const deployCore = async () => {
     await (await vaultEngineInstance.init(usdtIlk)).wait();
     await (await vaultEngineInstance.init(usdcIlk)).wait();
 
+    // Permanently pinning the stable (PSM) ilks' stability fee to zero: the PSM's 1:1 accounting is only
+    // sound at rate == RAY, and PSM.init refuses any ilk that is not fee-exempt.
+    await (await vaultEngineInstance.exemptFee(usdtIlk)).wait();
+    await (await vaultEngineInstance.exemptFee(usdcIlk)).wait();
+
     // Registering the USDR ilk and the collateral ilks on the adapter.
     const usdrIlk = hardhat.ethers.encodeBytes32String("USDR");
     await (await collateralAdapterInstance.init(usdrIlk, usdrAddress)).wait();

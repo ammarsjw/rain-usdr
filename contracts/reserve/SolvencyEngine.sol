@@ -116,6 +116,13 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
 
             reserveFactor = data;
         } else if (what == "exposureCap") {
+            // Symmetric guard to the wiring check below: zeroing the cap while a reporter is wired clamps every honest
+            // report to zero AND turns a reverting reporter's fallback into zero, exactly what the wiring guard was
+            // added to prevent. Disabling exposure tracking must be done explicitly by unwiring the reporter first.
+            if (data == 0 && address(externalExposure) != address(0)) {
+                _revert(ExposureCapNotSet.selector);
+            }
+
             exposureCap = data;
         } else {
             _revert(UnrecognizedParameter.selector);

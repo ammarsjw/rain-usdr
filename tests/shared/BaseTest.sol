@@ -114,6 +114,10 @@ abstract contract BaseTest is Test {
         vaultEngine.init(USDT_ILK);
         vaultEngine.init(USDC_ILK);
 
+        // Permanently pinning the stable (PSM) ilks' stability fee to zero (audit C-1). PSM.init requires this.
+        vaultEngine.exemptFee(USDT_ILK);
+        vaultEngine.exemptFee(USDC_ILK);
+
         // Deploying the PSMs and the Governor.
         psm = new PegStabilityModule(collateralAdapter, reserveAccounting);
         psm.init(USDT_ILK);
