@@ -1,6 +1,6 @@
 {
     "name": "rain-usdr",
-    "version": "1.0.0",
+    "version": "1.0.0-alpha.4",
     "description": "USDR (Rain Dollar) multi-collateral over-collateralized stablecoin",
     "license": "MIT",
     "author": "Rain Team",
