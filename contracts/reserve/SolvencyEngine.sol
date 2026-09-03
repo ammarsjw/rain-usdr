@@ -24,8 +24,10 @@ import { _revert } from "../shared/Globals.sol";
  *      oracle price read DIRECTLY from the Oracle Security Module (never reconstructed as spot times mat), marked down
  *      by the stress markdown (50%) and the stress liquidation depth (35%); the loss is any debt not covered by that
  *      stressed recoverable value. An unavailable price values the collateral at zero, so the invariant fails CLOSED.
- *      Exposure reported by the prediction market layer is consumed defensively: it is clamped to a governance-set cap
- *      and a reverting reporter falls back to the cap, so the invariant can never overflow or permanently revert.
+ *      Exposure reported by the prediction market layer is consumed at FACE VALUE: that layer settles in USDR and
+ *      every USDR in existence originates here, so outstanding debt is already a structural bound on what can be
+ *      exposed and no governance cap is needed. An unreachable reporter substitutes that same bound, so the exposure
+ *      term fails CLOSED too and can never permanently revert the invariant.
  */
 contract SolvencyEngine is ISolvencyEngine, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -44,9 +46,6 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
 
     /// @inheritdoc ISolvencyEngine
     uint256 public reserveFactor;
-
-    /// @inheritdoc ISolvencyEngine
-    uint256 public exposureCap;
 
     /// @inheritdoc ISolvencyEngine
     bool public breached;
@@ -115,15 +114,6 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
             }
 
             reserveFactor = data;
-        } else if (what == "exposureCap") {
-            // Symmetric guard to the wiring check below: zeroing the cap while a reporter is wired clamps every honest
-            // report to zero AND turns a reverting reporter's fallback into zero, exactly what the wiring guard was
-            // added to prevent. Disabling exposure tracking must be done explicitly by unwiring the reporter first.
-            if (data == 0 && address(externalExposure) != address(0)) {
-                _revert(ExposureCapNotSet.selector);
-            }
-
-            exposureCap = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -136,12 +126,6 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      */
     function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
         if (what == "externalExposure") {
-            // Wiring an exposure reporter without a nonzero cap would clamp every report to zero (fail-open); the cap
-            // must be configured first.
-            if (data != address(0) && exposureCap == 0) {
-                _revert(ExposureCapNotSet.selector);
-            }
-
             externalExposure = IExternalExposure(data);
         } else if (what == "osm") {
             osm = IOracleSecurityModule(data);
@@ -200,20 +184,16 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      * @inheritdoc ISolvencyEngine
      */
     function checkInvariant() external returns (uint256 loss, uint256 reserve) {
-        loss = worstCaseLoss();
-        reserve = RESERVE_ACCOUNTING.totalReserve();
+        (uint256 exposure, bool ok) = _exposure();
 
-        // Surfacing exposure-reporter anomalies for monitoring: a revert or an above-cap report both fall back to the
-        // conservative cap inside {worstCaseLoss}; here the anomaly is made visible.
-        if (address(externalExposure) != address(0)) {
-            try externalExposure.reportedExposure() returns (uint256 reported) {
-                if (reported > exposureCap) {
-                    emit ExposureClamped({ reported: reported, cap: exposureCap });
-                }
-            } catch {
-                emit ExposureClamped({ reported: type(uint256).max, cap: exposureCap });
-            }
+        // Surfacing an unreachable reporter for monitoring: the loss above carries the fail-closed structural bound
+        // rather than a measurement, which would otherwise present as an unexplained jump in {InvariantChecked}.
+        if (!ok) {
+            emit ExposureReportFailed({ substituted: exposure });
         }
+
+        loss = _volatileLoss() + exposure;
+        reserve = RESERVE_ACCOUNTING.totalReserve();
 
         // The master rule: worst-case loss must stay under the gated fraction of the stable reserve. This function
         // never reverts on a breach: state is always brought up to date so the committed escrow and free slack can
@@ -244,8 +224,18 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      * @inheritdoc ISolvencyEngine
      */
     function worstCaseLoss() public view returns (uint256 loss) {
-        // Adding the shortfall risk from volatile collateral, priced at stressed COLLATERAL values: debt outstanding
-        // minus the stressed recoverable value of the collateral actually locked against it.
+        (uint256 exposure, ) = _exposure();
+
+        return _volatileLoss() + exposure;
+    }
+
+    /**
+     * @dev Sums the shortfall risk from volatile collateral, priced at stressed COLLATERAL values: debt outstanding
+     *      minus the stressed recoverable value of the collateral actually locked against it. Floored at zero per ilk
+     *      so a well-covered collateral type can never net off a shortfall somewhere else.
+     * @return loss The volatile-collateral portion of the worst-case loss [wad].
+     */
+    function _volatileLoss() private view returns (uint256 loss) {
         uint256 volatileIlksLength = volatileIlks.length;
 
         for (uint256 i; i < volatileIlksLength; ++i) {
@@ -276,19 +266,25 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
                 loss += ilkDebt - recoverable;
             }
         }
+    }
 
-        // Adding any exposure reported by the prediction market layer, defensively: a reverting reporter falls back to
-        // the cap (conservative), and any reported value is clamped to the cap so it can never overflow the sum.
-        if (address(externalExposure) != address(0)) {
-            uint256 exposure = exposureCap;
+    /**
+     * @dev Reads the prediction market layer's reported exposure. The value is consumed AT FACE VALUE: `debt` already
+     *      bounds what can possibly be exposed. The call is wrapped because a reverting reporter would otherwise brick
+     *      {worstCaseLoss} and, through it, every consumer of the solvency gate.
+     * @return exposure The exposure to add to the worst-case loss [wad].
+     * @return ok Whether the value was measured; false when the fail-closed bound was substituted.
+     */
+    function _exposure() private view returns (uint256 exposure, bool ok) {
+        if (address(externalExposure) == address(0)) {
+            return (0, true);
+        }
 
-            try externalExposure.reportedExposure() returns (uint256 reported) {
-                exposure = reported > exposureCap ? exposureCap : reported;
-            } catch {
-                // Reporter reverted: use the cap.
-            }
-
-            loss += exposure;
+        try externalExposure.reportedExposure() returns (uint256 reported) {
+            return (reported, true);
+        } catch {
+            // Outstanding internal debt [rad] scaled down to the [wad] the loss accumulates in.
+            return (VAULT_ENGINE.debt() / _RAY, false);
         }
     }
 }

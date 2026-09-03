@@ -341,27 +341,25 @@ contract ReserveTest is BaseTest {
         reserveAccounting.recordDecrease(100e18);
     }
 
-    /* ========================== 6. EXPOSURE CAP ORDERING ========================== */
+    /* ========================== 6. EXTERNAL EXPOSURE ========================== */
 
-    function test_exposureReporterRequiresCapFirst() public {
+    function test_exposureCountedAtFaceValue() public {
+        // Wiring a reporter takes no companion parameter: exposure is consumed exactly as reported, so there is no
+        // ordering to get wrong and no cap that can silently shrink the number.
         MockExternalExposure exposure = new MockExternalExposure();
-
-        vm.expectRevert(ISolvencyEngine.ExposureCapNotSet.selector);
         solvencyEngine.file("externalExposure", address(exposure));
 
-        solvencyEngine.file("exposureCap", 50e18);
-        solvencyEngine.file("externalExposure", address(exposure));
-
-        // Real reports below the cap pass through unclamped.
         exposure.setExposure(10e18);
         assertEq(solvencyEngine.worstCaseLoss(), 10e18, "real exposure counted");
 
-        // Above-cap and reverting reporters clamp to the cap (fail conservative).
+        // Large reports are counted in full. Suppressing exposure the protocol has actually taken on would
+        // under-size the settlement escrow and hide a breach from the gates.
         exposure.setExposure(1_000_000e18);
-        assertEq(solvencyEngine.worstCaseLoss(), 50e18, "clamped");
+        assertEq(solvencyEngine.worstCaseLoss(), 1_000_000e18, "counted in full, never clamped");
 
-        exposure.setShouldRevert(true);
-        assertEq(solvencyEngine.worstCaseLoss(), 50e18, "revert falls back to cap");
+        // Unwiring the reporter drops the term entirely.
+        solvencyEngine.file("externalExposure", address(0));
+        assertEq(solvencyEngine.worstCaseLoss(), 0, "no reporter, no exposure term");
     }
 
     /* ========================== 7. PSM EDGES ========================== */
@@ -671,25 +669,31 @@ contract ReserveAuditTest is BaseTest {
         assertLt(lossAt1000, lossAt400, "loss scales with collateral");
     }
 
-    function test_externalExposureClampAndRevertFallback() public {
+    function test_externalExposureFaceValueAndFailClosedFallback() public {
+        _setRainPrice(1e18);
+        _openVault(user, 800e18, 200e18);
+
+        uint256 volatileLoss = 60e18; // 200 debt - 800 * 0.5 * 0.35.
+        assertEq(solvencyEngine.worstCaseLoss(), volatileLoss, "baseline with no reporter wired");
+
         MockExternalExposure exposure = new MockExternalExposure();
-
-        // Wiring a reporter before the cap is configured is forbidden (a zero cap clamps everything to zero).
-        vm.expectRevert(ISolvencyEngine.ExposureCapNotSet.selector);
         solvencyEngine.file("externalExposure", address(exposure));
 
-        solvencyEngine.file("exposureCap", 7e18);
-        solvencyEngine.file("externalExposure", address(exposure));
+        // Exposure lands on top of the volatile loss at face value. NOTE: a type(uint256).max report now overflows
+        // the sum rather than being absorbed by a clamp; the reporter settles in USDR it cannot mint, so only
+        // representable exposure is in scope.
+        exposure.setExposure(1_000_000e18);
+        assertEq(solvencyEngine.worstCaseLoss(), volatileLoss + 1_000_000e18, "counted in full");
 
-        // A hostile max-value report is clamped to the cap instead of overflowing.
-        exposure.setExposure(type(uint256).max);
-        assertEq(solvencyEngine.worstCaseLoss(), 7e18, "clamped to cap");
-
-        // A reverting reporter falls back to the cap instead of bricking the invariant.
+        // An unreachable reporter substitutes outstanding debt instead of bricking the invariant or reading zero:
+        // every USDR that could be exposed was minted here, so total debt is the structural ceiling.
         exposure.setShouldRevert(true);
-        assertEq(solvencyEngine.worstCaseLoss(), 7e18, "revert falls back to cap");
+        assertEq(vaultEngine.debt(), 200 * _RAD, "debt baseline");
+        assertEq(solvencyEngine.worstCaseLoss(), volatileLoss + 200e18, "fails closed at outstanding debt");
 
-        // checkInvariant never reverts.
+        // checkInvariant never reverts, and it surfaces the substitution for monitoring.
+        vm.expectEmit(false, false, false, true);
+        emit ISolvencyEngine.ExposureReportFailed(200e18);
         solvencyEngine.checkInvariant();
     }
 
@@ -884,28 +888,28 @@ contract ReserveAuditTest is BaseTest {
         assertEq(balanceSheet.humpTarget(), 10_000e18 * _RAY, "target follows after the lag");
     }
 
-    /* ========================== 8. EXPOSURE CAP SYMMETRIC GUARD (H-5) ========================== */
+    /* ========================== 8. EXPOSURE ESCROW COMMITMENT ========================== */
 
-    function test_exposureCapCannotBeZeroedWhileReporterWired() public {
-        // Audit H-5: rev-4 guarded the wiring call but not the cap setter — zeroing the cap afterwards restored the
-        // fail-open (reverting reporter -> exposure 0, honest report -> clamped to 0).
+    function test_exposureCommitsEscrowAndStarvesRedemption() public {
+        // Audit H-5 was a fail-open in the (now removed) cap setter: zeroing the cap behind a wired reporter reduced
+        // exposure to nothing. Without a cap there is no knob to zero, so what is left to protect is the downstream
+        // effect the cap used to distort: reported exposure must fully reserve reserve capital.
+        _sellUsdt(keeper, 100_000e6);
+
         MockExternalExposure exposure = new MockExternalExposure();
-
-        solvencyEngine.file("exposureCap", 1_000e18);
         solvencyEngine.file("externalExposure", address(exposure));
 
-        vm.expectRevert(ISolvencyEngine.ExposureCapNotSet.selector);
-        solvencyEngine.file("exposureCap", 0);
+        exposure.setExposure(40_000e18);
+        solvencyEngine.checkInvariant();
 
-        // The fail-open shape the guard prevents: a reverting reporter must keep falling back to a NONZERO cap.
-        exposure.setShouldRevert(true);
-        assertEq(solvencyEngine.worstCaseLoss(), 1_000e18, "fail-closed at the cap");
+        assertEq(reserveAccounting.committedEscrow(), 40_000e18, "exposure escrowed in full");
+        assertEq(reserveAccounting.freeSlack(), 60_000e18, "only the remainder is redeemable");
 
-        // Nonzero cap changes stay legal, and zero is accepted once the reporter is unwired first.
-        solvencyEngine.file("exposureCap", 500e18);
+        // Unwiring the reporter releases the escrow on the next check.
         solvencyEngine.file("externalExposure", address(0));
-        solvencyEngine.file("exposureCap", 0);
+        solvencyEngine.checkInvariant();
 
-        assertEq(solvencyEngine.worstCaseLoss(), 0, "explicit two-step disable");
+        assertEq(reserveAccounting.committedEscrow(), 0, "escrow released");
+        assertEq(reserveAccounting.freeSlack(), 100_000e18, "reserve fully redeemable again");
     }
 }
