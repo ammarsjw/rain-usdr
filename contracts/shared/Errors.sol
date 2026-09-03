@@ -50,6 +50,16 @@ error UnrecognizedParameter();
 error SystemPaused();
 
 /**
+ * @dev Indicates that a stability fee `duty` value below RAY (a negative rate) was filed.
+ */
+error InvalidDuty();
+
+/**
+ * @dev Indicates that stability fees accrued while no fee recipient is configured to receive them.
+ */
+error FeeRecipientNotSet();
+
+/**
  * @dev Indicates that the solvency invariant is breached and reserve-decreasing operations are gated.
  */
 error SolvencyGateActive();

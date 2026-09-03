@@ -17,8 +17,9 @@ import { _revert } from "../shared/Globals.sol";
  *         touch the immutable core, only the risk parameters.
  * @dev The timelock delay is immutable: it is fixed at construction and can never be changed, so the timelock can
  *      never be shortened or removed by a compromised governance key. The pause auto-expires after 72 hours, that is
- *      {paused} returns false once the window elapses even without an {unpause} call, and its scope is fixed at the
- *      moment of pausing.
+ *      {paused} returns false once the window elapses even without an {unpause} call. The pause is deliberately
+ *      UNSCOPED: every consumer reads the same boolean, so a pause always halts everything that is pausable. A scoped
+ *      pause was considered and removed, which is how a "PSM-only" pause silently freezes liquidations too.
  */
 contract Governor is IGovernor, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -28,9 +29,6 @@ contract Governor is IGovernor, AccessControl {
 
     /// @inheritdoc IGovernor
     uint256 public immutable delay;
-
-    /// @inheritdoc IGovernor
-    bytes32 public pauseScope;
 
     /// @inheritdoc IGovernor
     uint256 public pausedAt;
@@ -150,18 +148,19 @@ contract Governor is IGovernor, AccessControl {
     /**
      * @inheritdoc IGovernor
      */
-    function pause(bytes32 scope) external onlyRole(_WARD_ROLE) {
+    function pause() external onlyRole(_WARD_ROLE) {
         // The system must not already be paused.
         if (paused()) {
             _revert(AlreadyPaused.selector);
         }
 
-        // The scope is fixed at the moment of pausing and cannot be widened afterward.
+        // NOTE: A ward can re-pause after expiry (or after an early unpause), chaining windows beyond 72 hours. The
+        // auto-expiry bounds a SINGLE pause, not governance's total authority; repeated pauses are visible on-chain
+        // and are a matter for governance process, not contract code.
         _paused = true;
         pausedAt = block.timestamp;
-        pauseScope = scope;
 
-        emit Pause({ scope: scope, pausedAt: block.timestamp });
+        emit Pause({ pausedAt: block.timestamp });
     }
 
     /**
@@ -184,7 +183,6 @@ contract Governor is IGovernor, AccessControl {
 
         _paused = false;
         pausedAt = 0;
-        pauseScope = bytes32(0);
 
         emit Unpause();
     }

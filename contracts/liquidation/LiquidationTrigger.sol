@@ -57,7 +57,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
-     * @notice Initializes the trigger with the launch throttle.
+     * @notice Initializes the trigger.
      * @param vaultEngine_ Address of the Vault Engine.
      */
     constructor(IVaultEngine vaultEngine_) {
@@ -188,6 +188,10 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
 
         bytes32 ilkId = VAULT_ENGINE.ilkOf(vaultId);
 
+        // Accrue the stability fee first so the unsafe check, the tab and the auction all snapshot the true accrued
+        // debt at the current rate.
+        VAULT_ENGINE.drip(ilkId);
+
         (uint256 ink, uint256 art) = VAULT_ENGINE.urns(vaultId);
 
         IlkLiquidation memory milk = ilks[ilkId];
@@ -198,15 +202,15 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         {
             uint256 spot;
 
-            (, , rate, spot, , dust) = VAULT_ENGINE.ilks(ilkId);
+            (, , rate, spot, , dust, , ) = VAULT_ENGINE.ilks(ilkId);
 
             // Unsafe check: the vault's collateral value must be below `barkFactor` of its debt. `spot` [ray] already
             // embeds the ilk's required ratio (mat), so `ink * spot < art * rate` is the at-mat condition; scaling the
             // debt side by barkFactor [wad] moves the trigger to barkFactor of mat (e.g. 65% of 400% = 260%). Units:
-            // ink [wad] * spot [ray] = [rad]; art [wad] * rate [ray] = [rad]; dividing the rad debt by WAD before
-            // multiplying by barkFactor [wad] keeps the product in [rad] with ample headroom and full precision
-            // (art*rate is a multiple of RAY, so /WAD loses nothing at rate == RAY).
-            if (spot == 0 || ink * spot >= ((art * rate) / _WAD) * milk.barkFactor) {
+            // ink [wad] * spot [ray] = [rad]; art [wad] * rate [ray] = [rad]. With a variable rate, `art * rate` is no
+            // longer a multiple of RAY, so dividing by WAD before multiplying by barkFactor would truncate;
+            // Math.mulDiv keeps full 512-bit precision at any rate >= RAY.
+            if (spot == 0 || ink * spot >= Math.mulDiv(art * rate, milk.barkFactor, _WAD)) {
                 _revert(NotUnsafe.selector);
             }
 

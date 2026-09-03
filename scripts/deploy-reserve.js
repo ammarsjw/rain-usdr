@@ -23,6 +23,7 @@ const deployReserve = async () => {
     const vaultEngineAddress = process.env.VAULT_ENGINE_ADDRESS;
     const collateralAdapterAddress = process.env.COLLATERAL_ADAPTER_ADDRESS;
     const osmAddress = process.env.OSM_ADDRESS;
+    const buybackReceiverAddress = process.env.BUYBACK_RECEIVER_ADDRESS;
 
     // Fixed point scalars.
     const WAD = 10n ** 18n;
@@ -46,7 +47,7 @@ const deployReserve = async () => {
     const balanceSheetConstructorArguments = [vaultEngineAddress];
     const balanceSheetAddress = await deployContract(balanceSheetName, balanceSheetConstructorArguments);
 
-    // Deploying the Peg Stability Module.
+    // // Deploying the Peg Stability Module.
     const psmConstructorArguments = [collateralAdapterAddress, reserveAccountingAddress];
     const psmAddress = await deployContract(psmName, psmConstructorArguments);
 
@@ -67,8 +68,8 @@ const deployReserve = async () => {
     await (await psmInstance.init(usdcIlk)).wait();
     await (await reserveAccountingInstance.grantRole(RECORDER_ROLE, psmAddress)).wait();
 
-    // Registering RAIN as a volatile collateral in the solvency stress calculation and wiring the direct OSM
-    // price source (worst-case loss reads prices straight from the OSM, never spot * mat).
+    // Registering RAIN as a volatile collateral in the solvency stress calculation and wiring the direct OSM price
+    // source (worst-case loss reads prices straight from the OSM, never spot * mat).
     await (await solvencyEngineInstance.addVolatileIlk(rainIlk)).wait();
     await (
         await solvencyEngineInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("osm"), osmAddress)
@@ -78,8 +79,8 @@ const deployReserve = async () => {
     const osmInstance = await hardhat.ethers.getContractAt("OracleSecurityModule", osmAddress);
     await (await osmInstance.grantRole(READER_ROLE, solvencyEngineAddress)).wait();
 
-    // Setting the prediction-market exposure cap BEFORE any reporter is wired ($250k launch cap): an unset (zero)
-    // cap would clamp every report to zero, silently suppressing real exposure.
+    // Setting the prediction-market exposure cap BEFORE any reporter is wired ($250k launch cap): an unset (zero) cap
+    // would clamp every report to zero, silently suppressing real exposure.
     await (
         await solvencyEngineInstance["file(bytes32,uint256)"](
             hardhat.ethers.encodeBytes32String("exposureCap"),
@@ -87,7 +88,8 @@ const deployReserve = async () => {
         )
     ).wait();
 
-    // Wiring the solvency gate: risk-increasing frobs and PSM redemptions consult the Solvency Engine.
+    // Wiring the solvency gate: risk-increasing frobs, PSM redemptions and surplus distributions consult the Solvency
+    // Engine (hard gates); OSM pokes and drip refresh the breach flag softly.
     await (
         await vaultEngineInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("solvencyEngine"),
@@ -96,6 +98,12 @@ const deployReserve = async () => {
     ).wait();
     await (
         await psmInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("solvencyEngine"),
+            solvencyEngineAddress
+        )
+    ).wait();
+    await (
+        await osmInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("solvencyEngine"),
             solvencyEngineAddress
         )
@@ -121,9 +129,39 @@ const deployReserve = async () => {
             reserveAccountingAddress
         )
     ).wait();
+    await (
+        await balanceSheetInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("solvencyEngine"),
+            solvencyEngineAddress
+        )
+    ).wait();
+
+    await (
+        await balanceSheetInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("buybackReceiver"),
+            buybackReceiverAddress
+        )
+    ).wait();
 
     // Authorizing the Balance Sheet to heal and suck on the ledger.
     await (await vaultEngineInstance.grantRole(WARD_ROLE, balanceSheetAddress)).wait();
+
+    // Stability fee wiring: accrued fees (drip) are credited to the Balance Sheet as surplus. Only VOLATILE ilk's duty
+    // needs to be filed, in our case RAIN-A will have ~2% APY = 1000000000627937192491029810n (ray, per-second factor
+    // 1.02^(1/31536000)).
+    await (
+        await vaultEngineInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("feeRecipient"),
+            balanceSheetAddress
+        )
+    ).wait();
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,uint256)"](
+            rainIlk,
+            hardhat.ethers.encodeBytes32String("duty"),
+            1000000000627937192491029810n
+        )
+    ).wait();
 
     console.log("Reserve setup complete");
 

@@ -2,6 +2,7 @@
 
 pragma solidity 0.8.30;
 
+import { _RAY } from "../shared/Constants.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -117,6 +118,77 @@ library Math {
 
         if (y != 0 && z / y != x) {
             _revert(MulOverflow.selector);
+        }
+    }
+
+    /**
+     * @dev Multiplies two ray fixed-point numbers, truncating: `(x * y) / RAY`. Reverts with a decodable error on
+     *      overflow of the intermediate product.
+     * @param x First operand [ray].
+     * @param y Second operand [ray].
+     * @return z The ray product `x * y / RAY` [ray].
+     */
+    function rmul(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        z = umul(x, y) / _RAY;
+    }
+
+    /**
+     * @dev Fixed-point exponentiation by squaring: computes `x ** n` where `x` is a fixed-point number scaled by
+     *      `base`. Used to compound a per-second `duty` factor over the elapsed time in {VaultEngine.drip}. Reverts
+     *      (via the invalid opcode inside the assembly block) on overflow.
+     * @param x Fixed-point base scaled by `base` (e.g. a per-second rate factor in ray).
+     * @param n Exponent (e.g. elapsed seconds).
+     * @param base Fixed-point scalar (e.g. RAY).
+     * @return z The fixed-point power `x ** n` scaled by `base`.
+     */
+    function rpow(uint256 x, uint256 n, uint256 base) internal pure returns (uint256 z) {
+        assembly ("memory-safe") {
+            switch x
+            case 0 {
+                switch n
+                case 0 {
+                    z := base
+                }
+                default {
+                    z := 0
+                }
+            }
+            default {
+                switch mod(n, 2)
+                case 0 {
+                    z := base
+                }
+                default {
+                    z := x
+                }
+                let half := div(base, 2) // for rounding.
+                for {
+                    n := div(n, 2)
+                } n {
+                    n := div(n, 2)
+                } {
+                    let xx := mul(x, x)
+                    if iszero(eq(div(xx, x), x)) {
+                        revert(0, 0)
+                    }
+                    let xxRound := add(xx, half)
+                    if lt(xxRound, xx) {
+                        revert(0, 0)
+                    }
+                    x := div(xxRound, base)
+                    if mod(n, 2) {
+                        let zx := mul(z, x)
+                        if and(iszero(iszero(x)), iszero(eq(div(zx, x), z))) {
+                            revert(0, 0)
+                        }
+                        let zxRound := add(zx, half)
+                        if lt(zxRound, zx) {
+                            revert(0, 0)
+                        }
+                        z := div(zxRound, base)
+                    }
+                }
+            }
         }
     }
 

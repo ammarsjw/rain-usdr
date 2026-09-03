@@ -421,7 +421,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      * @inheritdoc IDutchAuction
      */
     function upchost() external {
-        (, , , , , uint256 dust) = VAULT_ENGINE.ilks(ILK_ID);
+        (, , , , , uint256 dust, , ) = VAULT_ENGINE.ilks(ILK_ID);
 
         // Caching dust [rad] times the liquidation penalty chop [wad], scaled back to rad: wmul(dust, chop).
         chost = (dust * dog.chop(ILK_ID)) / _WAD;

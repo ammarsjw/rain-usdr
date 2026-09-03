@@ -59,6 +59,12 @@ interface IBalanceSheet {
      */
     event DistributeSurplus(uint256 excess);
 
+    /**
+     * @dev Emitted when the lagged reserve snapshot used by {humpTarget} is refreshed.
+     * @param reserve The recorded total reserve [wad].
+     */
+    event SnapshotReserve(uint256 reserve);
+
     /* ========================== ERRORS ========================== */
 
     /**
@@ -86,6 +92,12 @@ interface IBalanceSheet {
      */
     error NoBuybackReceiver();
 
+    /**
+     * @dev Indicates that the stable reserve no longer covers the debt of the fee-exempt (PSM) ilks: unbacked USDR
+     *      exists and no surplus may leave the protocol.
+     */
+    error ReserveBackingShortfall();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**
@@ -97,7 +109,7 @@ interface IBalanceSheet {
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency {buybackReceiver} or {reserveAccounting}.
+     * @notice Sets an address dependency {buybackReceiver}, {reserveAccounting} or {solvencyEngine}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -146,6 +158,22 @@ interface IBalanceSheet {
     function humpTarget() external view returns (uint256 target);
 
     /**
+     * @notice Refreshes the lagged reserve snapshot used by {humpTarget}, at most once per lag window.
+     * @dev Permissionless: keepers keep the snapshot fresh so reserve growth eventually raises the dynamic target.
+     */
+    function snapshotReserve() external;
+
+    /**
+     * @notice Returns the lagged total-reserve snapshot [wad] used by {humpTarget}'s dynamic term.
+     */
+    function laggedReserve() external view returns (uint256);
+
+    /**
+     * @notice Returns the timestamp of the last lagged-reserve snapshot.
+     */
+    function laggedReserveAt() external view returns (uint256);
+
+    /**
      * @notice Returns the Vault Engine this balance sheet reports to.
      */
     function VAULT_ENGINE() external view returns (IVaultEngine);
@@ -185,4 +213,9 @@ interface IBalanceSheet {
      * @notice Returns the recipient of surplus distributions, the RAIN buyback-and-burn process.
      */
     function buybackReceiver() external view returns (address);
+
+    /**
+     * @notice Returns the Solvency Engine gating surplus distributions. Zero when unset.
+     */
+    function solvencyEngine() external view returns (address);
 }

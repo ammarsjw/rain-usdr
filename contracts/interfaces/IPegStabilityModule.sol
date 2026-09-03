@@ -71,6 +71,16 @@ interface IPegStabilityModule {
      */
     error InsufficientFreeSlack();
 
+    /**
+     * @dev Indicates a stable ilk being registered without a permanent stability-fee exemption in the Vault Engine.
+     */
+    error StableIlkNotFeeExempt();
+
+    /**
+     * @dev Indicates that a stable ilk's debt multiplier has left RAY: the module's 1:1 accounting is unsound.
+     */
+    error StableIlkRateNotPar();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**

@@ -17,16 +17,15 @@ import { _revert } from "../shared/Globals.sol";
  * @title SolvencyEngine
  * @author Rain Team
  * @notice The guardian. Computes the protocol's worst-case loss under stress and verifies that the stable reserve
- *         exceeds it. When the worst-case loss exceeds the configured fraction of the reserve (90% at launch), the
- *         engine flags a breach and the rest of the system gates every non-reserve-increasing operation until the
- *         invariant is restored. A keeper bot is expected to call {checkInvariant} regularly to keep the flag fresh.
- * @dev The stress scenario prices COLLATERAL: each volatile ilk's aggregate locked collateral is valued at the
- *      delayed oracle price read DIRECTLY from the Oracle Security Module (never reconstructed as spot times mat),
- *      marked down by the stress markdown (50%) and the stress liquidation depth (35%); the loss is any debt not
- *      covered by that stressed recoverable value. An unavailable price values the collateral at zero, so the
- *      invariant fails CLOSED. Exposure reported by the prediction market layer is consumed defensively: it is clamped
- *      to a governance-set cap and a reverting reporter falls back to the cap, so the invariant can never overflow or
- *      permanently revert.
+ *         exceeds it. When the worst-case loss exceeds the configured fraction of the reserve, the engine flags a
+ *         breach and the rest of the system gates every non-reserve-increasing operation until the invariant is
+ *         restored. A keeper bot is expected to call {checkInvariant} regularly to keep the flag fresh.
+ * @dev The stress scenario prices COLLATERAL: each volatile ilk's aggregate locked collateral is valued at the delayed
+ *      oracle price read DIRECTLY from the Oracle Security Module (never reconstructed as spot times mat), marked down
+ *      by the stress markdown (50%) and the stress liquidation depth (35%); the loss is any debt not covered by that
+ *      stressed recoverable value. An unavailable price values the collateral at zero, so the invariant fails CLOSED.
+ *      Exposure reported by the prediction market layer is consumed defensively: it is clamped to a governance-set cap
+ *      and a reverting reporter falls back to the cap, so the invariant can never overflow or permanently revert.
  */
 contract SolvencyEngine is ISolvencyEngine, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -67,7 +66,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
-     * @notice Initializes the engine with its launch stress assumptions.
+     * @notice Initializes the engine.
      * @param vaultEngine_ Address of the Vault Engine.
      * @param reserveAccounting_ Address of the reserve accounting contract.
      */
@@ -117,6 +116,13 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
 
             reserveFactor = data;
         } else if (what == "exposureCap") {
+            // Symmetric guard to the wiring check below: zeroing the cap while a reporter is wired clamps every honest
+            // report to zero AND turns a reverting reporter's fallback into zero, exactly what the wiring guard was
+            // added to prevent. Disabling exposure tracking must be done explicitly by unwiring the reporter first.
+            if (data == 0 && address(externalExposure) != address(0)) {
+                _revert(ExposureCapNotSet.selector);
+            }
+
             exposureCap = data;
         } else {
             _revert(UnrecognizedParameter.selector);
@@ -130,8 +136,8 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      */
     function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
         if (what == "externalExposure") {
-            // Wiring an exposure reporter without a nonzero cap would clamp every report to zero (fail-open); the
-            // cap must be configured first.
+            // Wiring an exposure reporter without a nonzero cap would clamp every report to zero (fail-open); the cap
+            // must be configured first.
             if (data != address(0) && exposureCap == 0) {
                 _revert(ExposureCapNotSet.selector);
             }
@@ -156,7 +162,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
 
         // The ilk must exist in the Vault Engine: an unknown ilk would silently contribute zero debt and zero
         // collateral, polluting the loss computation without ever being noticed.
-        (, , uint256 rate, , , ) = VAULT_ENGINE.ilks(ilkId);
+        (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
         if (rate == 0) {
             _revert(InvalidBytes.selector);
@@ -245,15 +251,15 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
         for (uint256 i; i < volatileIlksLength; ++i) {
             bytes32 ilkId = volatileIlks[i];
 
-            (uint256 globalArt, uint256 globalInk, uint256 rate, , , ) = VAULT_ENGINE.ilks(ilkId);
+            (uint256 globalArt, uint256 globalInk, uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
             // Total debt against this collateral [wad]: art [wad] * rate [ray] / RAY.
             uint256 ilkDebt = (globalArt * rate) / _RAY;
 
             // Collateral market value [wad], priced DIRECTLY from the Oracle Security Module. Reconstructing the price
             // as spot * mat is forbidden: a mat change without a poke desynchronizes the two and the reconstructed
-            // price is wrong by exactly matNew / matOld. An unavailable or zero price values the collateral at
-            // zero -- the conservative direction (loss rises).
+            // price is wrong by exactly matNew / matOld. An unavailable or zero price values the collateral at zero,
+            // which is the conservative direction (loss rises).
             uint256 collateralValue;
 
             (bytes32 val, bool has) = osm.peek(ilkId);

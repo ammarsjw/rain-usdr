@@ -30,6 +30,13 @@ interface IOracleSecurityModule {
     /* ========================== EVENTS ========================== */
 
     /**
+     * @dev Emitted when an address dependency is updated.
+     * @param what Name of the parameter.
+     * @param addr New address.
+     */
+    event File(bytes32 indexed what, address addr);
+
+    /**
      * @dev Emitted when a collateral's price updates are frozen.
      * @param ilkId Identifier of the collateral type.
      */
@@ -84,7 +91,20 @@ interface IOracleSecurityModule {
     /* ========================== FUNCTIONS ========================== */
 
     /**
+     * @notice Sets an address dependency {solvencyEngine}.
+     * @dev The Solvency Engine is consulted SOFTLY after every successful poke: the breach flag is refreshed but a
+     *      failure can never block the price update.
+     * @param what Name of the parameter.
+     * @param data New address.
+     */
+    function file(bytes32 what, address data) external;
+
+    /**
      * @notice Freezes a collateral's price updates.
+     * @dev CAUTION: stop blocks {poke} only; {peek}/{read} keep serving the LAST STORED price as live (`has == true`),
+     *      so consumers continue trusting a frozen value. Use stop when the stored price is trusted and updates must
+     *      halt (e.g. source maintenance). For a suspected-compromised feed use {void}, which is fail-closed: it wipes
+     *      the stored prices so consumers value the collateral at zero.
      * @param ilkId Identifier of the collateral type.
      */
     function stop(bytes32 ilkId) external;
@@ -175,4 +195,9 @@ interface IOracleSecurityModule {
      * @notice Returns the update delay in seconds.
      */
     function HOP() external view returns (uint16);
+
+    /**
+     * @notice Returns the Solvency Engine softly refreshed on every successful poke. Zero when unset.
+     */
+    function solvencyEngine() external view returns (address);
 }

@@ -6,25 +6,22 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceSource } from "../interfaces/IPriceSource.sol";
+import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { _READER_ROLE, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, NotLive } from "../shared/Errors.sol";
+import { InvalidAddress, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
  * @title OracleSecurityModule
  * @author Rain Team
- * @notice The delayed price feed. Holds prices back by roughly 30 minutes so that if a price is manipulated, there is
- *         time to detect and respond before the system acts on it. Stores two prices per collateral type: the current
- *         one (which the system uses) and the next one (which becomes current after the delay). A single deployed
- *         instance serves every priced collateral: tokens are registered dynamically, each with its own price source.
+ * @notice The delayed price feed. Holds prices back by {delay} so that if a price is manipulated, there is time to
+ *         detect and respond before the system acts on it. Stores two prices per collateral type: the current one
+ *         (which the system uses) and the next one (which becomes current after the delay). A single deployed instance
+ *         serves every priced collateral: tokens are registered dynamically, each with its own price source.
  *
- *         NOTE: GUARANTEED-DELAY BOUND means pokes are aligned to fixed half-hour boundaries. A poke landing at the
- *         very end of a window (boundary + 1799s) permits the next poke one second later, at the next boundary. The
- *         MINIMUM interval between a price entering `nxt` and being promoted to `cur` is therefore 1 second in the
- *         worst case, NOT 30 minutes; 30 minutes is the AVERAGE cadence, and a manipulated price can reach `cur` in as
- *         little as one second after first appearing. Incident-response SLAs and monitoring must be sized to the
- *         1-second bound, never the 30-minute average. Keepers poking promptly at each boundary keep the effective
- *         delay near the full window.
+ *         The delay is a HARD bound: the last poke's exact timestamp is stored unsnapped, so the next poke is only
+ *         accepted a full {HOP} after the previous one. A price entering `nxt` therefore always resides there for at
+ *         least {HOP} before it can be promoted to `cur`. There is no boundary alignment and no one-second worst case.
  * @dev A single multi-collateral module keyed by ilk identifier. The per-ilk price source is any {IPriceSource}
  *      implementation, such as a dedicated Uniswap time-weighted average wrapper, a Chainlink feed wrapper, or any
  *      future adapter, so the module never needs to know what kind of oracle backs a token. Sources are switchable by
@@ -33,9 +30,11 @@ import { _revert } from "../shared/Globals.sol";
 contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
-    // TODO mock - uint16 public constant HOP = 1800;
     /// @inheritdoc IOracleSecurityModule
-    uint16 public HOP = 180;
+    uint16 public constant HOP = 1800;
+
+    /// @inheritdoc IOracleSecurityModule
+    address public solvencyEngine;
 
     /// @dev Oracle state per collateral type.
     mapping(bytes32 ilkId => Ilk ilk) private _ilks;
@@ -53,6 +52,19 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     }
 
     /* ========================== FUNCTIONS ========================== */
+
+    /**
+     * @inheritdoc IOracleSecurityModule
+     */
+    function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
+        if (what == "solvencyEngine") {
+            solvencyEngine = data;
+        } else {
+            _revert(UnrecognizedParameter.selector);
+        }
+
+        emit File({ what: what, addr: data });
+    }
 
     /**
      * @inheritdoc IOracleSecurityModule
@@ -112,7 +124,7 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
             _revert(NotLive.selector);
         }
 
-        // At least 30 minutes must have passed since the last update.
+        // At least {delay} must have passed since the last update.
         if (!pass(ilkId)) {
             _revert(NotPassed.selector);
         }
@@ -124,9 +136,21 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
         if (ok && uint256(wut) != 0) {
             ilk.cur = ilk.nxt;
             ilk.nxt = Feed(uint128(uint256(wut)), 1);
-            ilk.delay = uint64(block.timestamp - (block.timestamp % HOP));
+
+            // Stored UNSNAPPED: snapping down to the HOP boundary would let a poke at boundary+1799 be followed one
+            // second later, collapsing the guaranteed nxt->cur residency to 1 second. The exact timestamp makes {HOP}
+            // a hard minimum interval between pokes.
+            ilk.delay = uint64(block.timestamp);
 
             emit Poke({ ilkId: ilkId, current: ilk.cur.val, next: ilk.nxt.val });
+
+            // Soft solvency refresh: a price advance is where a breach FIRST becomes visible (the one input nobody
+            // controls), so the breach flag is recomputed immediately rather than waiting for the next keeper cycle.
+            // This NEVER reverts: censoring a price update because it carries bad news is how systems die, so the call
+            // is wrapped and a mis-wired engine can never block the feed.
+            if (solvencyEngine != address(0)) {
+                try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
+            }
         } else {
             // The source refused to report a valid price: surface it for monitoring without reverting.
             emit PokeFailed({ ilkId: ilkId, src: address(ilk.src) });
@@ -190,12 +214,5 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
      */
     function pass(bytes32 ilkId) public view returns (bool) {
         return block.timestamp >= _ilks[ilkId].delay + HOP;
-    }
-
-    /**
-     * TODO mock - remove
-     */
-    function tempChangeHop(uint16 newHop) external {
-        HOP = newHop;
     }
 }

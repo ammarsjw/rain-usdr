@@ -6,7 +6,7 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 
 import { IPriceCurve } from "../interfaces/IPriceCurve.sol";
 import { _WARD_ROLE } from "../shared/Constants.sol";
-import { UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAmount, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -41,6 +41,12 @@ contract PriceCurve is IPriceCurve, AccessControl {
      */
     function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "tau") {
+            // tau == 0 would make price() return 0 for every duration: every take reverts, redo cannot recover, and
+            // all collateral in auction is unsellable until a nonzero tau is filed.
+            if (data == 0) {
+                _revert(InvalidAmount.selector);
+            }
+
             tau = data;
         } else {
             _revert(UnrecognizedParameter.selector);

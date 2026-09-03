@@ -15,7 +15,7 @@ import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { _USDR_ILK, _WARD_ROLE } from "../shared/Constants.sol";
+import { _RAY, _USDR_ILK, _WARD_ROLE } from "../shared/Constants.sol";
 import {
     IlkAlreadyInitialized,
     InvalidAddress,
@@ -112,6 +112,16 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(InvalidAddress.selector);
         }
 
+        // The ilk must be permanently fee-exempt with a clean rate: the PSM's 1:1 accounting is only sound at
+        // `rate == RAY`. Any accrued fee makes redemptions underflow the module's zero internal balance and deposits
+        // fail the safety check, stranding the entire stable reserve, while the accrual itself mints unbacked surplus.
+        // Requiring the exemption AT REGISTRATION means no later governance action can arm a fee on a PSM ilk.
+        (, , uint256 rate, , , , uint256 duty, ) = VAULT_ENGINE.ilks(ilkId);
+
+        if (!VAULT_ENGINE.noFee(ilkId) || rate != _RAY || duty != _RAY) {
+            _revert(StableIlkNotFeeExempt.selector);
+        }
+
         // The PSM holds its entire stable inventory for this ilk in a single dedicated vault, opened here. The ilk
         // must therefore already be initialized in the Vault Engine.
         uint256 vaultId = VAULT_ENGINE.open(ilkId, address(this));
@@ -157,6 +167,11 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(SystemPaused.selector);
         }
 
+        // Defense-in-depth: the 1:1 frob below is only correct at `rate == RAY`. The fee exemption enforced at init
+        // makes this unreachable; if it is ever observed the module mis-accounts on every leg, so failing loudly beats
+        // corrupting the reserve accounting.
+        _requireRatePar(ilkId);
+
         // Exactly 1:1: the user receives stableAmt18 USDR for stableAmt stablecoins. No fee.
         uint256 stableAmt18 = stableAmt * ilk.to18ConversionFactor;
 
@@ -194,10 +209,10 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(SystemPaused.selector);
         }
 
-        // Solvency gate: redemption DECREASES the reserve, so it is blocked while the invariant is breached. The
-        // invariant is recomputed HERE, at redemption time, rather than trusting the keeper-maintained flag: a stable
-        // flag (keeper down during a price collapse) would otherwise hand early redeemers a bank-run ordering
-        // advantage, letting them exit whole at par against a stale escrow while a live loss stands.
+        // Solvency gate (HARD breach): redemption DECREASES the reserve, so it is blocked while the invariant is
+        // breached. The invariant is recomputed HERE, at redemption time, rather than trusting the keeper-maintained
+        // flag: a stable flag (keeper down during a price collapse) would otherwise hand early redeemers a bank-run
+        // ordering advantage, letting them exit whole at par against a stale escrow while a live loss stands.
         if (solvencyEngine != address(0)) {
             ISolvencyEngine(solvencyEngine).checkInvariant();
 
@@ -205,6 +220,9 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
                 _revert(SolvencyGateActive.selector);
             }
         }
+
+        // Defense-in-depth: the 1:1 frob below is only correct at `rate == RAY`.
+        _requireRatePar(ilkId);
 
         // Exactly 1:1: the user pays stableAmt18 USDR for stableAmt stablecoins. No fee.
         uint256 stableAmt18 = stableAmt * ilk.to18ConversionFactor;
@@ -224,5 +242,18 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
         RESERVE_ACCOUNTING.recordDecrease(stableAmt18);
 
         emit BuyStable({ ilkId: ilkId, user: user, stableAmt: stableAmt, usdrAmt: stableAmt18 });
+    }
+
+    /**
+     * @dev Reverts unless the ilk's debt multiplier is exactly RAY. The module's 1:1 vault accounting is only sound at
+     *      par; see the guards in {init} and {VaultEngine.exemptFee}.
+     * @param ilkId Identifier of the stable collateral type.
+     */
+    function _requireRatePar(bytes32 ilkId) private view {
+        (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
+
+        if (rate != _RAY) {
+            _revert(StableIlkRateNotPar.selector);
+        }
     }
 }

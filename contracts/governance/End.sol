@@ -14,7 +14,7 @@ import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceConverter } from "../interfaces/IPriceConverter.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, NotAuthorized, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, NotAuthorized, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -23,8 +23,9 @@ import { _revert } from "../shared/Globals.sol";
  * @author Rain Team
  * @notice The emergency settlement module. When governance pulls the plug, this contract freezes the system, settles
  *         every vault at the last oracle price, hands vault owners their excess collateral back, and finally lets
- *         every USDR holder redeem the remaining collateral pro-rata. This contract runs on a single balance sheet and
- *         fee-less, fixed-rate design.
+ *         every USDR holder redeem the remaining collateral pro-rata. This contract runs on a single balance sheet;
+ *         the Vault Engine's cage drips every ilk before freezing its rates, so no accrued fee is silently forgiven at
+ *         shutdown and the settlement math below is exact at any accrued rate (`tab / rate`, `art * rate * tag`).
  * @dev Settlement runs in ordered phases:
  *      1. `cage()` - freeze the Vault Engine, the Liquidation Trigger and the Price Converter.
  *      2. `cage(ilkId)` - fix each collateral type's settlement price and snapshot its debt.
@@ -175,9 +176,20 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
             _revert(TagAlreadyDefined.selector);
         }
 
-        (uint256 globalArt, , , , , ) = VAULT_ENGINE.ilks(ilkId);
+        (uint256 globalArt, , , , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
         art[ilkId] = globalArt;
+
+        // Halting this collateral's auction house: after global settlement the auction price keeps decaying while the
+        // settlement price below is fixed forever, so any still-running auction becomes a risk-free arbitrage against
+        // USDR redeemers once the curve crosses break-even and collateral bought there leaves the redemption pool
+        // permanently. `yank` is deliberately not live-gated, so `skip` still reclaims in-flight auctions after the
+        // halt. Ilks with no auction house configured (e.g. PSM stables) skip this.
+        (address clipAddress, , , , ) = liquidationTrigger.ilks(ilkId);
+
+        if (clipAddress != address(0) && IDutchAuction(clipAddress).live() == 1) {
+            IDutchAuction(clipAddress).cage();
+        }
 
         // The settlement price is par (USDR's target value) divided by the collateral's last delayed price: collateral
         // units owed per USDR of debt [ray]. Fixed-price ilks settle at exactly $1, matching the price they minted at;
@@ -215,7 +227,7 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
 
         (, uint256 tab, uint256 lot, uint256 vaultId, , , ) = clip.sales(auctionId);
 
-        (, , uint256 rate, , , ) = VAULT_ENGINE.ilks(ilkId);
+        (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
         // Recreating the auction's debt on the Balance Sheet so the reclaim below can cancel it: suck mints matched
         // surplus and bad debt, grab then consumes the bad debt while restoring the vault. Net effect: the vault gets
@@ -228,6 +240,17 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         // Restoring the vault: the debt including the liquidation penalty is reinstated so the owner settles on the
         // same terms as everyone else.
         uint256 restoredArt = tab / rate;
+
+        // The reinstated debt must also be added back to this ilk's settlement snapshot: `thaw` fixes the total debt
+        // from the Vault Engine (which includes the restored debt via grab), so leaving the snapshot short makes
+        // `flow` divide a short numerator by a full denominator understating the redemption price and stranding the
+        // difference in this contract forever.
+        art[ilkId] += restoredArt;
+
+        // Overflow guards on the signed casts.
+        if (int256(lot) < 0 || int256(restoredArt) < 0) {
+            _revert(InvalidAmount.selector);
+        }
 
         VAULT_ENGINE.grab(vaultId, address(this), address(balanceSheet), int256(lot), int256(restoredArt));
 
@@ -245,7 +268,7 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         }
 
         (uint256 ink, uint256 urnArt) = VAULT_ENGINE.urns(vaultId);
-        (, , uint256 rate, , , ) = VAULT_ENGINE.ilks(ilkId);
+        (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
         // The collateral owed is the vault's debt valued at the settlement price. If the vault holds less than it
         // owes, the difference is recorded as this collateral's shortfall and socialized across redeemers in flow.
@@ -253,6 +276,11 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         uint256 wad = Math.min(ink, owe);
 
         gap[ilkId] += owe - wad;
+
+        // Overflow guards on the signed casts.
+        if (int256(wad) < 0 || int256(urnArt) < 0) {
+            _revert(InvalidAmount.selector);
+        }
 
         // Confiscating the owed collateral to this contract and cancelling the debt against the Balance Sheet.
         VAULT_ENGINE.grab(vaultId, address(this), address(balanceSheet), -int256(wad), -int256(urnArt));
@@ -282,6 +310,11 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         }
 
         bytes32 ilkId = VAULT_ENGINE.ilkOf(vaultId);
+
+        // Overflow guard on the signed cast.
+        if (int256(ink) < 0) {
+            _revert(InvalidAmount.selector);
+        }
 
         VAULT_ENGINE.grab(vaultId, owner, address(balanceSheet), -int256(ink), 0);
 
@@ -328,7 +361,7 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
             _revert(FixAlreadyDefined.selector);
         }
 
-        (, , uint256 rate, , , ) = VAULT_ENGINE.ilks(ilkId);
+        (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
         // The redeemable collateral for this ilk is its snapshotted debt valued at the settlement price, minus the
         // shortfall that could not be confiscated. Dividing by the fixed total debt gives collateral per USDR [ray].

@@ -10,14 +10,17 @@ import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { Math } from "../libraries/Math.sol";
 import { _RAY, _WARD_ROLE } from "../shared/Constants.sol";
 import {
+    FeeRecipientNotSet,
     IlkAlreadyInitialized,
     InvalidAddress,
+    InvalidAssignment,
+    InvalidDuty,
     NotLive,
     SolvencyGateActive,
     SystemPaused,
     UnrecognizedParameter
 } from "../shared/Errors.sol";
-import { Cage } from "../shared/Events.sol";
+import { Cage, Drip } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -26,10 +29,21 @@ import { _revert } from "../shared/Globals.sol";
  * @notice The immutable core ledger. Master record of every piece of collateral and every unit of debt in the system.
  *         Enforces the fundamental rule that no vault can mint more USDR than its collateral allows. Its rules can
  *         never be changed after deployment.
- * @dev USDR charges no stability fee, so each ilk's `rate` is initialized to `RAY` (1.0) and never changes. Internal
- *      USDR balances are tracked in `rad` (45 decimals).
+ * @dev Each ilk's `rate` is initialized to `RAY` (1.0) and grows as stability fees accrue: `duty` is a per-second
+ *      compounding factor [ray] and the permissionless {drip} lazily folds `rpow(duty, now - rho) * rate` into the
+ *      ilk, crediting the accrued fees to the {feeRecipient} (the Balance Sheet) as surplus. `frob` (when changing
+ *      debt) and duty changes drip automatically; after `cage` the rate is frozen. Internal USDR balances are tracked
+ *      in `rad` (45 decimals).
  */
 contract VaultEngine is IVaultEngine, AccessControl {
+    /* ========================== CONSTANTS ========================== */
+
+    /// @dev Upper bound on a per-second stability-fee factor `duty` [ray]: `2^(1/31536000)` scaled to ray, i.e.
+    ///      exactly 100% APY. Bounding `duty` at file time is what stops a single fat-fingered value from making
+    ///      `rpow` overflow minutes later, after which `drip` reverts forever and every vault in the ilk becomes
+    ///      unrepayable. Any value this bound accepts stays computable for centuries.
+    uint256 private constant _MAX_DUTY = 1000000021979553151239153027;
+
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IVaultEngine
@@ -51,10 +65,19 @@ contract VaultEngine is IVaultEngine, AccessControl {
     address public governor;
 
     /// @inheritdoc IVaultEngine
+    address public feeRecipient;
+
+    /// @inheritdoc IVaultEngine
     mapping(address owner => mapping(address operator => uint256 permission)) public can;
 
     /// @inheritdoc IVaultEngine
     mapping(bytes32 ilkId => Ilk collateralType) public ilks;
+
+    /// @inheritdoc IVaultEngine
+    bytes32[] public ilkIds;
+
+    /// @inheritdoc IVaultEngine
+    mapping(bytes32 ilkId => bool feeExempt) public noFee;
 
     /// @inheritdoc IVaultEngine
     uint256 public vaultCount;
@@ -119,6 +142,11 @@ contract VaultEngine is IVaultEngine, AccessControl {
         }
 
         ilks[ilkId].rate = _RAY;
+        ilks[ilkId].duty = _RAY;
+        ilks[ilkId].rho = block.timestamp;
+
+        // Registered so `cage` can enumerate every ilk (dripping each one at shutdown). Ilks are never removed.
+        ilkIds.push(ilkId);
 
         emit Init({ ilkId: ilkId });
     }
@@ -152,6 +180,12 @@ contract VaultEngine is IVaultEngine, AccessControl {
             solvencyEngine = data;
         } else if (what == "governor") {
             governor = data;
+        } else if (what == "feeRecipient") {
+            if (data == address(0)) {
+                _revert(InvalidAddress.selector);
+            }
+
+            feeRecipient = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -173,11 +207,71 @@ contract VaultEngine is IVaultEngine, AccessControl {
             ilks[ilkId].line = data;
         } else if (what == "dust") {
             ilks[ilkId].dust = data;
+        } else if (what == "duty") {
+            // The collateral type must have been initialized. Checked explicitly: the drip below used to provide this
+            // guard, but it is now non-fatal and would swallow the revert.
+            if (ilks[ilkId].rate == 0) {
+                _revert(IlkNotInitialized.selector);
+            }
+
+            if (data < _RAY) {
+                _revert(InvalidDuty.selector);
+            }
+
+            // Upper bound: an unbounded duty (e.g. a fat-fingered 1.5e27 = 50%/second) makes `rpow` overflow within
+            // minutes, after which drip reverts forever and every vault in the ilk becomes unrepayable. Bounding at
+            // file time keeps every accepted duty safely computable for centuries.
+            if (data > _MAX_DUTY) {
+                _revert(InvalidDuty.selector);
+            }
+
+            // Fee-exempt guard: stable (PSM) ilks must never accrue a stability fee. The PSM moves debt 1:1 with its
+            // stable inventory and holds no internal USDR, so ANY rate above RAY strands the entire reserve
+            // (redemptions underflow, deposits fail the safety check) and mints unbacked surplus.
+            if (noFee[ilkId] && data != _RAY) {
+                _revert(InvalidDuty.selector);
+            }
+
+            // Accrue at the OLD duty first: a duty change must never apply retroactively over the elapsed window. The
+            // drip is non-fatal: if accrual itself reverts (e.g. rpow overflow from a legacy bad duty), governance
+            // must still be able to file a sane duty as the escape hatch and a reverting drip must never lock the one
+            // parameter that can fix it. The skipped window then accrues at the NEW duty, which is the acceptable cost
+            // of keeping the ilk recoverable.
+            try this.drip(ilkId) {} catch {}
+
+            ilks[ilkId].duty = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
 
         emit File({ ilkId: ilkId, what: what, data: data });
+    }
+
+    /**
+     * @inheritdoc IVaultEngine
+     */
+    function ilkIdsLength() external view returns (uint256) {
+        return ilkIds.length;
+    }
+
+    /**
+     * @inheritdoc IVaultEngine
+     */
+    function exemptFee(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
+        // The collateral type must have been initialized.
+        if (ilks[ilkId].rate == 0) {
+            _revert(IlkNotInitialized.selector);
+        }
+
+        // Marking is one-way and requires the ilk to be fee-clean: a rate already above RAY means fees have accrued
+        // and the PSM invariant (rate == RAY forever) is already broken for this ilk.
+        if (ilks[ilkId].rate != _RAY || ilks[ilkId].duty != _RAY) {
+            _revert(InvalidAssignment.selector);
+        }
+
+        noFee[ilkId] = true;
+
+        emit ExemptFee({ ilkId: ilkId });
     }
 
     /**
@@ -199,8 +293,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
             _revert(IlkNotInitialized.selector);
         }
 
-        // Vault ids are sequential and never reused. Ownership is immutable: transferring a position is not
-        // supported.
+        // Vault ids are sequential and never reused. Ownership is immutable: transferring a position is not supported.
         vaultId = ++vaultCount;
 
         ownerOf[vaultId] = usr;
@@ -212,7 +305,73 @@ contract VaultEngine is IVaultEngine, AccessControl {
     /**
      * @inheritdoc IVaultEngine
      */
+    function drip(bytes32 ilkId) public returns (uint256 newRate) {
+        Ilk storage ilk = ilks[ilkId];
+
+        uint256 prev = ilk.rate;
+
+        // The collateral type must have been initialized.
+        if (prev == 0) {
+            _revert(IlkNotInitialized.selector);
+        }
+
+        // After shutdown the rate is frozen: emergency settlement must see the rates as of cage time. A no-op return
+        // (rather than a revert) keeps post-cage callers working.
+        if (live != 1) {
+            return prev;
+        }
+
+        // Idempotent within a block.
+        if (block.timestamp == ilk.rho) {
+            return prev;
+        }
+
+        newRate = Math.rmul(Math.rpow(ilk.duty, block.timestamp - ilk.rho, _RAY), prev);
+
+        uint256 delta = newRate - prev;
+        uint256 rad = Math.umul(ilk.globalArt, delta);
+
+        // Fees are minted to the fee recipient (the Balance Sheet) as surplus at accrual time. Accruing a nonzero fee
+        // without a configured recipient would burn it into an unreachable balance, so it is a hard error.
+        if (rad != 0) {
+            if (feeRecipient == address(0)) {
+                _revert(FeeRecipientNotSet.selector);
+            }
+
+            usdr[feeRecipient] += rad;
+            debt += rad;
+        }
+
+        ilk.rate = newRate;
+        ilk.rho = block.timestamp;
+
+        emit Drip({ ilkId: ilkId, rate: newRate, rad: rad });
+
+        // Soft solvency refresh: fee accrual raises outstanding debt and therefore the worst-case loss with no user
+        // action. Recompute the breach flag so a breach surfaces even between keeper checks. This NEVER reverts:
+        // accrual is measurement, not a voluntary risk increase, and drip must stay callable (it is invoked inside
+        // frob and on every duty change). The call is wrapped so a mis-wired engine can never brick accrual, and it is
+        // skipped when no fee accrued (rad == 0) since the loss is then unchanged.
+        if (rad != 0 && solvencyEngine != address(0)) {
+            try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
+        }
+    }
+
+    /**
+     * @inheritdoc IVaultEngine
+     */
     function cage() external onlyRole(_WARD_ROLE) {
+        // Settle every ilk's accrued fees BEFORE freezing: rates are frozen at cage time, so any fee still undripped
+        // here would be silently forgiven, which would make it so every vault would settle against less debt than it
+        // owes and the shortfall would land on redeemers through a lower redemption price. Dripping in the contract
+        // (rather than trusting a shutdown spell to remember) makes the settlement accounting exact by construction.
+        // Each drip is non-fatal so one pathological ilk can never block the emergency shutdown itself.
+        uint256 length = ilkIds.length;
+
+        for (uint256 i; i < length; ++i) {
+            try this.drip(ilkIds[i]) {} catch {}
+        }
+
         live = 0;
 
         emit Cage();
@@ -273,6 +432,13 @@ contract VaultEngine is IVaultEngine, AccessControl {
 
         bytes32 ilkId = ilkOf[vaultId];
 
+        // Accrue the stability fee before ANY vault change so tab and dtab are computed at the current rate: the
+        // stale-rate window is impossible by construction. Unconditional: a pure collateral withdrawal (dink < 0,
+        // dart == 0) prices the safety check with `tab = art * rate`, and a stale rate there understates the debt by
+        // the entire undripped accrual. drip itself reverts on an uninitialized ilk and is idempotent within a block,
+        // so the extra call costs one warm read when already fresh.
+        drip(ilkId);
+
         Urn memory urn = urns[vaultId];
         Ilk memory ilk = ilks[ilkId];
 
@@ -287,18 +453,21 @@ contract VaultEngine is IVaultEngine, AccessControl {
             _revert(SystemPaused.selector);
         }
 
-        // Solvency gate: when the Solvency Engine is wired and reports a breach of the reserve invariant,
-        // risk-increasing changes (drawing debt or withdrawing collateral) against VOLATILE collateral are blocked.
-        // Repayment (dart < 0) and collateral top-ups (dink > 0) always remain available because they reduce risk.
-        // Stable (PSM) ilks are exempt here: PSM inflows are reserve-increasing and must never be gated, while PSM
-        // redemptions are gated inside the PSM itself.
+        // Solvency gate (HARD breach): risk-increasing changes (drawing debt or withdrawing collateral) against
+        // VOLATILE collateral are blocked while the reserve invariant is breached. The invariant is RECOMPUTED here
+        // rather than trusting the keeper-maintained flag: a stale flag (keeper down during a price collapse) would
+        // otherwise let a draw slip through against reserves that can no longer cover the stressed loss. Repayment
+        // (dart < 0) and collateral top-ups (dink > 0) always remain available because they reduce risk. Stable (PSM)
+        // ilks are exempt: PSM inflows are reserve-increasing and must never be gated, while PSM redemptions are gated
+        // inside the PSM itself.
         if (
-            (dart > 0 || dink < 0) &&
-            solvencyEngine != address(0) &&
-            ISolvencyEngine(solvencyEngine).isBreached() &&
-            ISolvencyEngine(solvencyEngine).isVolatile(ilkId)
+            (dart > 0 || dink < 0) && solvencyEngine != address(0) && ISolvencyEngine(solvencyEngine).isVolatile(ilkId)
         ) {
-            _revert(SolvencyGateActive.selector);
+            ISolvencyEngine(solvencyEngine).checkInvariant();
+
+            if (ISolvencyEngine(solvencyEngine).isBreached()) {
+                _revert(SolvencyGateActive.selector);
+            }
         }
 
         urn.ink = Math.add(urn.ink, dink);
@@ -306,9 +475,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
         ilk.globalArt = Math.add(ilk.globalArt, dart);
         ilk.globalInk = Math.add(ilk.globalInk, dink);
 
-        // NOTE: `rate` is fixed at RAY forever (USDR charges no stability fee), so `dtab`/`tab` are exact rad values
-        // and the dust/tab comparisons below remain correct only under that assumption. If a stability fee is ever
-        // introduced, this arithmetic must be revisited.
+        // NOTE: With a variable `rate` (stability fees), `dtab`/`tab` are exact rad values but no longer exact
+        // multiples of RAY. `tab = rate * art` [rad] is compared against `dust` [rad] directly, which stays correct at
+        // any rate >= RAY and cannot be gamed by rounding.
         int256 dtab = Math.mul(ilk.rate, dart);
         uint256 tab = Math.umul(ilk.rate, urn.art);
 
@@ -359,7 +528,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @inheritdoc IVaultEngine
      */
     function grab(uint256 vaultId, address v, address w, int256 dink, int256 dart) external onlyRole(_WARD_ROLE) {
-        // NOTE: deliberately callable after shutdown (no live check). The emergency settlement module (End) seizes
+        // NOTE: Deliberately callable after shutdown (no live check). The emergency settlement module (End) seizes
         // positions through this function after cage.
         if (ownerOf[vaultId] == address(0)) {
             _revert(VaultNotFound.selector);
@@ -388,7 +557,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @inheritdoc IVaultEngine
      */
     function heal(uint256 rad) external {
-        // NOTE: deliberately callable after shutdown (no live check). Emergency settlement heals the Balance Sheet's
+        // NOTE: Deliberately callable after shutdown (no live check). Emergency settlement heals the Balance Sheet's
         // surplus against bad debt after cage (End.thaw() requires it).
         sin[msg.sender] -= rad;
         usdr[msg.sender] -= rad;

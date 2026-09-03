@@ -8,7 +8,7 @@ import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceConverter } from "../interfaces/IPriceConverter.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -92,6 +92,14 @@ contract PriceConverter is IPriceConverter, AccessControl {
         }
 
         if (what == "par") {
+            // `par == 0` would make poke revert on division for every ilk, freezing all spots at their last values
+            // since a stale spot keeps authorizing mints. And because file requires live == 1, a zeroed par could
+            // never be repaired after cage. Guarding here matches the contract's own standard elsewhere (MatBelowOne,
+            // WouldOrphanIlk).
+            if (data == 0) {
+                _revert(InvalidAmount.selector);
+            }
+
             par = data;
         } else {
             _revert(UnrecognizedParameter.selector);

@@ -51,10 +51,9 @@ interface IGovernor {
 
     /**
      * @dev Emitted when the emergency pause begins.
-     * @param scope Which operations were paused.
      * @param pausedAt Timestamp when the pause began.
      */
-    event Pause(bytes32 scope, uint256 pausedAt);
+    event Pause(uint256 pausedAt);
 
     /**
      * @dev Emitted when the pause is lifted.
@@ -123,11 +122,11 @@ interface IGovernor {
     function cancel(uint256 id) external;
 
     /**
-     * @notice Halts sensitive operations during an emergency.
-     * @dev The scope is declared up front and cannot be widened afterward. Auto-expires after 72 hours.
-     * @param scope Which operations to pause.
+     * @notice Halts every pausable operation during an emergency.
+     * @dev Deliberately unscoped: every consumer reads the same {paused} boolean, so a pause is always a full stop.
+     *      Auto-expires after 72 hours.
      */
-    function pause(bytes32 scope) external;
+    function pause() external;
 
     /**
      * @notice Lifts the pause. Governance may lift it early. After 72 hours anyone may.
@@ -138,11 +137,6 @@ interface IGovernor {
      * @notice Returns the maximum pause duration in seconds, after which anyone can un-pause.
      */
     function PAUSE_MAX() external view returns (uint256);
-
-    /**
-     * @notice Returns the scope of the current pause, fixed at the moment of pausing.
-     */
-    function pauseScope() external view returns (bytes32);
 
     /**
      * @notice Returns the mandatory timelock delay in seconds.
