@@ -338,7 +338,7 @@ interface IDutchAuction {
     function balanceSheet() external view returns (address);
 
     /**
-     * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
+     * @notice Returns the Governor consulted for the emergency pause.
      */
     function governor() external view returns (IGovernor);
 

@@ -134,5 +134,7 @@ interface IPriceConverter {
      * @return mat The required collateralization ratio [ray].
      * @return fixedPrice Whether the ilk is a supported stablecoin pinned to $1.
      */
-    function ilks(bytes32 ilkId) external view returns (IOracleSecurityModule oracleSecurityModule, uint256 mat, bool fixedPrice);
+    function ilks(
+        bytes32 ilkId
+    ) external view returns (IOracleSecurityModule oracleSecurityModule, uint256 mat, bool fixedPrice);
 }

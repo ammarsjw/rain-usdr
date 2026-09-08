@@ -22,9 +22,9 @@ import { _revert } from "../shared/Globals.sol";
  * @dev Every ilk is configured as exactly one of two kinds. A fixed ilk has no oracle and its price is pinned to $1,
  *      with the trust decision living in listing governance. An oracle-backed ilk reads its price from the OSM. The
  *      OSM itself never learns about fixed ilks. Being registered on the OSM is what needs a price lookup means, and
- *      this contract is the single place that routes between the two kinds. `file("oracleSecurityModule")` and `file("fixed")` clear
- *      each other so an ilk can never be both, and `poke` reverts for unconfigured ilks rather than writing a zero
- *      spot.
+ *      this contract is the single place that routes between the two kinds. `file("oracleSecurityModule")` and
+ *      `file("fixed")` clear each other so an ilk can never be both, and `poke` reverts for unconfigured ilks rather
+ *      than writing a zero spot.
  */
 contract PriceConverter is IPriceConverter, AccessControl {
     /* ========================== STATE VARIABLES ========================== */

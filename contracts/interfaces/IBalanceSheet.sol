@@ -152,7 +152,8 @@ interface IBalanceSheet {
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency {buybackReceiver}, {reserveAccounting}, {solvencyEngine} or {oracleSecurityModule}.
+     * @notice Sets an address dependency {buybackReceiver}, {reserveAccounting}, {solvencyEngine} or
+     *         {oracleSecurityModule}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -283,19 +284,20 @@ interface IBalanceSheet {
     function buybackReceiver() external view returns (address);
 
     /**
-     * @notice Returns the Solvency Engine gating surplus distributions. Zero when unset.
+     * @notice Returns the Solvency Engine gating surplus distributions.
      */
     function solvencyEngine() external view returns (ISolvencyEngine);
 
     /**
-     * @notice Returns the reserve accounting contract used for the dynamic buffer target. Zero when unset.
+     * @notice Returns the reserve accounting contract used for the dynamic buffer target.
      */
     function reserveAccounting() external view returns (IReserveAccounting);
 
     /**
-     * @notice Returns the OSM used to price treasury RAIN for the backstop. Zero when unset.
+     * @notice Returns the OSM used to price treasury RAIN for the backstop.
      */
     function oracleSecurityModule() external view returns (IOracleSecurityModule);
+
     /**
      * @notice Returns the queued bad debt for an era [rad].
      * @param era Timestamp bucket.

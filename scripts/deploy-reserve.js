@@ -72,7 +72,10 @@ const deployReserve = async () => {
     // source (worst-case loss reads prices straight from the OSM, never spot * mat).
     await (await solvencyEngineInstance.addVolatileIlk(rainIlk)).wait();
     await (
-        await solvencyEngineInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("oracleSecurityModule"), osmAddress)
+        await solvencyEngineInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("oracleSecurityModule"),
+            osmAddress
+        )
     ).wait();
 
     // Granting the Solvency Engine read access on the OSM.
@@ -137,7 +140,10 @@ const deployReserve = async () => {
     // RAIN backstop (waterfall step 4): sell treasury RAIN at a haircuted OSM price to heal unqueued sin.
     const backstopCap = process.env.BACKSTOP_CAP ? BigInt(process.env.BACKSTOP_CAP) : 50000n * RAD;
     await (
-        await balanceSheetInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("oracleSecurityModule"), osmAddress)
+        await balanceSheetInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("oracleSecurityModule"),
+            osmAddress
+        )
     ).wait();
     await (await balanceSheetInstance.setRainIlk(rainIlk)).wait();
     await (

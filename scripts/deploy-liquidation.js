@@ -138,7 +138,10 @@ const deployLiquidation = async () => {
         )
     ).wait();
     await (
-        await dutchAuctionInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("oracleSecurityModule"), osmAddress)
+        await dutchAuctionInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("oracleSecurityModule"),
+            osmAddress
+        )
     ).wait();
     await (
         await dutchAuctionInstance["file(bytes32,address)"](

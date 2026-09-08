@@ -108,8 +108,8 @@ interface IOracleSecurityModule {
     function file(bytes32 what, address data) external;
 
     /**
-     * @notice Sets a numeric parameter {maxAge}. Zero disables the staleness check; a nonzero value makes {peek}/{read}
-     *         treat prices older than `maxAge` seconds since the last successful poke as invalid.
+     * @notice Sets a numeric parameter {maxAge}. Zero disables the staleness check; a nonzero value makes {peek}/
+     *         {read} treat prices older than `maxAge` seconds since the last successful poke as invalid.
      * @param what Name of the parameter.
      * @param data New value [seconds].
      */
@@ -213,12 +213,12 @@ interface IOracleSecurityModule {
     function HOP() external view returns (uint16);
 
     /**
-     * @notice Returns the Solvency Engine softly refreshed on every successful poke. Zero when unset.
-     */
-    function solvencyEngine() external view returns (ISolvencyEngine);
-
-    /**
      * @notice Returns the maximum age of a current price in seconds. Zero means no staleness check.
      */
     function maxAge() external view returns (uint256);
+
+    /**
+     * @notice Returns the Solvency Engine softly refreshed on every successful poke.
+     */
+    function solvencyEngine() external view returns (ISolvencyEngine);
 }

@@ -48,13 +48,13 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
     uint256 public reserveFactor;
 
     /// @inheritdoc ISolvencyEngine
-    bool public breached;
-
-    /// @inheritdoc ISolvencyEngine
     IExternalExposure public externalExposure;
 
     /// @inheritdoc ISolvencyEngine
     IOracleSecurityModule public oracleSecurityModule;
+
+    /// @inheritdoc ISolvencyEngine
+    bool public breached;
 
     /// @inheritdoc ISolvencyEngine
     bytes32[] public volatileIlks;

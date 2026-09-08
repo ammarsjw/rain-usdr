@@ -35,10 +35,10 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     uint16 public constant HOP = 1800;
 
     /// @inheritdoc IOracleSecurityModule
-    ISolvencyEngine public solvencyEngine;
+    uint256 public maxAge;
 
     /// @inheritdoc IOracleSecurityModule
-    uint256 public maxAge;
+    ISolvencyEngine public solvencyEngine;
 
     /// @dev Oracle state per collateral type.
     mapping(bytes32 ilkId => Ilk ilk) private _ilks;

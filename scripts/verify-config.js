@@ -88,9 +88,21 @@ const verifyConfig = async () => {
 
     // The dynamic (liquidity-based) ceiling is disabled at launch: a zero safety factor leaves the static line as
     // the only cap, so effectiveLine must equal line until governance opts in by filing fSafety and liquidity.
-    assertEq("VaultEngine.liquidityCeilings(RAIN-A).fSafety", (await vaultEngine.liquidityCeilings(rainIlk)).fSafety, 0n);
-    assertEq("VaultEngine.liquidityCeilings(USDT-A).fSafety", (await vaultEngine.liquidityCeilings(usdtIlk)).fSafety, 0n);
-    assertEq("VaultEngine.liquidityCeilings(USDC-A).fSafety", (await vaultEngine.liquidityCeilings(usdcIlk)).fSafety, 0n);
+    assertEq(
+        "VaultEngine.liquidityCeilings(RAIN-A).fSafety",
+        (await vaultEngine.liquidityCeilings(rainIlk)).fSafety,
+        0n
+    );
+    assertEq(
+        "VaultEngine.liquidityCeilings(USDT-A).fSafety",
+        (await vaultEngine.liquidityCeilings(usdtIlk)).fSafety,
+        0n
+    );
+    assertEq(
+        "VaultEngine.liquidityCeilings(USDC-A).fSafety",
+        (await vaultEngine.liquidityCeilings(usdcIlk)).fSafety,
+        0n
+    );
     assertEq("VaultEngine.effectiveLine(RAIN-A)", await vaultEngine.effectiveLine(rainIlk), 100000n * RAD);
     assertEq("VaultEngine.effectiveLine(USDT-A)", await vaultEngine.effectiveLine(usdtIlk), 500000n * RAD);
     assertEq("VaultEngine.effectiveLine(USDC-A)", await vaultEngine.effectiveLine(usdcIlk), 500000n * RAD);
@@ -109,7 +121,10 @@ const verifyConfig = async () => {
     assertEq("PriceConverter.ilks(USDC-A).mat", (await priceConverter.ilks(usdcIlk)).mat, RAY);
     assertEq("PriceConverter.ilks(USDT-A).fixedPrice", (await priceConverter.ilks(usdtIlk)).fixedPrice, true);
     assertEq("PriceConverter.ilks(USDC-A).fixedPrice", (await priceConverter.ilks(usdcIlk)).fixedPrice, true);
-    assertNonZero("PriceConverter.ilks(RAIN-A).oracleSecurityModule", (await priceConverter.ilks(rainIlk)).oracleSecurityModule);
+    assertNonZero(
+        "PriceConverter.ilks(RAIN-A).oracleSecurityModule",
+        (await priceConverter.ilks(rainIlk)).oracleSecurityModule
+    );
 
     // ------------------------------------------------------------------ SolvencyEngine
     const solvencyEngine = await hardhat.ethers.getContractAt("SolvencyEngine", addresses.SolvencyEngine);

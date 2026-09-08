@@ -140,11 +140,6 @@ interface ISolvencyEngine {
     function reserveFactor() external view returns (uint256);
 
     /**
-     * @notice Returns the breach flag as last computed by {checkInvariant}.
-     */
-    function breached() external view returns (bool);
-
-    /**
      * @notice Returns the prediction market layer's exposure reporter.
      */
     function externalExposure() external view returns (IExternalExposure);
@@ -153,6 +148,11 @@ interface ISolvencyEngine {
      * @notice Returns the Oracle Security Module the stress scenario prices collateral from.
      */
     function oracleSecurityModule() external view returns (IOracleSecurityModule);
+
+    /**
+     * @notice Returns the breach flag as last computed by {checkInvariant}.
+     */
+    function breached() external view returns (bool);
 
     /**
      * @notice Returns a volatile collateral type included in the stress calculation.

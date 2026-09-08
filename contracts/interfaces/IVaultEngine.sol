@@ -409,17 +409,17 @@ interface IVaultEngine {
     function live() external view returns (uint256);
 
     /**
-     * @notice Returns the Solvency Engine consulted before risk-increasing frobs. Zero when unset.
+     * @notice Returns the Solvency Engine consulted before risk-increasing frobs.
      */
     function solvencyEngine() external view returns (ISolvencyEngine);
 
     /**
-     * @notice Returns the recipient of accrued stability fees (the Balance Sheet). Zero when unset.
+     * @notice Returns the recipient of accrued stability fees (the Balance Sheet).
      */
     function feeRecipient() external view returns (address);
 
     /**
-     * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
+     * @notice Returns the Governor consulted for the emergency pause.
      */
     function governor() external view returns (IGovernor);
 
@@ -474,10 +474,7 @@ interface IVaultEngine {
      */
     function liquidityCeilings(
         bytes32 ilkId
-    )
-        external
-        view
-        returns (uint256 fSafety, uint256 liquidity, uint256 laggedLiquidity, uint256 laggedLiquidityAt);
+    ) external view returns (uint256 fSafety, uint256 liquidity, uint256 laggedLiquidity, uint256 laggedLiquidityAt);
 
     /**
      * @notice Returns the owner of a vault. Zero when the vault has not been opened.

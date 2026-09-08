@@ -406,6 +406,7 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             }
         }
     }
+
     /**
      * @dev Records the current total reserve as the lagged snapshot, at most once per {_RESERVE_LAG}. Permissionless
      *      via {snapshotReserve} (keepers keep it fresh) and called after every distribution. Because the snapshot can
@@ -419,5 +420,4 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             emit SnapshotReserve({ reserve: laggedReserve });
         }
     }
-
 }
