@@ -86,6 +86,13 @@ const verifyConfig = async () => {
 
     assertEq("VaultEngine.ilks(RAIN-A).dust", (await vaultEngine.ilks(rainIlk)).dust, 100n * RAD);
 
+    assertEq("VaultEngine.fSafety(RAIN-A)", await vaultEngine.fSafety(rainIlk), (WAD * 5n) / 100n);
+    assertEq("VaultEngine.fSafety(USDT-A)", await vaultEngine.fSafety(usdtIlk), (WAD * 50n) / 100n);
+    assertEq("VaultEngine.fSafety(USDC-A)", await vaultEngine.fSafety(usdcIlk), (WAD * 50n) / 100n);
+    assertEq("VaultEngine.effectiveLine(RAIN-A)", await vaultEngine.effectiveLine(rainIlk), 100000n * RAD);
+    assertEq("VaultEngine.effectiveLine(USDT-A)", await vaultEngine.effectiveLine(usdtIlk), 500000n * RAD);
+    assertEq("VaultEngine.effectiveLine(USDC-A)", await vaultEngine.effectiveLine(usdcIlk), 500000n * RAD);
+
     // Invariant: every PSM stable ilk is permanently fee-exempt; the volatile ilk is not.
     assertEq("VaultEngine.noFee(USDT-A)", await vaultEngine.noFee(usdtIlk), true);
     assertEq("VaultEngine.noFee(USDC-A)", await vaultEngine.noFee(usdcIlk), true);
@@ -120,6 +127,14 @@ const verifyConfig = async () => {
     assertNonZero("BalanceSheet.reserveAccounting", await balanceSheet.reserveAccounting());
     assertNonZero("BalanceSheet.solvencyEngine", await balanceSheet.solvencyEngine());
     assertNonZero("BalanceSheet.buybackReceiver", await balanceSheet.buybackReceiver());
+    assertNonZero("BalanceSheet.osm", await balanceSheet.osm());
+    assertEq("BalanceSheet.rainIlk", await balanceSheet.rainIlk(), rainIlk);
+    assertNonZero("BalanceSheet.backstopCap", await balanceSheet.backstopCap());
+    assertEq("BalanceSheet.backstopHaircut", await balanceSheet.backstopHaircut(), (WAD * 90n) / 100n);
+
+    // ------------------------------------------------------------------ OSM
+    const osm = await hardhat.ethers.getContractAt("OracleSecurityModule", addresses.OracleSecurityModule);
+    assertEq("OracleSecurityModule.maxAge", await osm.maxAge(), 21600n);
 
     // ------------------------------------------------------------------ PSM
     const psm = await hardhat.ethers.getContractAt("PegStabilityModule", addresses.PegStabilityModule);
@@ -154,6 +169,8 @@ const verifyConfig = async () => {
     const endInstance = await hardhat.ethers.getContractAt("End", addresses.End);
 
     assertNonZero("Governor.delay", await governor.delay());
+    assertEq("Governor.PAUSE_MAX", await governor.PAUSE_MAX(), 72n * 3600n);
+    assertEq("Governor.PAUSE_COOLDOWN", await governor.PAUSE_COOLDOWN(), 72n * 3600n);
     assertNonZero("End.wait", await endInstance.wait());
     assertNonZero("End.liquidationTrigger", await endInstance.liquidationTrigger());
     assertNonZero("End.balanceSheet", await endInstance.balanceSheet());

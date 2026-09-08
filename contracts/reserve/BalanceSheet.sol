@@ -5,11 +5,18 @@ pragma solidity 0.8.30;
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 
 import { IBalanceSheet } from "../interfaces/IBalanceSheet.sol";
+import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, SolvencyGateActive, UnrecognizedParameter } from "../shared/Errors.sol";
+import {
+    InvalidAddress,
+    InvalidAmount,
+    InvalidBytes,
+    SolvencyGateActive,
+    UnrecognizedParameter
+} from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -21,16 +28,16 @@ import { _revert } from "../shared/Globals.sol";
  * @dev Uses no surplus or debt auctions. USDR uses a RAIN buyback-and-burn for surplus and a controlled backstop for
  *      bad debt instead. The strict "fill before burn" rule is enforced in `distributeSurplus`. Bad debt entering via
  *      `fess` sits in a time-indexed queue for `wait` seconds before it can be healed so surplus cannot be netted
- *      against debt whose auction is still running.
+ *      against debt whose auction is still running. After surplus is exhausted, {backstop} sells treasury RAIN to a
+ *      caller at a haircuted oracle price for USDR that is then healed against unqueued sin — capped, never an
+ *      unlimited mint.
  */
 contract BalanceSheet is IBalanceSheet, AccessControl {
-    /* ========================== CONSTANTS ========================== */
+    /* ========================== STATE VARIABLES ========================== */
 
     /// @dev Minimum age of the lagged reserve snapshot used by {humpTarget}. A day is long enough that shrinking the
     ///      dynamic term requires genuinely parking capital outside the reserve, not a flash round trip.
     uint256 private constant _RESERVE_LAG = 1 days;
-
-    /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IBalanceSheet
     IVaultEngine public immutable VAULT_ENGINE;
@@ -54,6 +61,18 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
     uint256 public laggedReserveAt;
 
     /// @inheritdoc IBalanceSheet
+    uint256 public backstopCap;
+
+    /// @inheritdoc IBalanceSheet
+    uint256 public backstopUsed;
+
+    /// @inheritdoc IBalanceSheet
+    uint256 public backstopHaircut;
+
+    /// @inheritdoc IBalanceSheet
+    bytes32 public rainIlk;
+
+    /// @inheritdoc IBalanceSheet
     address public buybackReceiver;
 
     /// @inheritdoc IBalanceSheet
@@ -61,6 +80,9 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
 
     /// @inheritdoc IBalanceSheet
     IReserveAccounting public reserveAccounting;
+
+    /// @inheritdoc IBalanceSheet
+    IOracleSecurityModule public osm;
 
     /// @inheritdoc IBalanceSheet
     mapping(uint256 era => uint256 tab) public sin;
@@ -81,6 +103,9 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         _grantRole(_WARD_ROLE, msg.sender);
 
         VAULT_ENGINE = vaultEngine_;
+
+        // Default sale price is 90% of the delayed oracle — buyers get a measured discount, the protocol never mints.
+        backstopHaircut = (_WAD * 90) / 100;
     }
 
     /* ========================== FUNCTIONS ========================== */
@@ -95,6 +120,15 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             humpRate = data;
         } else if (what == "wait") {
             wait = data;
+        } else if (what == "backstopCap") {
+            backstopCap = data;
+        } else if (what == "backstopHaircut") {
+            // Haircut must be in (0, WAD]: selling above oracle would be out of scope; zero would divide by zero.
+            if (data == 0 || data > _WAD) {
+                _revert(InvalidAmount.selector);
+            }
+
+            backstopHaircut = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -112,11 +146,26 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             reserveAccounting = IReserveAccounting(data);
         } else if (what == "solvencyEngine") {
             solvencyEngine = data;
+        } else if (what == "osm") {
+            osm = IOracleSecurityModule(data);
         } else {
             _revert(UnrecognizedParameter.selector);
         }
 
         emit File({ what: what, addr: data });
+    }
+
+    /**
+     * @inheritdoc IBalanceSheet
+     */
+    function setRainIlk(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
+        if (ilkId == bytes32(0)) {
+            _revert(InvalidBytes.selector);
+        }
+
+        rainIlk = ilkId;
+
+        emit File({ what: "rainIlk", dataBytes32: ilkId });
     }
 
     /**
@@ -174,6 +223,72 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         VAULT_ENGINE.suck(address(this), kpr, rad);
 
         emit Suck({ kpr: kpr, rad: rad });
+    }
+
+    /**
+     * @inheritdoc IBalanceSheet
+     */
+    function backstop(uint256 rad) external returns (uint256 rainWad) {
+        if (rad == 0) {
+            _revert(InvalidAmount.selector);
+        }
+
+        if (rainIlk == bytes32(0) || address(osm) == address(0)) {
+            _revert(BackstopNotConfigured.selector);
+        }
+
+        uint256 surplus = VAULT_ENGINE.usdr(address(this));
+        uint256 badDebt = VAULT_ENGINE.sin(address(this));
+
+        // Only unqueued sin past existing surplus is eligible: the surplus buffer (and queued debt) must be exhausted
+        // first. This is waterfall step 4.
+        if (badDebt <= totalQueuedSin + surplus) {
+            _revert(BackstopNotNeeded.selector);
+        }
+
+        uint256 hole = badDebt - totalQueuedSin - surplus;
+
+        if (rad > hole) {
+            rad = hole;
+        }
+
+        uint256 remaining = backstopCap > backstopUsed ? backstopCap - backstopUsed : 0;
+
+        if (remaining == 0) {
+            _revert(BackstopCapExceeded.selector);
+        }
+
+        if (rad > remaining) {
+            rad = remaining;
+        }
+
+        (bytes32 val, bool has) = osm.peek(rainIlk);
+
+        if (!has || uint256(val) == 0) {
+            _revert(BackstopPriceInvalid.selector);
+        }
+
+        // Sale price = oracle × haircut. Buyer pays `rad` USDR and receives `rainWad` treasury RAIN.
+        uint256 salePrice = (uint256(val) * backstopHaircut) / _WAD;
+        uint256 usdrWad = rad / _RAY;
+
+        // Round RAIN up so the protocol never under-delivers relative to the USDR taken.
+        rainWad = (usdrWad * _WAD + salePrice - 1) / salePrice;
+
+        if (VAULT_ENGINE.collateral(rainIlk, address(this)) < rainWad) {
+            _revert(InsufficientBackstopRain.selector);
+        }
+
+        // Caller must have hoped this contract (or be itself) so USDR can be pulled. RAIN is sent from the treasury.
+        VAULT_ENGINE.move(msg.sender, address(this), rad);
+        VAULT_ENGINE.flux(rainIlk, address(this), msg.sender, rainWad);
+
+        backstopUsed += rad;
+
+        VAULT_ENGINE.heal(rad);
+
+        emit Backstop({ buyer: msg.sender, rad: rad, rainWad: rainWad });
+        emit Heal({ rad: rad });
     }
 
     /**

@@ -13,7 +13,7 @@ import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceCurve } from "../interfaces/IPriceCurve.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
+import { _PAUSE_AUCTION, _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, InvalidBytes, NotLive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -57,10 +57,10 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     uint256 public chost;
 
     /// @inheritdoc IDutchAuction
-    uint256 public live;
+    uint256 public stopped;
 
     /// @inheritdoc IDutchAuction
-    uint256 public stopped;
+    uint256 public live;
 
     /// @inheritdoc IDutchAuction
     address public vow;
@@ -411,15 +411,6 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     /**
      * @inheritdoc IDutchAuction
      */
-    function cage() external onlyRole(_WARD_ROLE) {
-        live = 0;
-
-        emit Cage();
-    }
-
-    /**
-     * @inheritdoc IDutchAuction
-     */
     function upchost() external {
         (, , , , , uint256 dust, , ) = VAULT_ENGINE.ilks(ILK_ID);
 
@@ -427,6 +418,15 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         chost = (dust * dog.chop(ILK_ID)) / _WAD;
 
         emit Upchost({ chost: chost });
+    }
+
+    /**
+     * @inheritdoc IDutchAuction
+     */
+    function cage() external onlyRole(_WARD_ROLE) {
+        live = 0;
+
+        emit Cage();
     }
 
     /**
@@ -469,7 +469,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             _revert(Stopped.selector);
         }
 
-        if (governor != address(0) && IGovernor(governor).paused()) {
+        if (governor != address(0) && IGovernor(governor).paused(_PAUSE_AUCTION)) {
             _revert(SystemPaused.selector);
         }
     }

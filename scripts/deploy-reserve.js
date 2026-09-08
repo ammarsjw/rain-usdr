@@ -134,6 +134,20 @@ const deployReserve = async () => {
         )
     ).wait();
 
+    // RAIN backstop (waterfall step 4): sell treasury RAIN at a haircuted OSM price to heal unqueued sin.
+    const backstopCap = process.env.BACKSTOP_CAP ? BigInt(process.env.BACKSTOP_CAP) : 50000n * RAD;
+    await (
+        await balanceSheetInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("osm"), osmAddress)
+    ).wait();
+    await (await balanceSheetInstance.setRainIlk(rainIlk)).wait();
+    await (
+        await balanceSheetInstance["file(bytes32,uint256)"](
+            hardhat.ethers.encodeBytes32String("backstopCap"),
+            backstopCap
+        )
+    ).wait();
+    await (await osmInstance.grantRole(READER_ROLE, balanceSheetAddress)).wait();
+
     // Authorizing the Balance Sheet to heal and suck on the ledger.
     await (await vaultEngineInstance.grantRole(WARD_ROLE, balanceSheetAddress)).wait();
 

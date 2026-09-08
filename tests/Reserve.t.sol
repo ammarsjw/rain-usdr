@@ -888,6 +888,43 @@ contract ReserveAuditTest is BaseTest {
         assertEq(balanceSheet.humpTarget(), 10_000e18 * _RAY, "target follows after the lag");
     }
 
+    function test_backstopSellsTreasuryRainAndHealsSin() public {
+        // Fresh OSM price for the RAIN sale.
+        rainPriceSource.setPrice(1e18);
+        vm.warp(((vm.getBlockTimestamp() / 1800) + 2) * 1800);
+        osm.poke(RAIN_ILK);
+        vm.warp(vm.getBlockTimestamp() + 3600);
+        osm.poke(RAIN_ILK);
+
+        // Unqueued bad debt with no surplus on the balance sheet.
+        vaultEngine.suck(address(balanceSheet), address(this), 10 * _RAD);
+        assertEq(vaultEngine.usdr(address(balanceSheet)), 0, "no surplus");
+        assertEq(vaultEngine.sin(address(balanceSheet)), 10 * _RAD, "sin outstanding");
+
+        // Treasury RAIN: join into the Balance Sheet's free collateral.
+        uint256 rainAmt = 20e18;
+        rain.mint(address(this), rainAmt);
+        rain.approve(address(collateralAdapter), rainAmt);
+        collateralAdapter.join(RAIN_ILK, address(balanceSheet), rainAmt);
+
+        // Buyer hopes the Balance Sheet so it can pull USDR, then calls backstop.
+        vaultEngine.hope(address(balanceSheet));
+
+        uint256 rainBefore = vaultEngine.collateral(RAIN_ILK, address(this));
+        uint256 rainSold = balanceSheet.backstop(10 * _RAD);
+
+        // At $1 and 90% haircut, 10 USDR buys ceil(10 / 0.9) RAIN.
+        assertEq(rainSold, (10e18 * _WAD + ((_WAD * 90) / 100) - 1) / ((_WAD * 90) / 100), "RAIN priced at haircut");
+        assertEq(vaultEngine.sin(address(balanceSheet)), 0, "sin healed");
+        assertEq(vaultEngine.usdr(address(balanceSheet)), 0, "USDR consumed");
+        assertEq(balanceSheet.backstopUsed(), 10 * _RAD, "cap consumed");
+        assertEq(vaultEngine.collateral(RAIN_ILK, address(this)), rainBefore + rainSold, "buyer received RAIN");
+
+        // No further hole → backstop refuses.
+        vm.expectRevert(IBalanceSheet.BackstopNotNeeded.selector);
+        balanceSheet.backstop(1 * _RAD);
+    }
+
     /* ========================== 8. EXPOSURE ESCROW COMMITMENT ========================== */
 
     function test_exposureCommitsEscrowAndStarvesRedemption() public {

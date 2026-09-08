@@ -25,7 +25,8 @@ import { _revert } from "../shared/Globals.sol";
  * @dev A single multi-collateral module keyed by ilk identifier. The per-ilk price source is any {IPriceSource}
  *      implementation, such as a dedicated Uniswap time-weighted average wrapper, a Chainlink feed wrapper, or any
  *      future adapter, so the module never needs to know what kind of oracle backs a token. Sources are switchable by
- *      governance per ilk without any other contract changing.
+ *      governance per ilk without any other contract changing. When {maxAge} is nonzero, {peek}/{read} treat a price
+ *      whose last successful poke is older than {maxAge} as invalid (fail closed).
  */
 contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -35,6 +36,9 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
 
     /// @inheritdoc IOracleSecurityModule
     address public solvencyEngine;
+
+    /// @inheritdoc IOracleSecurityModule
+    uint256 public maxAge;
 
     /// @dev Oracle state per collateral type.
     mapping(bytes32 ilkId => Ilk ilk) private _ilks;
@@ -64,6 +68,21 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
         }
 
         emit File({ what: what, addr: data });
+    }
+
+    /**
+     * @inheritdoc IOracleSecurityModule
+     */
+    function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
+        if (what == "maxAge") {
+            // Zero disables the staleness check. A nonzero value marks peek/read invalid once the last successful poke
+            // is older than maxAge seconds.
+            maxAge = data;
+        } else {
+            _revert(UnrecognizedParameter.selector);
+        }
+
+        emit File({ what: what, data: data });
     }
 
     /**
@@ -184,7 +203,7 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     function peek(bytes32 ilkId) external view onlyRole(_READER_ROLE) returns (bytes32, bool) {
         Feed storage cur = _ilks[ilkId].cur;
 
-        return (bytes32(uint256(cur.val)), cur.has == 1);
+        return (bytes32(uint256(cur.val)), _isFresh(ilkId, cur.has == 1));
     }
 
     /**
@@ -193,7 +212,7 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     function peep(bytes32 ilkId) external view onlyRole(_READER_ROLE) returns (bytes32, bool) {
         Feed storage nxt = _ilks[ilkId].nxt;
 
-        return (bytes32(uint256(nxt.val)), nxt.has == 1);
+        return (bytes32(uint256(nxt.val)), _isFresh(ilkId, nxt.has == 1));
     }
 
     /**
@@ -202,7 +221,7 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     function read(bytes32 ilkId) external view onlyRole(_READER_ROLE) returns (bytes32) {
         Feed storage cur = _ilks[ilkId].cur;
 
-        if (cur.has != 1) {
+        if (!_isFresh(ilkId, cur.has == 1)) {
             _revert(NoCurrentValue.selector);
         }
 
@@ -214,5 +233,24 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
      */
     function pass(bytes32 ilkId) public view returns (bool) {
         return block.timestamp >= _ilks[ilkId].delay + HOP;
+    }
+
+    /**
+     * @dev A stored price is fresh when it is present and, if {maxAge} is configured, its last successful poke is
+     *      still within the allowed age. `delay` is the unsnapped timestamp of that poke.
+     * @param ilkId Identifier of the collateral type.
+     * @param has Whether the feed slot currently holds a value.
+     * @return Whether consumers may treat the value as live.
+     */
+    function _isFresh(bytes32 ilkId, bool has) private view returns (bool) {
+        if (!has) {
+            return false;
+        }
+
+        if (maxAge == 0) {
+            return true;
+        }
+
+        return block.timestamp <= uint256(_ilks[ilkId].delay) + maxAge;
     }
 }

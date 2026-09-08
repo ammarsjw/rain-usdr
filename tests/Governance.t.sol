@@ -5,8 +5,17 @@ pragma solidity 0.8.30;
 import { IEnd } from "../contracts/interfaces/IEnd.sol";
 import { IGovernor } from "../contracts/interfaces/IGovernor.sol";
 import { Governor } from "../contracts/governance/Governor.sol";
-import { InvalidAmount, NotLive, SystemPaused } from "../contracts/shared/Errors.sol";
-import { _RAD, _RAY, _USDR_ILK, _WARD_ROLE } from "../contracts/shared/Constants.sol";
+import { InvalidAmount, NotLive, PauseCooldownActive, SystemPaused } from "../contracts/shared/Errors.sol";
+import {
+    _PAUSE_ALL,
+    _PAUSE_BARK,
+    _PAUSE_FROB,
+    _PAUSE_PSM,
+    _RAD,
+    _RAY,
+    _USDR_ILK,
+    _WARD_ROLE
+} from "../contracts/shared/Constants.sol";
 
 import { BaseTest } from "./shared/BaseTest.sol";
 
@@ -103,7 +112,7 @@ contract GovernanceTest is BaseTest {
     /* ========================== 3. REAL PAUSE AUTO-EXPIRY ========================== */
 
     function test_pauseAutoExpiresForConsumers() public {
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
         assertTrue(governor.paused(), "paused");
 
         // 72 hours later the pause is over for every consumer, with NO unpause transaction.
@@ -137,7 +146,7 @@ contract GovernanceTest is BaseTest {
         vaultEngine.frob(vaultId, user, user, int256(400e18), int256(100e18));
         vm.stopPrank();
 
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
 
         // frob blocked, including repayment (full stop is stricter than the solvency gate).
         vm.prank(user);
@@ -157,8 +166,43 @@ contract GovernanceTest is BaseTest {
         liquidationTrigger.bark(vaultId, keeper);
     }
 
+    function test_scopedPauseLeavesOtherModulesRunning() public {
+        rainPriceSource.setPrice(1e18);
+        vm.warp(((vm.getBlockTimestamp() / 1800) + 2) * 1800);
+        osm.poke(RAIN_ILK);
+        vm.warp(vm.getBlockTimestamp() + 3600);
+        osm.poke(RAIN_ILK);
+        priceConverter.poke(RAIN_ILK);
+
+        rain.mint(user, 400e18);
+        vm.startPrank(user);
+        rain.approve(address(collateralAdapter), 400e18);
+        collateralAdapter.join(RAIN_ILK, user, 400e18);
+        uint256 vaultId = vaultEngine.open(RAIN_ILK, user);
+        vaultEngine.frob(vaultId, user, user, int256(400e18), int256(100e18));
+        vm.stopPrank();
+
+        // PSM-only pause must NOT freeze liquidations or frobs.
+        governor.pause(_PAUSE_PSM);
+
+        assertTrue(governor.paused(_PAUSE_PSM), "psm scoped");
+        assertFalse(governor.paused(_PAUSE_FROB), "frob not scoped");
+        assertFalse(governor.paused(_PAUSE_BARK), "bark not scoped");
+
+        usdt.mint(keeper, 10e6);
+        vm.startPrank(keeper);
+        usdt.approve(address(psm), 10e6);
+        vm.expectRevert(SystemPaused.selector);
+        psm.sellStable(USDT_ILK, keeper, 10e6);
+        vm.stopPrank();
+
+        // Risk-reducing frob still works (full repay avoids leaving a dusty vault).
+        vm.prank(user);
+        vaultEngine.frob(vaultId, user, user, 0, -int256(100e18));
+    }
+
     function test_unpauseAuthBeforeAndAfterWindow() public {
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
 
         // A stranger cannot unpause early.
         vm.prank(address(0xBAD));
@@ -169,8 +213,11 @@ contract GovernanceTest is BaseTest {
         governor.unpause();
         assertFalse(governor.paused(), "governance early unpause");
 
+        // Cooldown must elapse before a fresh pause.
+        vm.warp(vm.getBlockTimestamp() + governor.PAUSE_COOLDOWN());
+
         // Re-pause; after the window ANYONE can clear the stale flag.
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
         vm.warp(vm.getBlockTimestamp() + 72 hours);
 
         vm.prank(address(0xBAD));
@@ -179,19 +226,23 @@ contract GovernanceTest is BaseTest {
     }
 
     function test_doublePauseReverts() public {
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
 
         vm.expectRevert(IGovernor.AlreadyPaused.selector);
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
     }
 
-    function test_repauseAfterExpiryWorks() public {
-        governor.pause();
+    function test_repauseRequiresCooldown() public {
+        governor.pause(_PAUSE_ALL);
         vm.warp(vm.getBlockTimestamp() + 72 hours);
 
-        // The old pause auto-expired, so a fresh pause is legitimate (new incident, new window).
-        governor.pause();
-        assertTrue(governor.paused(), "fresh pause after expiry");
+        // Auto-expiry alone is not enough: chaining windows is blocked until PAUSE_COOLDOWN elapses.
+        vm.expectRevert(PauseCooldownActive.selector);
+        governor.pause(_PAUSE_ALL);
+
+        vm.warp(vm.getBlockTimestamp() + governor.PAUSE_COOLDOWN());
+        governor.pause(_PAUSE_ALL);
+        assertTrue(governor.paused(), "fresh pause after cooldown");
     }
 }
 

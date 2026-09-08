@@ -11,7 +11,7 @@ import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
 import { IGovernor } from "../interfaces/IGovernor.sol";
 import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { _WAD, _WARD_ROLE } from "../shared/Constants.sol";
+import { _PAUSE_BARK, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, NotLive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -158,22 +158,13 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function cage() external onlyRole(_WARD_ROLE) {
-        live = 0;
-
-        emit Cage();
-    }
-
-    /**
-     * @inheritdoc ILiquidationTrigger
-     */
     function bark(uint256 vaultId, address kpr) external returns (uint256 id) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
 
-        // Emergency pause check (full stop).
-        if (governor != address(0) && IGovernor(governor).paused()) {
+        // Emergency pause check (bark scope).
+        if (governor != address(0) && IGovernor(governor).paused(_PAUSE_BARK)) {
             _revert(SystemPaused.selector);
         }
 
@@ -296,6 +287,15 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         ilks[ilkId].dirt -= rad;
 
         emit Digs({ ilkId: ilkId, rad: rad });
+    }
+
+    /**
+     * @inheritdoc ILiquidationTrigger
+     */
+    function cage() external onlyRole(_WARD_ROLE) {
+        live = 0;
+
+        emit Cage();
     }
 
     /**

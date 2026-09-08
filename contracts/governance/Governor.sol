@@ -6,7 +6,7 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 
 import { IGovernor } from "../interfaces/IGovernor.sol";
 import { _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, InvalidAmount, NotAuthorized } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, NotAuthorized, PauseCooldownActive } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -17,9 +17,10 @@ import { _revert } from "../shared/Globals.sol";
  *         touch the immutable core, only the risk parameters.
  * @dev The timelock delay is immutable: it is fixed at construction and can never be changed, so the timelock can
  *      never be shortened or removed by a compromised governance key. The pause auto-expires after 72 hours, that is
- *      {paused} returns false once the window elapses even without an {unpause} call. The pause is deliberately
- *      UNSCOPED: every consumer reads the same boolean, so a pause always halts everything that is pausable. A scoped
- *      pause was considered and removed, which is how a "PSM-only" pause silently freezes liquidations too.
+ *      {paused} returns false once the window elapses even without an {unpause} call. Pauses are SCOPED: consumers
+ *      check {paused(scope)} against the bitmask recorded at pause time, so a PSM-only incident can leave liquidations
+ *      running. A cooldown equal to {PAUSE_MAX} after each pause ends prevents a ward from chaining windows into an
+ *      unbounded halt.
  */
 contract Governor is IGovernor, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -28,10 +29,19 @@ contract Governor is IGovernor, AccessControl {
     uint256 public constant PAUSE_MAX = 72 hours;
 
     /// @inheritdoc IGovernor
-    uint256 public immutable delay;
+    uint256 public constant PAUSE_COOLDOWN = 72 hours;
+
+    /// @inheritdoc IGovernor
+    uint256 public immutable DELAY;
 
     /// @inheritdoc IGovernor
     uint256 public pausedAt;
+
+    /// @inheritdoc IGovernor
+    uint256 public pauseScope;
+
+    /// @inheritdoc IGovernor
+    uint256 public lastPauseEnd;
 
     /// @inheritdoc IGovernor
     uint256 public changeCount;
@@ -57,7 +67,7 @@ contract Governor is IGovernor, AccessControl {
 
         _grantRole(_WARD_ROLE, msg.sender);
 
-        delay = delay_;
+        DELAY = delay_;
     }
 
     /* ========================== FUNCTIONS ========================== */
@@ -77,12 +87,12 @@ contract Governor is IGovernor, AccessControl {
         changes[id] = Change({
             target: target,
             data: data,
-            eta: block.timestamp + delay,
+            eta: block.timestamp + DELAY,
             executed: false,
             cancelled: false
         });
 
-        emit Schedule({ id: id, target: target, data: data, eta: block.timestamp + delay });
+        emit Schedule({ id: id, target: target, data: data, eta: block.timestamp + DELAY });
     }
 
     /**
@@ -148,19 +158,32 @@ contract Governor is IGovernor, AccessControl {
     /**
      * @inheritdoc IGovernor
      */
-    function pause() external onlyRole(_WARD_ROLE) {
-        // The system must not already be paused.
+    function pause(uint256 scope) external onlyRole(_WARD_ROLE) {
+        if (scope == 0) {
+            _revert(InvalidAmount.selector);
+        }
+
+        // The system must not already be in an active pause window.
         if (paused()) {
             _revert(AlreadyPaused.selector);
         }
 
-        // NOTE: A ward can re-pause after expiry (or after an early unpause), chaining windows beyond 72 hours. The
-        // auto-expiry bounds a SINGLE pause, not governance's total authority; repeated pauses are visible on-chain
-        // and are a matter for governance process, not contract code.
+        // An expired raw flag still needs clearing so cooldown accounting sees the true end of the prior window.
+        if (_paused) {
+            lastPauseEnd = pausedAt + PAUSE_MAX;
+            _paused = false;
+            pausedAt = 0;
+        }
+
+        if (lastPauseEnd != 0 && block.timestamp < lastPauseEnd + PAUSE_COOLDOWN) {
+            _revert(PauseCooldownActive.selector);
+        }
+
         _paused = true;
         pausedAt = block.timestamp;
+        pauseScope = scope;
 
-        emit Pause({ pausedAt: block.timestamp });
+        emit Pause({ pausedAt: block.timestamp, scope: scope });
     }
 
     /**
@@ -173,16 +196,23 @@ contract Governor is IGovernor, AccessControl {
             _revert(NotPaused.selector);
         }
 
+        uint256 endedAt;
+
         // Once 72 hours have passed since the pause began, anyone can lift it with no governance action required.
         // Before that, only governance can lift it early.
         if (block.timestamp < pausedAt + PAUSE_MAX) {
             if (!hasRole(_WARD_ROLE, msg.sender)) {
                 _revert(NotAuthorized.selector);
             }
+
+            endedAt = block.timestamp;
+        } else {
+            endedAt = pausedAt + PAUSE_MAX;
         }
 
         _paused = false;
         pausedAt = 0;
+        lastPauseEnd = endedAt;
 
         emit Unpause();
     }
@@ -195,5 +225,12 @@ contract Governor is IGovernor, AccessControl {
         // even if nobody has called {unpause} to clear the storage. This makes the "72h auto-expiry" real rather than
         // a relabelling of who may call unpause.
         return _paused && block.timestamp < pausedAt + PAUSE_MAX;
+    }
+
+    /**
+     * @inheritdoc IGovernor
+     */
+    function paused(uint256 scope) public view returns (bool) {
+        return paused() && (pauseScope & scope) != 0;
     }
 }

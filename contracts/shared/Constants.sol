@@ -28,6 +28,21 @@ bytes32 constant _RECORDER_ROLE = 0xf996da754c790e95d5c7ca3330cfcad529487fe9d1d8
 /// @dev Core authorization role.
 bytes32 constant _WARD_ROLE = 0xbafcd51963b0d7b3a3da265619edae46625d8c081f4c6ac796f4531050ac941f;
 
+/// @dev Pause bit: blocks {VaultEngine.frob}.
+uint256 constant _PAUSE_FROB = 1 << 0;
+
+/// @dev Pause bit: blocks {PegStabilityModule} mint and redeem.
+uint256 constant _PAUSE_PSM = 1 << 1;
+
+/// @dev Pause bit: blocks {LiquidationTrigger.bark}.
+uint256 constant _PAUSE_BARK = 1 << 2;
+
+/// @dev Pause bit: blocks {DutchAuction} take and redo.
+uint256 constant _PAUSE_AUCTION = 1 << 3;
+
+/// @dev Convenience mask that pauses every gated module.
+uint256 constant _PAUSE_ALL = _PAUSE_FROB | _PAUSE_PSM | _PAUSE_BARK | _PAUSE_AUCTION;
+
 /// @dev Fixed point scalar with 18 decimals of precision. Used for token quantities.
 uint256 constant _WAD = 10 ** 18;
 

@@ -145,15 +145,6 @@ contract PriceConverter is IPriceConverter, AccessControl {
     /**
      * @inheritdoc IPriceConverter
      */
-    function cage() external onlyRole(_WARD_ROLE) {
-        live = 0;
-
-        emit Cage();
-    }
-
-    /**
-     * @inheritdoc IPriceConverter
-     */
     function poke(bytes32 ilkId) external {
         IlkOracle storage ilk = ilks[ilkId];
 
@@ -180,5 +171,14 @@ contract PriceConverter is IPriceConverter, AccessControl {
         VAULT_ENGINE.file(ilkId, "spot", spot);
 
         emit Poke({ ilkId: ilkId, val: val, spot: spot });
+    }
+
+    /**
+     * @inheritdoc IPriceConverter
+     */
+    function cage() external onlyRole(_WARD_ROLE) {
+        live = 0;
+
+        emit Cage();
     }
 }

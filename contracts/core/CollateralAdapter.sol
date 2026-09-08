@@ -84,21 +84,6 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
     /**
      * @inheritdoc ICollateralAdapter
      */
-    function cage(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
-        // Caging an unregistered ilk is rejected: silently succeeding would let a typoed governance call report
-        // success while the intended ilk stays live.
-        if (address(ilks[ilkId].token) == address(0)) {
-            _revert(InvalidAddress.selector);
-        }
-
-        ilks[ilkId].live = 0;
-
-        emit Cage({ ilkId: ilkId });
-    }
-
-    /**
-     * @inheritdoc ICollateralAdapter
-     */
     function join(bytes32 ilkId, address user, uint256 amount) external {
         Ilk storage ilk = ilks[ilkId];
 
@@ -191,5 +176,20 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
         }
 
         emit Exit({ ilkId: ilkId, user: user, amount: amount });
+    }
+
+    /**
+     * @inheritdoc ICollateralAdapter
+     */
+    function cage(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
+        // Caging an unregistered ilk is rejected: silently succeeding would let a typoed governance call report
+        // success while the intended ilk stays live.
+        if (address(ilks[ilkId].token) == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
+        ilks[ilkId].live = 0;
+
+        emit Cage({ ilkId: ilkId });
     }
 }

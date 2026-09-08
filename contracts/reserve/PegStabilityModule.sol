@@ -15,7 +15,7 @@ import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { _RAY, _USDR_ILK, _WARD_ROLE } from "../shared/Constants.sol";
+import { _PAUSE_PSM, _RAY, _USDR_ILK, _WARD_ROLE } from "../shared/Constants.sol";
 import {
     IlkAlreadyInitialized,
     InvalidAddress,
@@ -160,10 +160,10 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(InvalidAmount.selector);
         }
 
-        // Emergency pause check (full stop).
+        // Emergency pause check (PSM scope).
         // Note: This is never gated by the solvency engine: selling stables INCREASES the reserve, so it remains
         // available during a solvency breach.
-        if (governor != address(0) && IGovernor(governor).paused()) {
+        if (governor != address(0) && IGovernor(governor).paused(_PAUSE_PSM)) {
             _revert(SystemPaused.selector);
         }
 
@@ -204,8 +204,8 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(InvalidAmount.selector);
         }
 
-        // Emergency pause check (full stop).
-        if (governor != address(0) && IGovernor(governor).paused()) {
+        // Emergency pause check (PSM scope).
+        if (governor != address(0) && IGovernor(governor).paused(_PAUSE_PSM)) {
             _revert(SystemPaused.selector);
         }
 

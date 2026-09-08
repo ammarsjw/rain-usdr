@@ -249,4 +249,29 @@ contract OracleTest is BaseTest {
         (, , , uint256 spot, , , , ) = vaultEngine.ilks(RAIN_ILK);
         assertEq(spot, _RAY / factor, "spot inversely proportional to mat");
     }
+
+    function test_staleOsmPriceFailsClosedOnPeekAndPoke() public {
+        rainPriceSource.setPrice(1e18);
+        vm.warp(((vm.getBlockTimestamp() / 1800) + 2) * 1800);
+        osm.poke(RAIN_ILK);
+        vm.warp(vm.getBlockTimestamp() + 3600);
+        osm.poke(RAIN_ILK);
+        priceConverter.poke(RAIN_ILK);
+
+        (, bool hasFresh) = osm.peek(RAIN_ILK);
+        assertTrue(hasFresh, "fresh after poke");
+
+        // Past maxAge the stored value is still present but consumers must treat it as invalid.
+        vm.warp(vm.getBlockTimestamp() + osm.maxAge() + 1);
+
+        (, bool hasStale) = osm.peek(RAIN_ILK);
+        assertFalse(hasStale, "stale peek is invalid");
+
+        vm.expectRevert(IOracleSecurityModule.NoCurrentValue.selector);
+        osm.read(RAIN_ILK);
+
+        priceConverter.poke(RAIN_ILK);
+        (, , , uint256 spot, , , , ) = vaultEngine.ilks(RAIN_ILK);
+        assertEq(spot, 0, "stale poke zeroes spot");
+    }
 }

@@ -16,7 +16,7 @@ import {
     NotLive,
     UnrecognizedParameter
 } from "../contracts/shared/Errors.sol";
-import { _RAD, _RAY, _USDR_ILK } from "../contracts/shared/Constants.sol";
+import { _RAD, _RAY, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
 
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
@@ -239,6 +239,36 @@ contract VaultEngineCoreTest is BaseTest {
 
         (, uint256 art) = vaultEngine.urns(vaultId);
         assertEq(art, 400e18, "repaid despite zero ceilings");
+    }
+
+    function test_effectiveLineUsesLiquidityTimesFSafety() public {
+        vaultEngine.file(TEST_ILK, "line", 1_000_000 * _RAD);
+        vaultEngine.file(TEST_ILK, "fSafety", (_WAD * 50) / 100); // 0.50
+        vaultEngine.file(TEST_ILK, "liquidity", 200e18); // → dynamic ceiling 100 rad-wad = 100 * RAD
+
+        assertEq(vaultEngine.effectiveLine(TEST_ILK), 100 * _RAD, "min(line, liq * fSafety)");
+
+        vaultEngine.slip(TEST_ILK, alice, int256(1000e18));
+        vm.startPrank(alice);
+        uint256 vaultId = vaultEngine.open(TEST_ILK, alice);
+
+        vm.expectRevert(IVaultEngine.CeilingExceeded.selector);
+        vaultEngine.frob(vaultId, alice, alice, int256(1000e18), int256(100e18 + 1));
+
+        vaultEngine.frob(vaultId, alice, alice, int256(1000e18), int256(100e18));
+        vm.stopPrank();
+
+        // Shrink liquidity: lagged value keeps the old ceiling until the day lag elapses.
+        vaultEngine.file(TEST_ILK, "liquidity", 100e18);
+        assertEq(vaultEngine.effectiveLine(TEST_ILK), 100 * _RAD, "shrinkage lagged");
+
+        vm.warp(vm.getBlockTimestamp() + 1 days);
+        vaultEngine.snapshotLiquidity(TEST_ILK);
+        assertEq(vaultEngine.effectiveLine(TEST_ILK), 50 * _RAD, "lagged shrink applied");
+
+        // Existing debt can still be repaid under the tighter ceiling.
+        vm.prank(alice);
+        vaultEngine.frob(vaultId, alice, alice, 0, -int256(50e18));
     }
 
     /* ========================== 4. OVERFLOW BEHAVIOUR ========================== */
@@ -955,6 +985,10 @@ contract StabilityFeeTest is BaseTest {
         // A year of ~100% APY roughly doubles the debt: the vault becomes barkable purely through accrual. bark must
         // drip first (fresh rate) so the unsafe check and the tab see the accrued debt.
         skip(365 days);
+
+        // Refresh the OSM after the long warp so the auction house's peek is not rejected as stale (maxAge). Spot in
+        // the Vault Engine is unchanged at $1 / 400% mat — only the feed timestamp moves.
+        _setRainPrice(1e18);
 
         uint256 id = liquidationTrigger.bark(vaultId, address(this));
 

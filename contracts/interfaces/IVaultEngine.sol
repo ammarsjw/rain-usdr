@@ -195,27 +195,15 @@ interface IVaultEngine {
      */
     error VaultNotFound();
 
-    /* ========================== SOLVENCY GATE / PAUSE ========================== */
-
-    /**
-     * @notice Updates an address dependency {solvencyEngine} or {governor}. Set via `file` to avoid circular
-     *         constructor dependencies. When unset (`address(0)`), the corresponding check is skipped.
-     * @param what Name of the parameter.
-     * @param data New address.
-     */
-    function file(bytes32 what, address data) external;
-
-    /**
-     * @notice Returns the Solvency Engine consulted before risk-increasing frobs. Zero when unset.
-     */
-    function solvencyEngine() external view returns (address);
-
-    /**
-     * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
-     */
-    function governor() external view returns (address);
-
     /* ========================== FUNCTIONS ========================== */
+
+    /**
+     * @notice Registers a new collateral type with its debt multiplier set to 1.0, a zero stability fee (`duty = RAY`)
+     *         and its fee accrual clock started at the current timestamp.
+     * @dev Only governance can call this. Reverts if the collateral type already exists.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function init(bytes32 ilkId) external;
 
     /**
      * @notice Permits an operator to manage the caller's positions.
@@ -230,12 +218,31 @@ interface IVaultEngine {
     function nope(address operator) external;
 
     /**
-     * @notice Registers a new collateral type with its debt multiplier set to 1.0, a zero stability fee (`duty = RAY`)
-     *         and its fee accrual clock started at the current timestamp.
-     * @dev Only governance can call this. Reverts if the collateral type already exists.
-     * @param ilkId Identifier of the collateral type.
+     * @notice Updates a global parameter. Currently only the global debt ceiling {globalLine}.
+     * @param what Name of the parameter.
+     * @param data New value [rad].
      */
-    function init(bytes32 ilkId) external;
+    function file(bytes32 what, uint256 data) external;
+
+    /**
+     * @notice Updates an address dependency {solvencyEngine} or {governor}. Set via `file` to avoid circular
+     *         constructor dependencies. When unset (`address(0)`), the corresponding check is skipped.
+     * @param what Name of the parameter.
+     * @param data New address.
+     */
+    function file(bytes32 what, address data) external;
+
+    /**
+     * @notice Updates a per-collateral parameter {spot}, {line}, {dust}, {duty}, {fSafety} or {liquidity}.
+     * @dev Only governance, or the Price Converter for {spot}, can call this. Filing {duty} first accrues the pending
+     *      fee at the old duty ({drip}), so a new duty is never applied retroactively. {duty} must be at least RAY.
+     *      {fSafety} is the Decision 18 safety factor [wad] (zero disables the dynamic ceiling). {liquidity} is the
+     *      available market liquidity [wad] used by {effectiveLine}.
+     * @param ilkId Identifier of the collateral type.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
+    function file(bytes32 ilkId, bytes32 what, uint256 data) external;
 
     /**
      * @notice Permanently marks a collateral type fee-exempt: filing any `duty` other than RAY on it reverts from then
@@ -248,22 +255,37 @@ interface IVaultEngine {
     function exemptFee(bytes32 ilkId) external;
 
     /**
-     * @notice Returns whether a collateral type is fee-exempt (its `duty` permanently pinned to RAY).
-     * @param ilkId Identifier of the collateral type.
+     * @notice Opens a new vault bound to a collateral type and returns its id.
+     * @dev Permissionless. Vault ids are sequential and never reused; ownership is fixed at open time. `usr` lets
+     *      periphery contracts open vaults on behalf of users (the vault belongs to `usr`, not the caller).
+     * @param ilkId Identifier of the collateral type the vault is bound to.
+     * @param usr Owner of the new vault.
+     * @return vaultId Identifier of the new vault.
      */
-    function noFee(bytes32 ilkId) external view returns (bool);
+    function open(bytes32 ilkId, address usr) external returns (uint256 vaultId);
 
     /**
-     * @notice Returns the registered collateral type identifier at `index`. Ilks are appended at {init} and never
-     *         removed; the array lets {cage} (and off-chain consumers) enumerate every ilk.
-     * @param index Position in the registration order.
+     * @notice The core vault operation: lock or free collateral and mint or repay USDR.
+     * @dev Enforces the over-collateralization rule, debt ceilings, the minimum vault size and caller permissions.
+     *      Uses the delayed oracle price factor already stored in the system.
+     * @param vaultId Identifier of the vault being modified. The collateral type is the one fixed at open time.
+     * @param v Source or destination of collateral.
+     * @param w Source or destination of internal USDR.
+     * @param dink Signed change in locked collateral [wad].
+     * @param dart Signed change in normalized debt [wad].
      */
-    function ilkIds(uint256 index) external view returns (bytes32);
+    function frob(uint256 vaultId, address v, address w, int256 dink, int256 dart) external;
 
     /**
-     * @notice Returns the number of registered collateral types.
+     * @notice Seizes an unsafe vault's collateral and debt during liquidation.
+     * @dev Only callable by the authorized liquidation contract.
+     * @param vaultId Identifier of the vault being seized.
+     * @param v Recipient of the seized collateral (the auction contract).
+     * @param w Debt sink that receives the bad debt (the Balance Sheet).
+     * @param dink Signed change in locked collateral [wad].
+     * @param dart Signed change in normalized debt [wad].
      */
-    function ilkIdsLength() external view returns (uint256);
+    function grab(uint256 vaultId, address v, address w, int256 dink, int256 dart) external;
 
     /**
      * @notice Accrues the stability fee for a collateral type: compounds `duty` over the time elapsed since the last
@@ -279,41 +301,12 @@ interface IVaultEngine {
     function drip(bytes32 ilkId) external returns (uint256 newRate);
 
     /**
-     * @notice Returns the recipient of accrued stability fees (the Balance Sheet). Zero when unset.
-     */
-    function feeRecipient() external view returns (address);
-
-    /**
-     * @notice Updates a global parameter. Currently only the global debt ceiling {globalLine}.
-     * @param what Name of the parameter.
-     * @param data New value [rad].
-     */
-    function file(bytes32 what, uint256 data) external;
-
-    /**
-     * @notice Updates a per-collateral parameter {spot}, {line}, {dust} or {duty}.
-     * @dev Only governance, or the Price Converter for {spot}, can call this. Filing {duty} first accrues the pending
-     *      fee at the old duty ({drip}), so a new duty is never applied retroactively. {duty} must be at least RAY.
+     * @notice Refreshes the lagged liquidity snapshot used by {effectiveLine}, advancing a pending decrease once the
+     *         lag window has elapsed.
+     * @dev Permissionless.
      * @param ilkId Identifier of the collateral type.
-     * @param what Name of the parameter.
-     * @param data New value.
      */
-    function file(bytes32 ilkId, bytes32 what, uint256 data) external;
-
-    /**
-     * @notice Opens a new vault bound to a collateral type and returns its id.
-     * @dev Permissionless. Vault ids are sequential and never reused; ownership is fixed at open time. `usr` lets
-     *      periphery contracts open vaults on behalf of users (the vault belongs to `usr`, not the caller).
-     * @param ilkId Identifier of the collateral type the vault is bound to.
-     * @param usr Owner of the new vault.
-     * @return vaultId Identifier of the new vault.
-     */
-    function open(bytes32 ilkId, address usr) external returns (uint256 vaultId);
-
-    /**
-     * @notice Freezes the core ledger during an emergency shutdown.
-     */
-    function cage() external;
+    function snapshotLiquidity(bytes32 ilkId) external;
 
     /**
      * @notice Adjusts a user's free (unlocked) collateral balance.
@@ -342,29 +335,6 @@ interface IVaultEngine {
     function move(address from, address to, uint256 rad) external;
 
     /**
-     * @notice The core vault operation: lock or free collateral and mint or repay USDR.
-     * @dev Enforces the over-collateralization rule, debt ceilings, the minimum vault size and caller permissions.
-     *      Uses the delayed oracle price factor already stored in the system.
-     * @param vaultId Identifier of the vault being modified. The collateral type is the one fixed at open time.
-     * @param v Source or destination of collateral.
-     * @param w Source or destination of internal USDR.
-     * @param dink Signed change in locked collateral [wad].
-     * @param dart Signed change in normalized debt [wad].
-     */
-    function frob(uint256 vaultId, address v, address w, int256 dink, int256 dart) external;
-
-    /**
-     * @notice Seizes an unsafe vault's collateral and debt during liquidation.
-     * @dev Only callable by the authorized liquidation contract.
-     * @param vaultId Identifier of the vault being seized.
-     * @param v Recipient of the seized collateral (the auction contract).
-     * @param w Debt sink that receives the bad debt (the Balance Sheet).
-     * @param dink Signed change in locked collateral [wad].
-     * @param dart Signed change in normalized debt [wad].
-     */
-    function grab(uint256 vaultId, address v, address w, int256 dink, int256 dart) external;
-
-    /**
      * @notice Cancels equal amounts of the caller's bad debt and surplus.
      * @param rad Amount to cancel [rad].
      */
@@ -378,6 +348,23 @@ interface IVaultEngine {
      * @param rad Amount to create [rad].
      */
     function suck(address u, address v, uint256 rad) external;
+
+    /**
+     * @notice Freezes the core ledger during an emergency shutdown.
+     */
+    function cage() external;
+
+    /**
+     * @notice Returns the number of registered collateral types.
+     */
+    function ilkIdsLength() external view returns (uint256);
+
+    /**
+     * @notice Returns the effective debt ceiling for an ilk [rad]: the static {line} when {fSafety} is zero, otherwise
+     *         `min(line, laggedLiquidity * fSafety)` with growth applied immediately and shrinkage lagged by a day.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function effectiveLine(bytes32 ilkId) external view returns (uint256);
 
     /**
      * @notice Returns the total USDR issued [rad].
@@ -395,17 +382,36 @@ interface IVaultEngine {
     function globalLine() external view returns (uint256);
 
     /**
+     * @notice Returns the total number of vaults ever opened. The latest vault id.
+     */
+    function vaultCount() external view returns (uint256);
+
+    /**
      * @notice Returns the system liveness flag. `1` while live, `0` after shutdown.
      */
     function live() external view returns (uint256);
 
     /**
-     * @notice Returns whether an operator may manage an owner's positions.
-     * @param owner Owner of the positions.
-     * @param operator Account being queried.
-     * @return flag Permission flag. `1` grants permission.
+     * @notice Returns the Solvency Engine consulted before risk-increasing frobs. Zero when unset.
      */
-    function can(address owner, address operator) external view returns (uint256);
+    function solvencyEngine() external view returns (address);
+
+    /**
+     * @notice Returns the recipient of accrued stability fees (the Balance Sheet). Zero when unset.
+     */
+    function feeRecipient() external view returns (address);
+
+    /**
+     * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
+     */
+    function governor() external view returns (address);
+
+    /**
+     * @notice Returns the registered collateral type identifier at `index`. Ilks are appended at {init} and never
+     *         removed; the array lets {cage} (and off-chain consumers) enumerate every ilk.
+     * @param index Position in the registration order.
+     */
+    function ilkIds(uint256 index) external view returns (bytes32);
 
     /**
      * @notice Returns a collateral type's settings and totals.
@@ -436,17 +442,34 @@ interface IVaultEngine {
         );
 
     /**
-     * @notice Returns a vault's locked collateral and normalized debt.
-     * @param vaultId Identifier of the vault.
-     * @return ink Locked collateral [wad].
-     * @return art Normalized debt [wad].
+     * @notice Returns whether a collateral type is fee-exempt (its `duty` permanently pinned to RAY).
+     * @param ilkId Identifier of the collateral type.
      */
-    function urns(uint256 vaultId) external view returns (uint256 ink, uint256 art);
+    function noFee(bytes32 ilkId) external view returns (bool);
 
     /**
-     * @notice Returns the total number of vaults ever opened. The latest vault id.
+     * @notice Returns the Decision 18 safety factor for an ilk [wad]. Zero disables the dynamic ceiling.
+     * @param ilkId Identifier of the collateral type.
      */
-    function vaultCount() external view returns (uint256);
+    function fSafety(bytes32 ilkId) external view returns (uint256);
+
+    /**
+     * @notice Returns the latest filed market liquidity for an ilk [wad].
+     * @param ilkId Identifier of the collateral type.
+     */
+    function liquidity(bytes32 ilkId) external view returns (uint256);
+
+    /**
+     * @notice Returns the lagged liquidity snapshot for an ilk [wad].
+     * @param ilkId Identifier of the collateral type.
+     */
+    function laggedLiquidity(bytes32 ilkId) external view returns (uint256);
+
+    /**
+     * @notice Returns the timestamp of the last lagged-liquidity snapshot for an ilk.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function laggedLiquidityAt(bytes32 ilkId) external view returns (uint256);
 
     /**
      * @notice Returns the owner of a vault. Zero when the vault has not been opened.
@@ -461,12 +484,19 @@ interface IVaultEngine {
     function ilkOf(uint256 vaultId) external view returns (bytes32);
 
     /**
-     * @notice Returns a user's free collateral balance.
-     * @param ilkId Identifier of the collateral type.
-     * @param user Account being queried.
-     * @return collateral The free collateral balance [wad].
+     * @notice Returns a vault's locked collateral and normalized debt.
+     * @param vaultId Identifier of the vault.
+     * @return ink Locked collateral [wad].
+     * @return art Normalized debt [wad].
      */
-    function collateral(bytes32 ilkId, address user) external view returns (uint256);
+    function urns(uint256 vaultId) external view returns (uint256 ink, uint256 art);
+
+    /**
+     * @notice Returns a debt sink's bad debt balance.
+     * @param debtSink Account being queried.
+     * @return badDebtBalance The bad debt balance [rad].
+     */
+    function sin(address debtSink) external view returns (uint256);
 
     /**
      * @notice Returns a user's internal USDR balance.
@@ -476,9 +506,18 @@ interface IVaultEngine {
     function usdr(address user) external view returns (uint256);
 
     /**
-     * @notice Returns a debt sink's bad debt balance.
-     * @param debtSink Account being queried.
-     * @return badDebtBalance The bad debt balance [rad].
+     * @notice Returns a user's free collateral balance.
+     * @param ilkId Identifier of the collateral type.
+     * @param user Account being queried.
+     * @return collateral The free collateral balance [wad].
      */
-    function sin(address debtSink) external view returns (uint256);
+    function collateral(bytes32 ilkId, address user) external view returns (uint256);
+
+    /**
+     * @notice Returns whether an operator may manage an owner's positions.
+     * @param owner Owner of the positions.
+     * @param operator Account being queried.
+     * @return flag Permission flag. `1` grants permission.
+     */
+    function can(address owner, address operator) external view returns (uint256);
 }

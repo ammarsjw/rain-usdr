@@ -14,7 +14,7 @@ import {
     SystemPaused,
     UnrecognizedParameter
 } from "../contracts/shared/Errors.sol";
-import { _RAD, _RAY, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
+import { _PAUSE_ALL, _RAD, _RAY, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
 
 import { BaseTest } from "./shared/BaseTest.sol";
 import { MockAuctionCallee } from "./mocks/MockAuctionCallee.sol";
@@ -159,7 +159,7 @@ contract LiquidationTest is BaseTest {
 
         // Pausing: in-flight takes must stop (the rev-4 scenario where keepers extracted collateral at bad-feed prices
         // during a paused incident). The governor is already wired into the auction house in Base.
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
 
         (, uint256 price, , ) = dutchAuction.getStatus(id);
         vm.prank(address(0xB1D));

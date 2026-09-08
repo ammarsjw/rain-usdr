@@ -104,6 +104,8 @@ const verifyRoles = async () => {
     await check("OracleSecurityModule", READER_ROLE, "READER_ROLE", addresses.PriceConverter, true, "PriceConverter");
     await check("OracleSecurityModule", READER_ROLE, "READER_ROLE", addresses.DutchAuction, true, "DutchAuction");
     await check("OracleSecurityModule", READER_ROLE, "READER_ROLE", addresses.CircuitBreaker, true, "CircuitBreaker");
+    await check("OracleSecurityModule", READER_ROLE, "READER_ROLE", addresses.SolvencyEngine, true, "SolvencyEngine");
+    await check("OracleSecurityModule", READER_ROLE, "READER_ROLE", addresses.BalanceSheet, true, "BalanceSheet");
     await check("OracleSecurityModule", READER_ROLE, "READER_ROLE", addresses.End, true, "End");
 
     // Stability fee wiring: the Vault Engine's feeRecipient must be the Balance Sheet so accrued fees land as

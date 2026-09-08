@@ -114,6 +114,52 @@ const deployGovernance = async () => {
         )
     ).wait();
 
+    // Decision 18: dynamic ceilings = min(line, liquidity × f_safety). Launch liquidity is set so effectiveLine
+    // equals the static line until governance files tighter market figures.
+    const WAD = 10n ** 18n;
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,uint256)"](
+            rainIlk,
+            hardhat.ethers.encodeBytes32String("fSafety"),
+            (WAD * 5n) / 100n
+        )
+    ).wait();
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,uint256)"](
+            usdtIlk,
+            hardhat.ethers.encodeBytes32String("fSafety"),
+            (WAD * 50n) / 100n
+        )
+    ).wait();
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,uint256)"](
+            usdcIlk,
+            hardhat.ethers.encodeBytes32String("fSafety"),
+            (WAD * 50n) / 100n
+        )
+    ).wait();
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,uint256)"](
+            rainIlk,
+            hardhat.ethers.encodeBytes32String("liquidity"),
+            2000000n * WAD
+        )
+    ).wait();
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,uint256)"](
+            usdtIlk,
+            hardhat.ethers.encodeBytes32String("liquidity"),
+            1000000n * WAD
+        )
+    ).wait();
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,uint256)"](
+            usdcIlk,
+            hardhat.ethers.encodeBytes32String("liquidity"),
+            1000000n * WAD
+        )
+    ).wait();
+
     // Refreshing the auction's dust-times-chop cache now that dust is final.
     const dutchAuctionInstance = await hardhat.ethers.getContractAt("DutchAuction", dutchAuctionAddress);
     await (await dutchAuctionInstance.upchost()).wait();

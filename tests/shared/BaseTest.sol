@@ -139,6 +139,8 @@ abstract contract BaseTest is Test {
         osm.grantRole(_READER_ROLE, address(priceConverter));
         osm.grantRole(_READER_ROLE, address(dutchAuction));
         osm.grantRole(_READER_ROLE, address(circuitBreaker));
+        // Staleness: a current price older than six hours fails closed on peek/read (and therefore on poke → spot=0).
+        osm.file("maxAge", 6 hours);
         priceConverter.file(RAIN_ILK, "pip", address(osm));
         priceConverter.file(RAIN_ILK, "mat", 4 * _RAY);
         priceConverter.file(USDT_ILK, "mat", _RAY);
@@ -160,6 +162,10 @@ abstract contract BaseTest is Test {
         vaultEngine.file("solvencyEngine", address(solvencyEngine));
         psm.file("solvencyEngine", address(solvencyEngine));
         balanceSheet.file("solvencyEngine", address(solvencyEngine));
+        balanceSheet.file("osm", address(osm));
+        balanceSheet.setRainIlk(RAIN_ILK);
+        balanceSheet.file("backstopCap", 50_000 * _RAD);
+        osm.grantRole(_READER_ROLE, address(balanceSheet));
         osm.file("solvencyEngine", address(solvencyEngine));
 
         // Wiring the liquidation stack (launch parameters from the spec).
@@ -202,12 +208,20 @@ abstract contract BaseTest is Test {
         dutchAuction.grantRole(_WARD_ROLE, address(end));
         osm.grantRole(_READER_ROLE, address(end));
 
-        // Setting launch ceilings and minimum vault size.
+        // Setting launch ceilings, Decision 18 safety factors / liquidity, and minimum vault size.
         vaultEngine.file("globalLine", 1_100_000 * _RAD);
         vaultEngine.file(RAIN_ILK, "line", 100_000 * _RAD);
         vaultEngine.file(USDT_ILK, "line", 500_000 * _RAD);
         vaultEngine.file(USDC_ILK, "line", 500_000 * _RAD);
         vaultEngine.file(RAIN_ILK, "dust", 100 * _RAD);
+        // Spec defaults: f_safety 0.05 RAIN / 0.50 stables. Liquidity set at the hard cap so effectiveLine == line
+        // until governance files a tighter market figure.
+        vaultEngine.file(RAIN_ILK, "fSafety", (_WAD * 5) / 100);
+        vaultEngine.file(USDT_ILK, "fSafety", (_WAD * 50) / 100);
+        vaultEngine.file(USDC_ILK, "fSafety", (_WAD * 50) / 100);
+        vaultEngine.file(RAIN_ILK, "liquidity", 2_000_000 * _WAD); // 2M * 0.05 = 100k
+        vaultEngine.file(USDT_ILK, "liquidity", 1_000_000 * _WAD); // 1M * 0.50 = 500k
+        vaultEngine.file(USDC_ILK, "liquidity", 1_000_000 * _WAD);
 
         // Caching the auction's dust-times-chop threshold now that dust and chop are set.
         dutchAuction.upchost();
