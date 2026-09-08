@@ -68,8 +68,20 @@ const deployCore = async () => {
 
     // Permanently pinning the stable (PSM) ilks' stability fee to zero: the PSM's 1:1 accounting is only
     // sound at rate == RAY, and PSM.init refuses any ilk that is not fee-exempt.
-    await (await vaultEngineInstance.exemptFee(usdtIlk)).wait();
-    await (await vaultEngineInstance.exemptFee(usdcIlk)).wait();
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,uint256)"](
+            usdtIlk,
+            hardhat.ethers.encodeBytes32String("noFee"),
+            1n
+        )
+    ).wait();
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,uint256)"](
+            usdcIlk,
+            hardhat.ethers.encodeBytes32String("noFee"),
+            1n
+        )
+    ).wait();
 
     // Registering the USDR ilk and the collateral ilks on the adapter.
     const usdrIlk = hardhat.ethers.encodeBytes32String("USDR");

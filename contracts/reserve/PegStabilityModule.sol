@@ -246,7 +246,7 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
 
     /**
      * @dev Reverts unless the ilk's debt multiplier is exactly RAY. The module's 1:1 vault accounting is only sound at
-     *      par; see the guards in {init} and {VaultEngine.exemptFee}.
+     *      par; see the guards in {init} and {VaultEngine.file}(ilkId, "noFee", 1).
      * @param ilkId Identifier of the stable collateral type.
      */
     function _requireRatePar(bytes32 ilkId) private view {

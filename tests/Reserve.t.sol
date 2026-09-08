@@ -46,7 +46,7 @@ contract BalanceSheetTest is BaseTest {
 
         vm.prank(address(0xBAD));
         vm.expectRevert();
-        balanceSheet.file("wait", 0);
+        balanceSheet.file("wait", uint256(0));
     }
 
     /* ========================== 2. SIN QUEUE ========================== */
@@ -801,7 +801,7 @@ contract ReserveRegressionTest is BaseTest {
         psm.init(daiIlk);
 
         // Exempting it makes registration pass.
-        vaultEngine.exemptFee(daiIlk);
+        vaultEngine.file(daiIlk, "noFee", 1);
         psm.init(daiIlk);
 
         (, , uint256 vaultId) = psm.ilks(daiIlk);

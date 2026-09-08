@@ -1008,7 +1008,7 @@ contract StabilityFeeTest is BaseTest {
 
     function test_exemptFeePinsDutyToRay() public {
         // Regression: a fee-exempt ilk rejects any duty above RAY, forever. Filing RAY itself stays legal (no-op).
-        vaultEngine.exemptFee(TEST_ILK);
+        vaultEngine.file(TEST_ILK, "noFee", 1);
 
         vm.expectRevert(InvalidDuty.selector);
         vaultEngine.file(TEST_ILK, "duty", DUTY_5PCT);
@@ -1024,15 +1024,19 @@ contract StabilityFeeTest is BaseTest {
     }
 
     function test_exemptFeeGuards() public {
+        // Un-exempting is not a thing: the flag is one-way, so any value other than 1 is rejected.
+        vm.expectRevert(InvalidAssignment.selector);
+        vaultEngine.file(TEST_ILK, "noFee", 0);
+
         // Uninitialized ilk: rejected.
         vm.expectRevert(IVaultEngine.IlkNotInitialized.selector);
-        vaultEngine.exemptFee("GHOST-A");
+        vaultEngine.file("GHOST-A", "noFee", 1);
 
         // An ilk whose duty has already left RAY: rejected (the invariant the flag pins is already broken).
         vaultEngine.file(TEST_ILK, "duty", DUTY_5PCT);
 
         vm.expectRevert(InvalidAssignment.selector);
-        vaultEngine.exemptFee(TEST_ILK);
+        vaultEngine.file(TEST_ILK, "noFee", 1);
 
         // Resetting duty alone is not enough once fees have accrued into the rate.
         _openTestVault(alice, 1000e18, 100e18);
@@ -1041,12 +1045,12 @@ contract StabilityFeeTest is BaseTest {
         vaultEngine.file(TEST_ILK, "duty", _RAY);
 
         vm.expectRevert(InvalidAssignment.selector);
-        vaultEngine.exemptFee(TEST_ILK);
+        vaultEngine.file(TEST_ILK, "noFee", 1);
 
         // Ward-only.
         vm.prank(alice);
         vm.expectRevert();
-        vaultEngine.exemptFee(TEST_ILK);
+        vaultEngine.file(TEST_ILK, "noFee", 1);
     }
 
     /* ========================== 6. DUTY BOUND & ESCAPE HATCH ========================== */

@@ -150,16 +150,22 @@ contract OracleTest is BaseTest {
         priceConverter.file(RAIN_ILK, "mat", _RAY);
     }
 
-    function test_clearingFixedFlagDirectlyIsRejected() public {
-        // file(ilk, "fixed", 0) used to silently wipe the oracle and freeze spot at its last value.
-        vm.expectRevert(IPriceConverter.WouldOrphanIlk.selector);
+    function test_fixedFlagOnlyAcceptsZeroOrOne() public {
+        // The flag is a strict 0/1: anything else is a fat-finger and rejected.
+        vm.expectRevert(InvalidAmount.selector);
+        priceConverter.file(USDT_ILK, "fixed", 2);
+
+        // Clearing the flag makes the ilk oracle-backed via the single system-wide OSM.
         priceConverter.file(USDT_ILK, "fixed", 0);
 
-        // The safe path: assigning an oracle clears the fixed flag atomically.
-        priceConverter.file(USDT_ILK, "oracleSecurityModule", address(osm));
+        (, bool fixedPrice) = priceConverter.ilks(USDT_ILK);
+        assertFalse(fixedPrice, "flag cleared");
 
-        (, , bool fixedPrice) = priceConverter.ilks(USDT_ILK);
-        assertFalse(fixedPrice, "oracle assignment cleared fixed");
+        // The OSM does not serve USDT: poke fails closed to a zero spot rather than freezing the last value.
+        priceConverter.poke(USDT_ILK);
+
+        (, , , uint256 spot, , , , ) = vaultEngine.ilks(USDT_ILK);
+        assertEq(spot, 0, "unserved oracle-backed ilk fails closed");
     }
 
     function test_spotDerivationMatchesFormula() public {
@@ -176,7 +182,7 @@ contract OracleTest is BaseTest {
     }
 
     function test_pokeUnconfiguredIlkReverts() public {
-        vm.expectRevert(InvalidAddress.selector);
+        vm.expectRevert(IPriceConverter.IlkNotConfigured.selector);
         priceConverter.poke("GHOST-A");
     }
 

@@ -145,7 +145,9 @@ const deployReserve = async () => {
             osmAddress
         )
     ).wait();
-    await (await balanceSheetInstance.setRainIlk(rainIlk)).wait();
+    await (
+        await balanceSheetInstance["file(bytes32,bytes32)"](hardhat.ethers.encodeBytes32String("rainIlk"), rainIlk)
+    ).wait();
     await (
         await balanceSheetInstance["file(bytes32,uint256)"](
             hardhat.ethers.encodeBytes32String("backstopCap"),

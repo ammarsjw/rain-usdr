@@ -390,13 +390,15 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         // The settlement price is par (USDR's target value) divided by the collateral's last delayed price: collateral
         // units owed per USDR of debt [ray]. Fixed-price ilks settle at exactly $1, matching the price they minted at;
         // oracle-backed ilks read the OSM's current value one final time.
-        (IOracleSecurityModule oracleSecurityModule, , bool fixedPrice) = priceConverter.ilks(ilkId);
+        (, bool fixedPrice) = priceConverter.ilks(ilkId);
 
         uint256 price;
 
         if (fixedPrice) {
             price = _WAD;
         } else {
+            IOracleSecurityModule oracleSecurityModule = priceConverter.oracleSecurityModule();
+
             if (address(oracleSecurityModule) == address(0)) {
                 _revert(InvalidAddress.selector);
             }

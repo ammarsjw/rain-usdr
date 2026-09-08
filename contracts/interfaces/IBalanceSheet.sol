@@ -160,10 +160,11 @@ interface IBalanceSheet {
     function file(bytes32 what, address data) external;
 
     /**
-     * @notice Sets the RAIN collateral type used by {backstop}.
-     * @param ilkId Identifier of the RAIN ilk.
+     * @notice Sets a bytes32 parameter {rainIlk}, the RAIN collateral type used by {backstop}.
+     * @param what Name of the parameter.
+     * @param data New value.
      */
-    function setRainIlk(bytes32 ilkId) external;
+    function file(bytes32 what, bytes32 data) external;
 
     /**
      * @notice Registers bad debt when an auction fails to fully cover a vault's debt.

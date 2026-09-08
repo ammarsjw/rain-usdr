@@ -158,14 +158,18 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
     /**
      * @inheritdoc IBalanceSheet
      */
-    function setRainIlk(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
-        if (ilkId == bytes32(0)) {
-            _revert(InvalidBytes.selector);
+    function file(bytes32 what, bytes32 data) external onlyRole(_WARD_ROLE) {
+        if (what == "rainIlk") {
+            if (data == bytes32(0)) {
+                _revert(InvalidBytes.selector);
+            }
+
+            rainIlk = data;
+        } else {
+            _revert(UnrecognizedParameter.selector);
         }
 
-        rainIlk = ilkId;
-
-        emit File({ what: "rainIlk", dataBytes32: ilkId });
+        emit File({ what: what, dataBytes32: data });
     }
 
     /**

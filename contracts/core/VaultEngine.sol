@@ -223,6 +223,25 @@ contract VaultEngine is IVaultEngine, AccessControl {
             // {_LIQUIDITY_LAG}.
             liquidityCeilings[ilkId].liquidity = data;
             _snapshotLiquidity(ilkId);
+        } else if (what == "noFee") {
+            // Permanently marks the ilk fee-exempt. One-way: there is deliberately no un-exempt path, so the only
+            // accepted value is 1.
+            if (data != 1) {
+                _revert(InvalidAssignment.selector);
+            }
+
+            // The collateral type must have been initialized.
+            if (ilks[ilkId].rate == 0) {
+                _revert(IlkNotInitialized.selector);
+            }
+
+            // Marking requires the ilk to be fee-clean: a rate already above RAY means fees have accrued and the PSM
+            // invariant (rate == RAY forever) is already broken for this ilk.
+            if (ilks[ilkId].rate != _RAY || ilks[ilkId].duty != _RAY) {
+                _revert(InvalidAssignment.selector);
+            }
+
+            noFee[ilkId] = true;
         } else if (what == "duty") {
             // The collateral type must have been initialized. Checked explicitly: the drip below used to provide this
             // guard, but it is now non-fatal and would swallow the revert.
@@ -261,26 +280,6 @@ contract VaultEngine is IVaultEngine, AccessControl {
         }
 
         emit File({ ilkId: ilkId, what: what, data: data });
-    }
-
-    /**
-     * @inheritdoc IVaultEngine
-     */
-    function exemptFee(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
-        // The collateral type must have been initialized.
-        if (ilks[ilkId].rate == 0) {
-            _revert(IlkNotInitialized.selector);
-        }
-
-        // Marking is one-way and requires the ilk to be fee-clean: a rate already above RAY means fees have accrued
-        // and the PSM invariant (rate == RAY forever) is already broken for this ilk.
-        if (ilks[ilkId].rate != _RAY || ilks[ilkId].duty != _RAY) {
-            _revert(InvalidAssignment.selector);
-        }
-
-        noFee[ilkId] = true;
-
-        emit ExemptFee({ ilkId: ilkId });
     }
 
     /**

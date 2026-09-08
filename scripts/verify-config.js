@@ -121,10 +121,7 @@ const verifyConfig = async () => {
     assertEq("PriceConverter.ilks(USDC-A).mat", (await priceConverter.ilks(usdcIlk)).mat, RAY);
     assertEq("PriceConverter.ilks(USDT-A).fixedPrice", (await priceConverter.ilks(usdtIlk)).fixedPrice, true);
     assertEq("PriceConverter.ilks(USDC-A).fixedPrice", (await priceConverter.ilks(usdcIlk)).fixedPrice, true);
-    assertNonZero(
-        "PriceConverter.ilks(RAIN-A).oracleSecurityModule",
-        (await priceConverter.ilks(rainIlk)).oracleSecurityModule
-    );
+    assertNonZero("PriceConverter.oracleSecurityModule", await priceConverter.oracleSecurityModule());
 
     // ------------------------------------------------------------------ SolvencyEngine
     const solvencyEngine = await hardhat.ethers.getContractAt("SolvencyEngine", addresses.SolvencyEngine);

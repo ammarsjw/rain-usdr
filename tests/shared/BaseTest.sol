@@ -115,8 +115,8 @@ abstract contract BaseTest is Test {
         vaultEngine.init(USDC_ILK);
 
         // Permanently pinning the stable (PSM) ilks' stability fee to zero. PSM.init requires this.
-        vaultEngine.exemptFee(USDT_ILK);
-        vaultEngine.exemptFee(USDC_ILK);
+        vaultEngine.file(USDT_ILK, "noFee", 1);
+        vaultEngine.file(USDC_ILK, "noFee", 1);
 
         // Deploying the PSMs and the Governor.
         psm = new PegStabilityModule(collateralAdapter, reserveAccounting);
@@ -141,7 +141,7 @@ abstract contract BaseTest is Test {
         osm.grantRole(_READER_ROLE, address(circuitBreaker));
         // Staleness: a current price older than six hours fails closed on peek/read (and therefore on poke → spot=0).
         osm.file("maxAge", 6 hours);
-        priceConverter.file(RAIN_ILK, "oracleSecurityModule", address(osm));
+        priceConverter.file("oracleSecurityModule", address(osm));
         priceConverter.file(RAIN_ILK, "mat", 4 * _RAY);
         priceConverter.file(USDT_ILK, "mat", _RAY);
         priceConverter.file(USDC_ILK, "mat", _RAY);
@@ -163,7 +163,7 @@ abstract contract BaseTest is Test {
         psm.file("solvencyEngine", address(solvencyEngine));
         balanceSheet.file("solvencyEngine", address(solvencyEngine));
         balanceSheet.file("oracleSecurityModule", address(osm));
-        balanceSheet.setRainIlk(RAIN_ILK);
+        balanceSheet.file("rainIlk", RAIN_ILK);
         balanceSheet.file("backstopCap", 50_000 * _RAD);
         osm.grantRole(_READER_ROLE, address(balanceSheet));
         osm.file("solvencyEngine", address(solvencyEngine));

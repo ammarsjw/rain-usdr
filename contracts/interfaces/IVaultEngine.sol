@@ -83,12 +83,6 @@ interface IVaultEngine {
     event Init(bytes32 indexed ilkId);
 
     /**
-     * @dev Emitted when a collateral type is permanently marked fee-exempt (its `duty` pinned to RAY).
-     * @param ilkId Identifier of the collateral type.
-     */
-    event ExemptFee(bytes32 indexed ilkId);
-
-    /**
      * @dev Emitted when a new vault is opened.
      * @param ilkId Identifier of the collateral type the vault is bound to.
      * @param owner Owner of the new vault.
@@ -250,26 +244,21 @@ interface IVaultEngine {
     function file(bytes32 what, address data) external;
 
     /**
-     * @notice Updates a per-collateral parameter {spot}, {line}, {dust}, {duty}, {fSafety} or {liquidity}.
+     * @notice Updates a per-collateral parameter {spot}, {line}, {dust}, {noFee}, {duty}, {fSafety} or {liquidity}.
      * @dev Only governance, or the Price Converter for {spot}, can call this. Filing {duty} first accrues the pending
      *      fee at the old duty ({drip}), so a new duty is never applied retroactively. {duty} must be at least RAY.
      *      {fSafety} is the dynamic ceiling's safety factor [wad] (zero disables the dynamic ceiling). {liquidity} is
-     *      the available market liquidity [wad] used by {effectiveLine}.
+     *      the available market liquidity [wad] used by {effectiveLine}. Filing {noFee} with 1 permanently marks the
+     *      ilk fee-exempt: filing any `duty` other than RAY on it reverts from then on. Required for every PSM
+     *      (stable) ilk, the PSM's 1:1 accounting is only sound at `rate == RAY`, and any accrued fee would strand
+     *      the stable reserve and mint unbacked surplus. One-way: there is deliberately no un-exempt path, so any
+     *      value other than 1 reverts. Reverts if the ilk is uninitialized or if its rate or duty has already left
+     *      RAY (the invariant it pins is already broken).
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
      * @param data New value.
      */
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
-
-    /**
-     * @notice Permanently marks a collateral type fee-exempt: filing any `duty` other than RAY on it reverts from then
-     *         on. Required for every PSM (stable) ilk, the PSM's 1:1 accounting is only sound at `rate == RAY`, and
-     *         any accrued fee would strand the stable reserve and mint unbacked surplus.
-     * @dev Only governance can call this. One-way: there is deliberately no un-exempt path. Reverts if the ilk is
-     *      uninitialized or if its rate or duty has already left RAY (the invariant it pins is already broken).
-     * @param ilkId Identifier of the collateral type.
-     */
-    function exemptFee(bytes32 ilkId) external;
 
     /**
      * @notice Opens a new vault bound to a collateral type and returns its id.
