@@ -223,7 +223,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
     /**
      * @inheritdoc ISolvencyEngine
      */
-    function worstCaseLoss() public view returns (uint256 loss) {
+    function worstCaseLoss() external view returns (uint256 loss) {
         (uint256 exposure, ) = _exposure();
 
         return _volatileLoss() + exposure;
