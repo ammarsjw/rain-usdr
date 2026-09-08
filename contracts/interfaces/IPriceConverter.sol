@@ -116,11 +116,6 @@ interface IPriceConverter {
     function VAULT_ENGINE() external view returns (IVaultEngine);
 
     /**
-     * @notice Returns the single system-wide Oracle Security Module every oracle-backed ilk reads from.
-     */
-    function oracleSecurityModule() external view returns (IOracleSecurityModule);
-
-    /**
      * @notice Returns the target dollar value of USDR [ray]. Fixed at 1.0.
      */
     function par() external view returns (uint256);
@@ -129,6 +124,11 @@ interface IPriceConverter {
      * @notice Returns the liveness flag. `1` while live, `0` after shutdown.
      */
     function live() external view returns (uint256);
+
+    /**
+     * @notice Returns the single system-wide Oracle Security Module every oracle-backed ilk reads from.
+     */
+    function oracleSecurityModule() external view returns (IOracleSecurityModule);
 
     /**
      * @notice Returns a collateral type's oracle configuration.

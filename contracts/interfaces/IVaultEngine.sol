@@ -403,14 +403,14 @@ interface IVaultEngine {
     function solvencyEngine() external view returns (ISolvencyEngine);
 
     /**
-     * @notice Returns the recipient of accrued stability fees (the Balance Sheet).
-     */
-    function feeRecipient() external view returns (address);
-
-    /**
      * @notice Returns the Governor consulted for the emergency pause.
      */
     function governor() external view returns (IGovernor);
+
+    /**
+     * @notice Returns the recipient of accrued stability fees (the Balance Sheet).
+     */
+    function feeRecipient() external view returns (address);
 
     /**
      * @notice Returns the registered collateral type identifier at `index`. Ilks are appended at {init} and never

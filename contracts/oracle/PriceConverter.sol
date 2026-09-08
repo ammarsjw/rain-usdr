@@ -33,13 +33,13 @@ contract PriceConverter is IPriceConverter, AccessControl {
     IVaultEngine public immutable VAULT_ENGINE;
 
     /// @inheritdoc IPriceConverter
-    IOracleSecurityModule public oracleSecurityModule;
-
-    /// @inheritdoc IPriceConverter
     uint256 public par;
 
     /// @inheritdoc IPriceConverter
     uint256 public live;
+
+    /// @inheritdoc IPriceConverter
+    IOracleSecurityModule public oracleSecurityModule;
 
     /// @inheritdoc IPriceConverter
     mapping(bytes32 ilkId => IlkOracle oracle) public ilks;

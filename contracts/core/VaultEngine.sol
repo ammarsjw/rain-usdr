@@ -69,10 +69,10 @@ contract VaultEngine is IVaultEngine, AccessControl {
     ISolvencyEngine public solvencyEngine;
 
     /// @inheritdoc IVaultEngine
-    address public feeRecipient;
+    IGovernor public governor;
 
     /// @inheritdoc IVaultEngine
-    IGovernor public governor;
+    address public feeRecipient;
 
     /// @inheritdoc IVaultEngine
     bytes32[] public ilkIds;

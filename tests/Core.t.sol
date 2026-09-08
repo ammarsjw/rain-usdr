@@ -1006,7 +1006,7 @@ contract StabilityFeeTest is BaseTest {
 
     /* ========================== 5. FEE EXEMPTION ========================== */
 
-    function test_exemptFeePinsDutyToRay() public {
+    function test_noFeeFilePinsDutyToRay() public {
         // Regression: a fee-exempt ilk rejects any duty above RAY, forever. Filing RAY itself stays legal (no-op).
         vaultEngine.file(TEST_ILK, "noFee", 1);
 
@@ -1023,7 +1023,7 @@ contract StabilityFeeTest is BaseTest {
         assertEq(rate, _RAY, "rate pinned");
     }
 
-    function test_exemptFeeGuards() public {
+    function test_noFeeFileGuards() public {
         // Un-exempting is not a thing: the flag is one-way, so any value other than 1 is rejected.
         vm.expectRevert(InvalidAssignment.selector);
         vaultEngine.file(TEST_ILK, "noFee", 0);
