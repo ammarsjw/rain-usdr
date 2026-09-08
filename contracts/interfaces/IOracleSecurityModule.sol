@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import { IPriceSource } from "./IPriceSource.sol";
+import { ISolvencyEngine } from "./ISolvencyEngine.sol";
 
 /**
  * @title IOracleSecurityModule
@@ -214,7 +215,7 @@ interface IOracleSecurityModule {
     /**
      * @notice Returns the Solvency Engine softly refreshed on every successful poke. Zero when unset.
      */
-    function solvencyEngine() external view returns (address);
+    function solvencyEngine() external view returns (ISolvencyEngine);
 
     /**
      * @notice Returns the maximum age of a current price in seconds. Zero means no staleness check.

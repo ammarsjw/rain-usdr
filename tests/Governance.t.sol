@@ -19,13 +19,13 @@ import {
 
 import { BaseTest } from "./shared/BaseTest.sol";
 
-/* ========================== GOVERNOR (timelock & pause) ========================== */
+/* ========================== GOVERNOR (TIMELOCK & PAUSE) ========================== */
 
 /**
  * @title GovernanceTest
  * @author Rain Team
- * @notice Adversarial coverage of the Governor: timelock immutability (M-4), schedule/execute/cancel lifecycle, and
- *         the real 72-hour pause auto-expiry (L-6).
+ * @notice Adversarial coverage of the Governor: timelock immutability, schedule/execute/cancel lifecycle, and
+ *         the real 72-hour pause auto-expiry.
  */
 contract GovernanceTest is BaseTest {
     /* ========================== 1. IMMUTABLE DELAY ========================== */
@@ -38,7 +38,7 @@ contract GovernanceTest is BaseTest {
         );
 
         assertFalse(success, "no file function on Governor");
-        assertEq(governor.delay(), 48 hours, "delay fixed at construction");
+        assertEq(governor.DELAY(), 48 hours, "delay fixed at construction");
     }
 
     function test_constructorRejectsZeroDelay() public {
@@ -246,7 +246,7 @@ contract GovernanceTest is BaseTest {
     }
 }
 
-/* ========================== EMERGENCY SETTLEMENT (End — governance-triggered) ========================== */
+/* ========================== EMERGENCY SETTLEMENT (END — GOVERNANCE-TRIGGERED) ========================== */
 
 /**
  * @title SettlementTest
@@ -398,7 +398,7 @@ contract SettlementTest is BaseTest {
     }
 
     function test_cageIlkHaltsAuctionHouse() public {
-        // Audit C-2: End.cage(ilkId) must cage the ilk's auction house. Before the fix, in-flight auctions kept
+        // Regression: End.cage(ilkId) must cage the ilk's auction house. Before the fix, in-flight auctions kept
         // decaying against the FIXED settlement price — a risk-free, unbounded arbitrage against redeemers once the
         // curve crossed break-even, with the bought collateral permanently leaving the redemption pool.
         _setRainPrice(1e18);
@@ -435,10 +435,10 @@ contract SettlementTest is BaseTest {
     }
 
     function test_skipRestoresArtSnapshotSoFixIsExact() public {
-        // Audit H-4: skip reinstates the auction's debt into the vault (grab) AND must add it back to the ilk's
+        // Regression: skip reinstates the auction's debt into the vault (grab) AND must add it back to the ilk's
         // settlement snapshot. Before the fix, thaw's total debt included the restored debt while art[ilk] did not,
         // so flow divided a short numerator by a full denominator — understating fix and stranding collateral in
-        // End forever (measured ~53% stranded in the audit).
+        // End forever (over half the collateral could be stranded).
         _setRainPrice(1e18);
 
         uint256 vaultId = _openVault(user, 400e18, 100e18);
@@ -482,7 +482,7 @@ contract SettlementTest is BaseTest {
 
         assertEq(end.fix(RAIN_ILK), expectedFix, "fix computed on the full snapshot");
 
-        // The conservation identity H-4 broke: the ENTIRE fixed debt redeemed at fix reclaims exactly the RAIN End
+        // The conservation identity that used to break: the ENTIRE fixed debt redeemed at fix reclaims exactly the RAIN End
         // holds (sub-wei truncation dust aside) — nothing is stranded. Before the fix, the snapshot missed the
         // restored debt, fix was understated by ~50%, and most of the pot was unreachable forever.
         uint256 held = vaultEngine.collateral(RAIN_ILK, address(end));

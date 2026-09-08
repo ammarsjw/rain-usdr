@@ -137,6 +137,11 @@ interface IGovernor {
     function unpause() external;
 
     /**
+     * @notice Returns whether the pause window is currently active. Auto-expires 72 hours after it began.
+     */
+    function paused() external view returns (bool);
+
+    /**
      * @notice Returns whether the pause window is active AND includes the given module bit(s).
      * @param scope Module bit or mask to test against {pauseScope}.
      */

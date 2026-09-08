@@ -33,9 +33,9 @@ import { _revert } from "../shared/Globals.sol";
  *      compounding factor [ray] and the permissionless {drip} lazily folds `rpow(duty, now - rho) * rate` into the
  *      ilk, crediting the accrued fees to the {feeRecipient} (the Balance Sheet) as surplus. `frob` (when changing
  *      debt) and duty changes drip automatically; after `cage` the rate is frozen. Internal USDR balances are tracked
- *      in `rad` (45 decimals). When {fSafety} is nonzero for an ilk, its effective debt ceiling is
- *      `min(line, laggedLiquidity * fSafety)` (Decision 18): liquidity decreases are lagged by a day so temporary dips
- *      cannot whip the ceiling, and repayments always bypass ceilings.
+ *      in `rad` (45 decimals). When an ilk's liquidity safety factor is nonzero, its effective debt ceiling is
+ *      `min(line, laggedLiquidity * fSafety)`: liquidity decreases are lagged by a day so temporary dips cannot whip
+ *      the ceiling, and repayments always bypass ceilings.
  */
 contract VaultEngine is IVaultEngine, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -66,13 +66,13 @@ contract VaultEngine is IVaultEngine, AccessControl {
     uint256 public live;
 
     /// @inheritdoc IVaultEngine
-    address public solvencyEngine;
+    ISolvencyEngine public solvencyEngine;
 
     /// @inheritdoc IVaultEngine
     address public feeRecipient;
 
     /// @inheritdoc IVaultEngine
-    address public governor;
+    IGovernor public governor;
 
     /// @inheritdoc IVaultEngine
     bytes32[] public ilkIds;
@@ -84,16 +84,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
     mapping(bytes32 ilkId => bool feeExempt) public noFee;
 
     /// @inheritdoc IVaultEngine
-    mapping(bytes32 ilkId => uint256 safetyFactor) public fSafety;
-
-    /// @inheritdoc IVaultEngine
-    mapping(bytes32 ilkId => uint256 amount) public liquidity;
-
-    /// @inheritdoc IVaultEngine
-    mapping(bytes32 ilkId => uint256 amount) public laggedLiquidity;
-
-    /// @inheritdoc IVaultEngine
-    mapping(bytes32 ilkId => uint256 timestamp) public laggedLiquidityAt;
+    mapping(bytes32 ilkId => LiquidityCeiling ceiling) public liquidityCeilings;
 
     /// @inheritdoc IVaultEngine
     mapping(uint256 vaultId => address vaultOwner) public ownerOf;
@@ -193,9 +184,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
         }
 
         if (what == "solvencyEngine") {
-            solvencyEngine = data;
+            solvencyEngine = ISolvencyEngine(data);
         } else if (what == "governor") {
-            governor = data;
+            governor = IGovernor(data);
         } else if (what == "feeRecipient") {
             if (data == address(0)) {
                 _revert(InvalidAddress.selector);
@@ -225,12 +216,12 @@ contract VaultEngine is IVaultEngine, AccessControl {
             ilks[ilkId].dust = data;
         } else if (what == "fSafety") {
             // Safety factor for the dynamic ceiling [wad]. Zero disables the formula and leaves the static `line` as
-            // the only cap. Spec defaults: 0.50 for stables, 0.05 for RAIN.
-            fSafety[ilkId] = data;
+            // the only cap.
+            liquidityCeilings[ilkId].fSafety = data;
         } else if (what == "liquidity") {
             // Available market liquidity [wad]. Growth raises the lagged snapshot immediately; shrinkage waits for
             // {_LIQUIDITY_LAG}.
-            liquidity[ilkId] = data;
+            liquidityCeilings[ilkId].liquidity = data;
             _snapshotLiquidity(ilkId);
         } else if (what == "duty") {
             // The collateral type must have been initialized. Checked explicitly: the drip below used to provide this
@@ -355,7 +346,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
 
         // Emergency pause check: when the Governor is wired and the FROB scope is paused, all vault modifications are
         // blocked. Unlike the solvency gate below, this stops risk-decreasing operations too.
-        if (governor != address(0) && IGovernor(governor).paused(_PAUSE_FROB)) {
+        if (address(governor) != address(0) && governor.paused(_PAUSE_FROB)) {
             _revert(SystemPaused.selector);
         }
 
@@ -366,12 +357,10 @@ contract VaultEngine is IVaultEngine, AccessControl {
         // (dart < 0) and collateral top-ups (dink > 0) always remain available because they reduce risk. Stable (PSM)
         // ilks are exempt: PSM inflows are reserve-increasing and must never be gated, while PSM redemptions are gated
         // inside the PSM itself.
-        if (
-            (dart > 0 || dink < 0) && solvencyEngine != address(0) && ISolvencyEngine(solvencyEngine).isVolatile(ilkId)
-        ) {
-            ISolvencyEngine(solvencyEngine).checkInvariant();
+        if ((dart > 0 || dink < 0) && address(solvencyEngine) != address(0) && solvencyEngine.isVolatile(ilkId)) {
+            solvencyEngine.checkInvariant();
 
-            if (ISolvencyEngine(solvencyEngine).isBreached()) {
+            if (solvencyEngine.isBreached()) {
                 _revert(SolvencyGateActive.selector);
             }
         }
@@ -458,61 +447,6 @@ contract VaultEngine is IVaultEngine, AccessControl {
         vice = Math.sub(vice, dtab);
 
         emit Grab({ ilkId: ilkId, vaultId: vaultId, v: v, w: w, dink: dink, dart: dart });
-    }
-
-    /**
-     * @inheritdoc IVaultEngine
-     */
-    function drip(bytes32 ilkId) public returns (uint256 newRate) {
-        Ilk storage ilk = ilks[ilkId];
-
-        uint256 prev = ilk.rate;
-
-        // The collateral type must have been initialized.
-        if (prev == 0) {
-            _revert(IlkNotInitialized.selector);
-        }
-
-        // After shutdown the rate is frozen: emergency settlement must see the rates as of cage time. A no-op return
-        // (rather than a revert) keeps post-cage callers working.
-        if (live != 1) {
-            return prev;
-        }
-
-        // Idempotent within a block.
-        if (block.timestamp == ilk.rho) {
-            return prev;
-        }
-
-        newRate = Math.rmul(Math.rpow(ilk.duty, block.timestamp - ilk.rho, _RAY), prev);
-
-        uint256 delta = newRate - prev;
-        uint256 rad = Math.umul(ilk.globalArt, delta);
-
-        // Fees are minted to the fee recipient (the Balance Sheet) as surplus at accrual time. Accruing a nonzero fee
-        // without a configured recipient would burn it into an unreachable balance, so it is a hard error.
-        if (rad != 0) {
-            if (feeRecipient == address(0)) {
-                _revert(FeeRecipientNotSet.selector);
-            }
-
-            usdr[feeRecipient] += rad;
-            debt += rad;
-        }
-
-        ilk.rate = newRate;
-        ilk.rho = block.timestamp;
-
-        emit Drip({ ilkId: ilkId, rate: newRate, rad: rad });
-
-        // Soft solvency refresh: fee accrual raises outstanding debt and therefore the worst-case loss with no user
-        // action. Recompute the breach flag so a breach surfaces even between keeper checks. This NEVER reverts:
-        // accrual is measurement, not a voluntary risk increase, and drip must stay callable (it is invoked inside
-        // frob and on every duty change). The call is wrapped so a mis-wired engine can never brick accrual, and it is
-        // skipped when no fee accrued (rad == 0) since the loss is then unchanged.
-        if (rad != 0 && solvencyEngine != address(0)) {
-            try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
-        }
     }
 
     /**
@@ -615,9 +549,64 @@ contract VaultEngine is IVaultEngine, AccessControl {
     /**
      * @inheritdoc IVaultEngine
      */
+    function drip(bytes32 ilkId) public returns (uint256 newRate) {
+        Ilk storage ilk = ilks[ilkId];
+
+        uint256 prev = ilk.rate;
+
+        // The collateral type must have been initialized.
+        if (prev == 0) {
+            _revert(IlkNotInitialized.selector);
+        }
+
+        // After shutdown the rate is frozen: emergency settlement must see the rates as of cage time. A no-op return
+        // (rather than a revert) keeps post-cage callers working.
+        if (live != 1) {
+            return prev;
+        }
+
+        // Idempotent within a block.
+        if (block.timestamp == ilk.rho) {
+            return prev;
+        }
+
+        newRate = Math.rmul(Math.rpow(ilk.duty, block.timestamp - ilk.rho, _RAY), prev);
+
+        uint256 delta = newRate - prev;
+        uint256 rad = Math.umul(ilk.globalArt, delta);
+
+        // Fees are minted to the fee recipient (the Balance Sheet) as surplus at accrual time. Accruing a nonzero fee
+        // without a configured recipient would burn it into an unreachable balance, so it is a hard error.
+        if (rad != 0) {
+            if (feeRecipient == address(0)) {
+                _revert(FeeRecipientNotSet.selector);
+            }
+
+            usdr[feeRecipient] += rad;
+            debt += rad;
+        }
+
+        ilk.rate = newRate;
+        ilk.rho = block.timestamp;
+
+        emit Drip({ ilkId: ilkId, rate: newRate, rad: rad });
+
+        // Soft solvency refresh: fee accrual raises outstanding debt and therefore the worst-case loss with no user
+        // action. Recompute the breach flag so a breach surfaces even between keeper checks. This NEVER reverts:
+        // accrual is measurement, not a voluntary risk increase, and drip must stay callable (it is invoked inside
+        // frob and on every duty change). The call is wrapped so a mis-wired engine can never brick accrual, and it is
+        // skipped when no fee accrued (rad == 0) since the loss is then unchanged.
+        if (rad != 0 && address(solvencyEngine) != address(0)) {
+            try solvencyEngine.checkInvariant() returns (uint256, uint256) {} catch {}
+        }
+    }
+
+    /**
+     * @inheritdoc IVaultEngine
+     */
     function effectiveLine(bytes32 ilkId) public view returns (uint256) {
         uint256 line_ = ilks[ilkId].line;
-        uint256 safety = fSafety[ilkId];
+        uint256 safety = liquidityCeilings[ilkId].fSafety;
 
         // Dynamic ceilings are opt-in per ilk: a zero safety factor leaves the governance-filed `line` alone.
         if (safety == 0) {
@@ -625,8 +614,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
         }
 
         // Use the larger of live and lagged liquidity so growth takes effect immediately while shrinkage is delayed.
-        uint256 liq = liquidity[ilkId];
-        uint256 lagged = laggedLiquidity[ilkId];
+        uint256 liq = liquidityCeilings[ilkId].liquidity;
+        uint256 lagged = liquidityCeilings[ilkId].laggedLiquidity;
 
         if (lagged > liq) {
             liq = lagged;
@@ -645,15 +634,16 @@ contract VaultEngine is IVaultEngine, AccessControl {
      * @param ilkId Identifier of the collateral type.
      */
     function _snapshotLiquidity(bytes32 ilkId) private {
-        uint256 current = liquidity[ilkId];
-        uint256 lagged = laggedLiquidity[ilkId];
+        LiquidityCeiling storage ceiling = liquidityCeilings[ilkId];
 
-        if (current >= lagged) {
-            laggedLiquidity[ilkId] = current;
-            laggedLiquidityAt[ilkId] = block.timestamp;
-        } else if (block.timestamp >= laggedLiquidityAt[ilkId] + _LIQUIDITY_LAG) {
-            laggedLiquidity[ilkId] = current;
-            laggedLiquidityAt[ilkId] = block.timestamp;
+        uint256 current = ceiling.liquidity;
+
+        if (current >= ceiling.laggedLiquidity) {
+            ceiling.laggedLiquidity = current;
+            ceiling.laggedLiquidityAt = block.timestamp;
+        } else if (block.timestamp >= ceiling.laggedLiquidityAt + _LIQUIDITY_LAG) {
+            ceiling.laggedLiquidity = current;
+            ceiling.laggedLiquidityAt = block.timestamp;
         }
     }
 

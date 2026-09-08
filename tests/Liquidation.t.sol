@@ -24,7 +24,7 @@ import { MockAuctionCallee } from "./mocks/MockAuctionCallee.sol";
 /**
  * @title LiquidationTest
  * @author Rain Team
- * @notice Adversarial coverage of the liquidation stack: bark capacity accounting, the M-6 auction breaker and
+ * @notice Adversarial coverage of the liquidation stack: bark capacity accounting, the auction circuit breaker and
  *         governance pause, take/redo economics and parameter guards.
  */
 contract LiquidationTest is BaseTest {
@@ -63,7 +63,7 @@ contract LiquidationTest is BaseTest {
         vm.stopPrank();
     }
 
-    /* ========================== 1. BARK CAPACITY (hole/dirt) ========================== */
+    /* ========================== 1. BARK CAPACITY (HOLE/DIRT) ========================== */
 
     function test_barkRespectsHoleAndDigsFreesCapacity() public {
         // Both vaults and the bidder are set up BEFORE the crash: _setRainPrice warps hours forward, and the auction
@@ -245,7 +245,7 @@ contract LiquidationTest is BaseTest {
         vm.expectRevert(ILiquidationTrigger.InvalidBarkFactor.selector);
         liquidationTrigger.file(RAIN_ILK, "barkFactor", _WAD + 1);
 
-        // L-2: throttle outside (0, 1].
+        // Throttle outside (0, 1].
         vm.expectRevert(ILiquidationTrigger.InvalidThrottle.selector);
         liquidationTrigger.file("throttle", 0);
 
@@ -457,7 +457,7 @@ contract CircuitBreakerTest is BaseTest {
     }
 }
 
-/* ========================== AUCTION DEPTH (Dutch auction) ========================== */
+/* ========================== AUCTION DEPTH (DUTCH AUCTION) ========================== */
 
 /**
  * @title AuctionDepthTest
@@ -713,19 +713,19 @@ contract AuctionDepthTest is BaseTest {
         dutchAuction.file("buf", _RAY);
 
         vm.expectRevert(NotLive.selector);
-        dutchAuction.file("pip", address(osm));
+        dutchAuction.file("oracleSecurityModule", address(osm));
     }
 }
 
-/* ========================== LIQUIDATION AUDIT REGRESSIONS ========================== */
+/* ========================== LIQUIDATION REGRESSIONS ========================== */
 
 /**
- * @title LiquidationAuditTest
+ * @title LiquidationRegressionTest
  * @author Rain Team
- * @notice Audit regressions exercising the liquidation stack: bark thresholds, dart precision ordering and the Dutch
+ * @notice Regression tests exercising the liquidation stack: bark thresholds, dart precision ordering and the Dutch
  *         Auction chost boundary behaviour.
  */
-contract LiquidationAuditTest is BaseTest {
+contract LiquidationRegressionTest is BaseTest {
     /* ========================== HELPERS ========================== */
 
     /// @dev Pushes `price` [wad] through the OSM (two pokes) and into the Vault Engine's spot.
@@ -895,10 +895,10 @@ contract LiquidationAuditTest is BaseTest {
         assertEq(tabAfter, chost, "remainder adjusted down to exactly chost");
     }
 
-    /* ========================== TAU GUARD (M-8) ========================== */
+    /* ========================== TAU GUARD ========================== */
 
     function test_tauZeroRejected() public {
-        // Audit M-8: tau == 0 makes price() return 0 for every duration — every take reverts, redo cannot recover,
+        // Regression: tau == 0 makes price() return 0 for every duration — every take reverts, redo cannot recover,
         // and all auctioned collateral is unsellable until governance re-files. The value must be refused at file
         // time (Maker's LinearDecrease accepts it; USDR does not).
         vm.expectRevert(InvalidAmount.selector);

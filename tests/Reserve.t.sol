@@ -110,7 +110,7 @@ contract BalanceSheetTest is BaseTest {
     /* ========================== 3. SURPLUS DISTRIBUTION ========================== */
 
     function test_distributeNoOpsOnUnqueuedBadDebt() public {
-        // Audit M-6 (fixed): unqueued sin (e.g. a suck keeper reward) is a routine keeper race, so distribution
+        // Regression: unqueued sin (e.g. a suck keeper reward) is a routine keeper race, so distribution
         // no-ops (Maker-consistent) instead of hard-reverting and alarming automation through every liquidation.
         balanceSheet.file("buybackReceiver", address(0xB0B));
 
@@ -126,7 +126,7 @@ contract BalanceSheetTest is BaseTest {
     }
 
     function test_distributeReservesQueuedSinInsteadOfBlocking() public {
-        // Audit M-6 (fixed): queued sin cannot be healed yet, but the surplus that will heal it must not leave.
+        // Regression: queued sin cannot be healed yet, but the surplus that will heal it must not leave.
         // Instead of blocking ALL distribution for the whole wait window, the queued amount is reserved on top of
         // the hump target and only the genuine excess ships.
         balanceSheet.file("buybackReceiver", address(0xB0B));
@@ -186,13 +186,13 @@ contract BalanceSheetTest is BaseTest {
     }
 }
 
-/* ========================== RESERVE (PSM, ReserveAccounting, SolvencyEngine) ========================== */
+/* ========================== RESERVE (PSM, RESERVEACCOUNTING, SOLVENCYENGINE) ========================== */
 
 /**
  * @title ReserveTest
  * @author Rain Team
- * @notice Adversarial coverage of the reserve stack: the H-1 direct-OSM pricing (mat-change immunity), the M-3 lazy
- *         redemption gate, parameter bounds (L-4), volatile ilk validation (L-5) and escrow guards (L-1).
+ * @notice Adversarial coverage of the reserve stack: the direct-OSM pricing (mat-change immunity), the lazy
+ *         redemption gate, parameter bounds, volatile ilk validation and escrow guards.
  */
 contract ReserveTest is BaseTest {
     /* ========================== HELPERS ========================== */
@@ -538,12 +538,12 @@ contract ReserveTest is BaseTest {
 /* ========================== RESERVE AUDIT REGRESSIONS ========================== */
 
 /**
- * @title ReserveAuditTest
+ * @title ReserveRegressionTest
  * @author Rain Team
- * @notice Audit regressions exercising the reserve stack: PSM round trips, the solvency invariant and gate, external
+ * @notice Regression tests exercising the reserve stack: PSM round trips, the solvency invariant and gate, external
  *         exposure clamping, sin queue timing and surplus distribution around the hump.
  */
-contract ReserveAuditTest is BaseTest {
+contract ReserveRegressionTest is BaseTest {
     /* ========================== HELPERS ========================== */
 
     /// @dev Pushes `price` [wad] through the OSM (two pokes) and into the Vault Engine's spot.
@@ -751,10 +751,10 @@ contract ReserveAuditTest is BaseTest {
         assertEq(vaultEngine.usdr(address(0xB0B)), 15 * _RAD, "receiver credited");
     }
 
-    /* ========================== 5. PSM FEE EXEMPTION (C-1) ========================== */
+    /* ========================== 5. PSM FEE EXEMPTION ========================== */
 
     function test_dutyOnStableIlkIsRejected() public {
-        // Audit C-1: the PSM's 1:1 accounting is only sound at rate == RAY. The stable ilks are fee-exempt from
+        // Regression: the PSM's 1:1 accounting is only sound at rate == RAY. The stable ilks are fee-exempt from
         // BaseTest wiring (as in deploy), so ANY duty above RAY — including the minimal RAY + 1 — must be rejected.
         vm.expectRevert(InvalidDuty.selector);
         vaultEngine.file(USDT_ILK, "duty", _RAY + 1);
@@ -767,8 +767,8 @@ contract ReserveAuditTest is BaseTest {
     }
 
     function test_psmRoundTripStaysExactAfterYearsAndDrips() public {
-        // Audit C-1 (the measured blast radius, inverted): with the exemption in place, drips over long horizons
-        // must leave the PSM's round trip bit-exact — the audit's broken scenario redeemed 0 of 100,000.
+        // The blast radius, inverted: with the exemption in place, drips over long horizons
+        // must leave the PSM's round trip bit-exact — the broken scenario redeemed 0 of 100,000.
         _sellUsdt(user, 100_000e6);
 
         skip(3650 days);
@@ -789,7 +789,7 @@ contract ReserveAuditTest is BaseTest {
     }
 
     function test_psmInitRequiresFeeExemptIlk() public {
-        // A new stable ilk that is NOT fee-exempt must be refused by PSM.init: registration is where the C-1
+        // A new stable ilk that is NOT fee-exempt must be refused by PSM.init: registration is where the fee-exemption
         // invariant is anchored, so it can never be forgotten in a later deploy.
         MockERC20 dai = new MockERC20("Dai", "DAI", 18);
         bytes32 daiIlk = "DAI-A";
@@ -808,11 +808,11 @@ contract ReserveAuditTest is BaseTest {
         assertGt(vaultId, 0, "registered once exempt");
     }
 
-    /* ========================== 6. RESERVE BACKING NET (H-3) ========================== */
+    /* ========================== 6. RESERVE BACKING NET ========================== */
 
     function test_distributeRevertsWhenReserveNoLongerBacksStableDebt() public {
-        // Audit H-3 (system-level net): if the stable reserve ever stops covering the PSM ilks' debt — unbacked
-        // USDR exists — no surplus may leave toward the buyback. The primary C-1 guard makes the fee path
+        // System-level net: if the stable reserve ever stops covering the PSM ilks' debt — unbacked
+        // USDR exists — no surplus may leave toward the buyback. The primary fee-exemption guard makes the fee path
         // unreachable, so the imbalance is simulated directly on the reserve ledger.
         balanceSheet.file("reserveAccounting", address(reserveAccounting));
         balanceSheet.file("buybackReceiver", address(0xB0B));
@@ -838,10 +838,10 @@ contract ReserveAuditTest is BaseTest {
         assertEq(balanceSheet.distributeSurplus(), 50 * _RAD, "distribution resumes once backed");
     }
 
-    /* ========================== 7. HUMP TARGET GAMING (M-5) ========================== */
+    /* ========================== 7. HUMP TARGET GAMING ========================== */
 
     function test_humpTargetCannotBeShrunkBySameWindowRedemption() public {
-        // Audit M-5: the dynamic hump term used to read the LIVE reserve, so redeem-shrink-distribute in one
+        // Regression: the dynamic hump term used to read the LIVE reserve, so redeem-shrink-distribute in one
         // transaction lowered the target and drained extra surplus. The term now reads max(live, lagged snapshot).
         balanceSheet.file("reserveAccounting", address(reserveAccounting));
         balanceSheet.file("buybackReceiver", address(0xB0B));
@@ -928,7 +928,7 @@ contract ReserveAuditTest is BaseTest {
     /* ========================== 8. EXPOSURE ESCROW COMMITMENT ========================== */
 
     function test_exposureCommitsEscrowAndStarvesRedemption() public {
-        // Audit H-5 was a fail-open in the (now removed) cap setter: zeroing the cap behind a wired reporter reduced
+        // There used to be a fail-open in the (now removed) cap setter: zeroing the cap behind a wired reporter reduced
         // exposure to nothing. Without a cap there is no knob to zero, so what is left to protect is the downstream
         // effect the cap used to distort: reported exposure must fully reserve reserve capital.
         _sellUsdt(keeper, 100_000e6);

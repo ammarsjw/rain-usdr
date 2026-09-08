@@ -76,13 +76,13 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
     address public buybackReceiver;
 
     /// @inheritdoc IBalanceSheet
-    address public solvencyEngine;
+    ISolvencyEngine public solvencyEngine;
 
     /// @inheritdoc IBalanceSheet
     IReserveAccounting public reserveAccounting;
 
     /// @inheritdoc IBalanceSheet
-    IOracleSecurityModule public osm;
+    IOracleSecurityModule public oracleSecurityModule;
 
     /// @inheritdoc IBalanceSheet
     mapping(uint256 era => uint256 tab) public sin;
@@ -145,9 +145,9 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         } else if (what == "reserveAccounting") {
             reserveAccounting = IReserveAccounting(data);
         } else if (what == "solvencyEngine") {
-            solvencyEngine = data;
-        } else if (what == "osm") {
-            osm = IOracleSecurityModule(data);
+            solvencyEngine = ISolvencyEngine(data);
+        } else if (what == "oracleSecurityModule") {
+            oracleSecurityModule = IOracleSecurityModule(data);
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -233,7 +233,7 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             _revert(InvalidAmount.selector);
         }
 
-        if (rainIlk == bytes32(0) || address(osm) == address(0)) {
+        if (rainIlk == bytes32(0) || address(oracleSecurityModule) == address(0)) {
             _revert(BackstopNotConfigured.selector);
         }
 
@@ -262,7 +262,7 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             rad = remaining;
         }
 
-        (bytes32 val, bool has) = osm.peek(rainIlk);
+        (bytes32 val, bool has) = oracleSecurityModule.peek(rainIlk);
 
         if (!has || uint256(val) == 0) {
             _revert(BackstopPriceInvalid.selector);
@@ -348,10 +348,10 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         // reserve invariant is breached. The invariant is RECOMPUTED here rather than trusting the keeper-maintained
         // flag, the same lazy gate as PSM redemption: surplus must never leave toward buyback while the stressed loss
         // exceeds what the reserve can cover.
-        if (solvencyEngine != address(0)) {
-            ISolvencyEngine(solvencyEngine).checkInvariant();
+        if (address(solvencyEngine) != address(0)) {
+            solvencyEngine.checkInvariant();
 
-            if (ISolvencyEngine(solvencyEngine).isBreached()) {
+            if (solvencyEngine.isBreached()) {
                 _revert(SolvencyGateActive.selector);
             }
         }
@@ -381,20 +381,6 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
     }
 
     /**
-     * @dev Records the current total reserve as the lagged snapshot, at most once per {_RESERVE_LAG}. Permissionless
-     *      via {snapshotReserve} (keepers keep it fresh) and called after every distribution. Because the snapshot can
-     *      only move once per lag window, a distribution never faces a target shrunk by same-window PSM outflow.
-     */
-    function _snapshotReserve() private {
-        if (block.timestamp >= laggedReserveAt + _RESERVE_LAG && address(reserveAccounting) != address(0)) {
-            laggedReserve = reserveAccounting.totalReserve();
-            laggedReserveAt = block.timestamp;
-
-            emit SnapshotReserve({ reserve: laggedReserve });
-        }
-    }
-
-    /**
      * @inheritdoc IBalanceSheet
      */
     function humpTarget() public view returns (uint256 target) {
@@ -420,4 +406,18 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             }
         }
     }
+    /**
+     * @dev Records the current total reserve as the lagged snapshot, at most once per {_RESERVE_LAG}. Permissionless
+     *      via {snapshotReserve} (keepers keep it fresh) and called after every distribution. Because the snapshot can
+     *      only move once per lag window, a distribution never faces a target shrunk by same-window PSM outflow.
+     */
+    function _snapshotReserve() private {
+        if (block.timestamp >= laggedReserveAt + _RESERVE_LAG && address(reserveAccounting) != address(0)) {
+            laggedReserve = reserveAccounting.totalReserve();
+            laggedReserveAt = block.timestamp;
+
+            emit SnapshotReserve({ reserve: laggedReserve });
+        }
+    }
+
 }

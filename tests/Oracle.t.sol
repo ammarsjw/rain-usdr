@@ -14,8 +14,8 @@ import { BaseTest } from "./shared/BaseTest.sol";
 /**
  * @title OracleTest
  * @author Rain Team
- * @notice Adversarial coverage of the OSM and Price Converter: delay mechanics and the M-1 one-second worst-case
- *         bound, staleness, zero-price handling (L-10), spot derivation and the M-7/M-8 file guards.
+ * @notice Adversarial coverage of the OSM and Price Converter: delay mechanics and the one-second worst-case
+ *         bound, staleness, zero-price handling, spot derivation and the file-time parameter guards.
  */
 contract OracleTest is BaseTest {
     function setUp() public override {
@@ -45,7 +45,7 @@ contract OracleTest is BaseTest {
     }
 
     function test_osmDelayIsHardBoundEvenAtBoundary() public {
-        // Audit M-4 (fixed): the poke timestamp is stored UNSNAPPED, so a poke landing at the very end of a window
+        // Regression: the poke timestamp is stored UNSNAPPED, so a poke landing at the very end of a window
         // (boundary + 1799) does NOT permit another poke one second later. The minimum nxt->cur residency is a hard
         // {HOP}, and SLAs may be sized to the full 30 minutes.
         _warpToBoundary(1799);
@@ -98,7 +98,7 @@ contract OracleTest is BaseTest {
     }
 
     function test_osmZeroPriceTreatedAsFailedReport() public {
-        // L-10: a valid-but-zero report must never enter the feed.
+        // A valid-but-zero report must never enter the feed.
         _warpToBoundary(0);
         rainPriceSource.setPrice(0);
 
@@ -142,7 +142,7 @@ contract OracleTest is BaseTest {
     /* ========================== 2. PRICE CONVERTER ========================== */
 
     function test_matBelowRayRejected() public {
-        // M-8: a sub-100% collateralization ratio would authorize under-collateralized minting at origination.
+        // A sub-100% collateralization ratio would authorize under-collateralized minting at origination.
         vm.expectRevert(IPriceConverter.MatBelowOne.selector);
         priceConverter.file(RAIN_ILK, "mat", _RAY - 1);
 
@@ -151,15 +151,15 @@ contract OracleTest is BaseTest {
     }
 
     function test_clearingFixedFlagDirectlyIsRejected() public {
-        // M-7: file(ilk, "fixed", 0) used to silently wipe the pip and freeze spot at its last value.
+        // file(ilk, "fixed", 0) used to silently wipe the oracle and freeze spot at its last value.
         vm.expectRevert(IPriceConverter.WouldOrphanIlk.selector);
         priceConverter.file(USDT_ILK, "fixed", 0);
 
         // The safe path: assigning an oracle clears the fixed flag atomically.
-        priceConverter.file(USDT_ILK, "pip", address(osm));
+        priceConverter.file(USDT_ILK, "oracleSecurityModule", address(osm));
 
         (, , bool fixedPrice) = priceConverter.ilks(USDT_ILK);
-        assertFalse(fixedPrice, "pip assignment cleared fixed");
+        assertFalse(fixedPrice, "oracle assignment cleared fixed");
     }
 
     function test_spotDerivationMatchesFormula() public {
@@ -222,7 +222,7 @@ contract OracleTest is BaseTest {
     }
 
     function test_parZeroRejected() public {
-        // Audit L-2: par == 0 would brick poke for every ilk (division by par), freezing all spots at their last
+        // Regression: par == 0 would brick poke for every ilk (division by par), freezing all spots at their last
         // values — the dangerous direction — and file's live-gate means it could never be repaired after a cage.
         vm.expectRevert(InvalidAmount.selector);
         priceConverter.file("par", 0);

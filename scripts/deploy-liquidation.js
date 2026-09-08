@@ -102,7 +102,7 @@ const deployLiquidation = async () => {
     await (
         await liquidationTriggerInstance["file(bytes32,bytes32,address)"](
             rainIlk,
-            hardhat.ethers.encodeBytes32String("clip"),
+            hardhat.ethers.encodeBytes32String("dutchAuction"),
             dutchAuctionAddress
         )
     ).wait();
@@ -138,23 +138,23 @@ const deployLiquidation = async () => {
         )
     ).wait();
     await (
-        await dutchAuctionInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("pip"), osmAddress)
+        await dutchAuctionInstance["file(bytes32,address)"](hardhat.ethers.encodeBytes32String("oracleSecurityModule"), osmAddress)
     ).wait();
     await (
         await dutchAuctionInstance["file(bytes32,address)"](
-            hardhat.ethers.encodeBytes32String("dog"),
+            hardhat.ethers.encodeBytes32String("liquidationTrigger"),
             liquidationTriggerAddress
         )
     ).wait();
     await (
         await dutchAuctionInstance["file(bytes32,address)"](
-            hardhat.ethers.encodeBytes32String("vow"),
+            hardhat.ethers.encodeBytes32String("balanceSheet"),
             balanceSheetAddress
         )
     ).wait();
     await (
         await dutchAuctionInstance["file(bytes32,address)"](
-            hardhat.ethers.encodeBytes32String("calc"),
+            hardhat.ethers.encodeBytes32String("priceCurve"),
             priceCurveAddress
         )
     ).wait();

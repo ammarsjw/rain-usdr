@@ -152,11 +152,11 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
             _revert(TagNotDefined.selector);
         }
 
-        (address clipAddress, , , , ) = liquidationTrigger.ilks(ilkId);
+        (address dutchAuctionAddress, , , , ) = liquidationTrigger.ilks(ilkId);
 
-        IDutchAuction clip = IDutchAuction(clipAddress);
+        IDutchAuction dutchAuction = IDutchAuction(dutchAuctionAddress);
 
-        (, uint256 tab, uint256 lot, uint256 vaultId, , , ) = clip.sales(auctionId);
+        (, uint256 tab, uint256 lot, uint256 vaultId, , , ) = dutchAuction.sales(auctionId);
 
         (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
@@ -166,7 +166,7 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         VAULT_ENGINE.suck(address(balanceSheet), address(balanceSheet), tab);
 
         // Yanking the auction moves its remaining collateral to this contract.
-        clip.yank(auctionId);
+        dutchAuction.yank(auctionId);
 
         // Restoring the vault: the debt including the liquidation penalty is reinstated so the owner settles on the
         // same terms as everyone else.
@@ -381,27 +381,27 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         // USDR redeemers once the curve crosses break-even and collateral bought there leaves the redemption pool
         // permanently. `yank` is deliberately not live-gated, so `skip` still reclaims in-flight auctions after the
         // halt. Ilks with no auction house configured (e.g. PSM stables) skip this.
-        (address clipAddress, , , , ) = liquidationTrigger.ilks(ilkId);
+        (address dutchAuctionAddress, , , , ) = liquidationTrigger.ilks(ilkId);
 
-        if (clipAddress != address(0) && IDutchAuction(clipAddress).live() == 1) {
-            IDutchAuction(clipAddress).cage();
+        if (dutchAuctionAddress != address(0) && IDutchAuction(dutchAuctionAddress).live() == 1) {
+            IDutchAuction(dutchAuctionAddress).cage();
         }
 
         // The settlement price is par (USDR's target value) divided by the collateral's last delayed price: collateral
         // units owed per USDR of debt [ray]. Fixed-price ilks settle at exactly $1, matching the price they minted at;
         // oracle-backed ilks read the OSM's current value one final time.
-        (IOracleSecurityModule pip, , bool fixedPrice) = priceConverter.ilks(ilkId);
+        (IOracleSecurityModule oracleSecurityModule, , bool fixedPrice) = priceConverter.ilks(ilkId);
 
         uint256 price;
 
         if (fixedPrice) {
             price = _WAD;
         } else {
-            if (address(pip) == address(0)) {
+            if (address(oracleSecurityModule) == address(0)) {
                 _revert(InvalidAddress.selector);
             }
 
-            price = uint256(pip.read(ilkId));
+            price = uint256(oracleSecurityModule.read(ilkId));
         }
 
         tag[ilkId] = (priceConverter.par() * _WAD) / price;

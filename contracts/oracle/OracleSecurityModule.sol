@@ -35,7 +35,7 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     uint16 public constant HOP = 1800;
 
     /// @inheritdoc IOracleSecurityModule
-    address public solvencyEngine;
+    ISolvencyEngine public solvencyEngine;
 
     /// @inheritdoc IOracleSecurityModule
     uint256 public maxAge;
@@ -62,7 +62,7 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
      */
     function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
         if (what == "solvencyEngine") {
-            solvencyEngine = data;
+            solvencyEngine = ISolvencyEngine(data);
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -167,8 +167,8 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
             // controls), so the breach flag is recomputed immediately rather than waiting for the next keeper cycle.
             // This NEVER reverts: censoring a price update because it carries bad news is how systems die, so the call
             // is wrapped and a mis-wired engine can never block the feed.
-            if (solvencyEngine != address(0)) {
-                try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
+            if (address(solvencyEngine) != address(0)) {
+                try solvencyEngine.checkInvariant() returns (uint256, uint256) {} catch {}
             }
         } else {
             // The source refused to report a valid price: surface it for monitoring without reverting.

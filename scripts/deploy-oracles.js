@@ -59,7 +59,7 @@ const deployOracles = async () => {
     await (
         await priceConverterInstance["file(bytes32,bytes32,address)"](
             rainIlk,
-            hardhat.ethers.encodeBytes32String("pip"),
+            hardhat.ethers.encodeBytes32String("oracleSecurityModule"),
             osmAddress
         )
     ).wait();

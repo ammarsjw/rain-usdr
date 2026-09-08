@@ -2,6 +2,9 @@
 
 pragma solidity ^0.8.0;
 
+import { IGovernor } from "./IGovernor.sol";
+import { ISolvencyEngine } from "./ISolvencyEngine.sol";
+
 /**
  * @title IVaultEngine
  * @author Rain Team
@@ -41,6 +44,20 @@ interface IVaultEngine {
     struct Urn {
         uint256 ink;
         uint256 art;
+    }
+
+    /**
+     * @notice Per-collateral parameters and state of the dynamic (liquidity-based) debt ceiling.
+     * @param fSafety Safety factor applied to liquidity [wad]. Zero disables the dynamic ceiling.
+     * @param liquidity Latest governance-filed market liquidity [wad].
+     * @param laggedLiquidity Lagged liquidity snapshot used by {effectiveLine} [wad].
+     * @param laggedLiquidityAt Timestamp of the last lagged-liquidity snapshot.
+     */
+    struct LiquidityCeiling {
+        uint256 fSafety;
+        uint256 liquidity;
+        uint256 laggedLiquidity;
+        uint256 laggedLiquidityAt;
     }
 
     /* ========================== EVENTS ========================== */
@@ -236,8 +253,8 @@ interface IVaultEngine {
      * @notice Updates a per-collateral parameter {spot}, {line}, {dust}, {duty}, {fSafety} or {liquidity}.
      * @dev Only governance, or the Price Converter for {spot}, can call this. Filing {duty} first accrues the pending
      *      fee at the old duty ({drip}), so a new duty is never applied retroactively. {duty} must be at least RAY.
-     *      {fSafety} is the Decision 18 safety factor [wad] (zero disables the dynamic ceiling). {liquidity} is the
-     *      available market liquidity [wad] used by {effectiveLine}.
+     *      {fSafety} is the dynamic ceiling's safety factor [wad] (zero disables the dynamic ceiling). {liquidity} is
+     *      the available market liquidity [wad] used by {effectiveLine}.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
      * @param data New value.
@@ -286,19 +303,6 @@ interface IVaultEngine {
      * @param dart Signed change in normalized debt [wad].
      */
     function grab(uint256 vaultId, address v, address w, int256 dink, int256 dart) external;
-
-    /**
-     * @notice Accrues the stability fee for a collateral type: compounds `duty` over the time elapsed since the last
-     *         accrual (`rho`), folds the resulting delta into the ilk's `rate`, and credits the accrued fees to the
-     *         {feeRecipient} as internal USDR surplus (with total {debt} increased equally).
-     * @dev Permissionless and lazy: anyone may call at any time; `frob` (when changing debt), `bark` and duty changes
-     *      drip automatically. Idempotent within a block. After `cage`, drip is a no-op that returns the frozen rate
-     *      so settlement math is unaffected. Reverts if the ilk is uninitialized, or if fees would accrue while no fee
-     *      recipient is set.
-     * @param ilkId Identifier of the collateral type.
-     * @return newRate The debt multiplier after accrual [ray].
-     */
-    function drip(bytes32 ilkId) external returns (uint256 newRate);
 
     /**
      * @notice Refreshes the lagged liquidity snapshot used by {effectiveLine}, advancing a pending decrease once the
@@ -360,6 +364,19 @@ interface IVaultEngine {
     function ilkIdsLength() external view returns (uint256);
 
     /**
+     * @notice Accrues the stability fee for a collateral type: compounds `duty` over the time elapsed since the last
+     *         accrual (`rho`), folds the resulting delta into the ilk's `rate`, and credits the accrued fees to the
+     *         {feeRecipient} as internal USDR surplus (with total {debt} increased equally).
+     * @dev Permissionless and lazy: anyone may call at any time; `frob` (when changing debt), `bark` and duty changes
+     *      drip automatically. Idempotent within a block. After `cage`, drip is a no-op that returns the frozen rate
+     *      so settlement math is unaffected. Reverts if the ilk is uninitialized, or if fees would accrue while no fee
+     *      recipient is set.
+     * @param ilkId Identifier of the collateral type.
+     * @return newRate The debt multiplier after accrual [ray].
+     */
+    function drip(bytes32 ilkId) external returns (uint256 newRate);
+
+    /**
      * @notice Returns the effective debt ceiling for an ilk [rad]: the static {line} when {fSafety} is zero, otherwise
      *         `min(line, laggedLiquidity * fSafety)` with growth applied immediately and shrinkage lagged by a day.
      * @param ilkId Identifier of the collateral type.
@@ -394,7 +411,7 @@ interface IVaultEngine {
     /**
      * @notice Returns the Solvency Engine consulted before risk-increasing frobs. Zero when unset.
      */
-    function solvencyEngine() external view returns (address);
+    function solvencyEngine() external view returns (ISolvencyEngine);
 
     /**
      * @notice Returns the recipient of accrued stability fees (the Balance Sheet). Zero when unset.
@@ -404,7 +421,7 @@ interface IVaultEngine {
     /**
      * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
      */
-    function governor() external view returns (address);
+    function governor() external view returns (IGovernor);
 
     /**
      * @notice Returns the registered collateral type identifier at `index`. Ilks are appended at {init} and never
@@ -448,28 +465,19 @@ interface IVaultEngine {
     function noFee(bytes32 ilkId) external view returns (bool);
 
     /**
-     * @notice Returns the Decision 18 safety factor for an ilk [wad]. Zero disables the dynamic ceiling.
+     * @notice Returns an ilk's dynamic (liquidity-based) debt ceiling parameters and state.
      * @param ilkId Identifier of the collateral type.
+     * @return fSafety Safety factor applied to liquidity [wad]. Zero disables the dynamic ceiling.
+     * @return liquidity Latest governance-filed market liquidity [wad].
+     * @return laggedLiquidity Lagged liquidity snapshot used by {effectiveLine} [wad].
+     * @return laggedLiquidityAt Timestamp of the last lagged-liquidity snapshot.
      */
-    function fSafety(bytes32 ilkId) external view returns (uint256);
-
-    /**
-     * @notice Returns the latest filed market liquidity for an ilk [wad].
-     * @param ilkId Identifier of the collateral type.
-     */
-    function liquidity(bytes32 ilkId) external view returns (uint256);
-
-    /**
-     * @notice Returns the lagged liquidity snapshot for an ilk [wad].
-     * @param ilkId Identifier of the collateral type.
-     */
-    function laggedLiquidity(bytes32 ilkId) external view returns (uint256);
-
-    /**
-     * @notice Returns the timestamp of the last lagged-liquidity snapshot for an ilk.
-     * @param ilkId Identifier of the collateral type.
-     */
-    function laggedLiquidityAt(bytes32 ilkId) external view returns (uint256);
+    function liquidityCeilings(
+        bytes32 ilkId
+    )
+        external
+        view
+        returns (uint256 fSafety, uint256 liquidity, uint256 laggedLiquidity, uint256 laggedLiquidityAt);
 
     /**
      * @notice Returns the owner of a vault. Zero when the vault has not been opened.

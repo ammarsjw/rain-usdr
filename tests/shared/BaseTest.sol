@@ -114,7 +114,7 @@ abstract contract BaseTest is Test {
         vaultEngine.init(USDT_ILK);
         vaultEngine.init(USDC_ILK);
 
-        // Permanently pinning the stable (PSM) ilks' stability fee to zero (audit C-1). PSM.init requires this.
+        // Permanently pinning the stable (PSM) ilks' stability fee to zero. PSM.init requires this.
         vaultEngine.exemptFee(USDT_ILK);
         vaultEngine.exemptFee(USDC_ILK);
 
@@ -141,7 +141,7 @@ abstract contract BaseTest is Test {
         osm.grantRole(_READER_ROLE, address(circuitBreaker));
         // Staleness: a current price older than six hours fails closed on peek/read (and therefore on poke → spot=0).
         osm.file("maxAge", 6 hours);
-        priceConverter.file(RAIN_ILK, "pip", address(osm));
+        priceConverter.file(RAIN_ILK, "oracleSecurityModule", address(osm));
         priceConverter.file(RAIN_ILK, "mat", 4 * _RAY);
         priceConverter.file(USDT_ILK, "mat", _RAY);
         priceConverter.file(USDC_ILK, "mat", _RAY);
@@ -154,7 +154,7 @@ abstract contract BaseTest is Test {
         reserveAccounting.grantRole(_COMMITTER_ROLE, address(solvencyEngine));
         reserveAccounting.grantRole(_RECORDER_ROLE, address(psm));
         solvencyEngine.addVolatileIlk(RAIN_ILK);
-        solvencyEngine.file("osm", address(osm));
+        solvencyEngine.file("oracleSecurityModule", address(osm));
         osm.grantRole(_READER_ROLE, address(solvencyEngine));
 
         // Wiring the solvency gate: hard gates (frob, PSM redemption, surplus distribution) and soft refresh hooks
@@ -162,7 +162,7 @@ abstract contract BaseTest is Test {
         vaultEngine.file("solvencyEngine", address(solvencyEngine));
         psm.file("solvencyEngine", address(solvencyEngine));
         balanceSheet.file("solvencyEngine", address(solvencyEngine));
-        balanceSheet.file("osm", address(osm));
+        balanceSheet.file("oracleSecurityModule", address(osm));
         balanceSheet.setRainIlk(RAIN_ILK);
         balanceSheet.file("backstopCap", 50_000 * _RAD);
         osm.grantRole(_READER_ROLE, address(balanceSheet));
@@ -175,7 +175,7 @@ abstract contract BaseTest is Test {
         liquidationTrigger.file("circuitBreaker", address(circuitBreaker));
         liquidationTrigger.file(RAIN_ILK, "chop", (_WAD * 113) / 100);
         liquidationTrigger.file(RAIN_ILK, "hole", 50_000 * _RAD);
-        liquidationTrigger.file(RAIN_ILK, "clip", address(dutchAuction));
+        liquidationTrigger.file(RAIN_ILK, "dutchAuction", address(dutchAuction));
         liquidationTrigger.file(RAIN_ILK, "barkFactor", (_WAD * 65) / 100);
         liquidationTrigger.grantRole(_WARD_ROLE, address(dutchAuction));
         balanceSheet.grantRole(_WARD_ROLE, address(liquidationTrigger));
@@ -184,10 +184,10 @@ abstract contract BaseTest is Test {
         dutchAuction.file("tail", 1800);
         dutchAuction.file("cusp", (_RAY * 40) / 100);
         dutchAuction.file("chip", (_WAD * 2) / 100);
-        dutchAuction.file("pip", address(osm));
-        dutchAuction.file("dog", address(liquidationTrigger));
-        dutchAuction.file("vow", address(balanceSheet));
-        dutchAuction.file("calc", address(priceCurve));
+        dutchAuction.file("oracleSecurityModule", address(osm));
+        dutchAuction.file("liquidationTrigger", address(liquidationTrigger));
+        dutchAuction.file("balanceSheet", address(balanceSheet));
+        dutchAuction.file("priceCurve", address(priceCurve));
         dutchAuction.grantRole(_WARD_ROLE, address(liquidationTrigger));
 
         // Wiring the Governor's emergency pause into the gated entry points (deploy-script parity).
@@ -208,7 +208,7 @@ abstract contract BaseTest is Test {
         dutchAuction.grantRole(_WARD_ROLE, address(end));
         osm.grantRole(_READER_ROLE, address(end));
 
-        // Setting launch ceilings, Decision 18 safety factors / liquidity, and minimum vault size.
+        // Setting launch ceilings, liquidity-based safety factors, and minimum vault size.
         vaultEngine.file("globalLine", 1_100_000 * _RAD);
         vaultEngine.file(RAIN_ILK, "line", 100_000 * _RAD);
         vaultEngine.file(USDT_ILK, "line", 500_000 * _RAD);

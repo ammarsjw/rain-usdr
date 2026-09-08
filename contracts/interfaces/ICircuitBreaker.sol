@@ -72,7 +72,7 @@ interface ICircuitBreaker {
     /**
      * @notice Returns the Oracle Security Module being watched.
      */
-    function PIP() external view returns (IOracleSecurityModule);
+    function ORACLE_SECURITY_MODULE() external view returns (IOracleSecurityModule);
 
     /**
      * @notice Returns the deviation threshold that activates the breaker [wad].

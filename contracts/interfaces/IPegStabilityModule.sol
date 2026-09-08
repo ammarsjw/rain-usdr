@@ -5,7 +5,9 @@ pragma solidity ^0.8.0;
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import { ICollateralAdapter } from "./ICollateralAdapter.sol";
+import { IGovernor } from "./IGovernor.sol";
 import { IReserveAccounting } from "./IReserveAccounting.sol";
+import { ISolvencyEngine } from "./ISolvencyEngine.sol";
 import { IUSDR } from "./IUSDR.sol";
 import { IVaultEngine } from "./IVaultEngine.sol";
 
@@ -150,10 +152,10 @@ interface IPegStabilityModule {
     /**
      * @notice Returns the Solvency Engine consulted before redemptions. Zero when unset.
      */
-    function solvencyEngine() external view returns (address);
+    function solvencyEngine() external view returns (ISolvencyEngine);
 
     /**
      * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
      */
-    function governor() external view returns (address);
+    function governor() external view returns (IGovernor);
 }

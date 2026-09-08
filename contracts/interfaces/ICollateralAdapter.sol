@@ -85,13 +85,6 @@ interface ICollateralAdapter {
     function init(bytes32 ilkId, IERC20Metadata token) external;
 
     /**
-     * @notice Shuts an ilk down. Blocks deposits on collateral ilks and minting on the USDR ilk. The opposite
-     *         direction keeps working.
-     * @param ilkId Identifier of the ilk.
-     */
-    function cage(bytes32 ilkId) external;
-
-    /**
      * @notice Brings a token into the system.
      * @dev Collateral ilks credit free collateral, and the caller must have approved the adapter. The USDR ilk burns
      *      the caller's USDR and credits internal balance. Decimals are converted internally.
@@ -110,6 +103,13 @@ interface ICollateralAdapter {
      * @param amount Token amount to withdraw, in the token's native decimals.
      */
     function exit(bytes32 ilkId, address user, uint256 amount) external;
+
+    /**
+     * @notice Shuts an ilk down. Blocks deposits on collateral ilks and minting on the USDR ilk. The opposite
+     *         direction keeps working.
+     * @param ilkId Identifier of the ilk.
+     */
+    function cage(bytes32 ilkId) external;
 
     /**
      * @notice Returns the Vault Engine this adapter reports to.

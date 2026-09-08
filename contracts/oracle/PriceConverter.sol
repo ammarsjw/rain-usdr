@@ -22,7 +22,7 @@ import { _revert } from "../shared/Globals.sol";
  * @dev Every ilk is configured as exactly one of two kinds. A fixed ilk has no oracle and its price is pinned to $1,
  *      with the trust decision living in listing governance. An oracle-backed ilk reads its price from the OSM. The
  *      OSM itself never learns about fixed ilks. Being registered on the OSM is what needs a price lookup means, and
- *      this contract is the single place that routes between the two kinds. `file("pip")` and `file("fixed")` clear
+ *      this contract is the single place that routes between the two kinds. `file("oracleSecurityModule")` and `file("fixed")` clear
  *      each other so an ilk can never be both, and `poke` reverts for unconfigured ilks rather than writing a zero
  *      spot.
  */
@@ -67,20 +67,20 @@ contract PriceConverter is IPriceConverter, AccessControl {
     /**
      * @inheritdoc IPriceConverter
      */
-    function file(bytes32 ilkId, bytes32 what, address pip) external onlyRole(_WARD_ROLE) {
+    function file(bytes32 ilkId, bytes32 what, address oracleSecurityModule) external onlyRole(_WARD_ROLE) {
         if (live != 1) {
             _revert(NotLive.selector);
         }
 
-        if (what == "pip") {
+        if (what == "oracleSecurityModule") {
             // Assigning an oracle makes the ilk oracle-backed. The kinds are mutually exclusive.
-            ilks[ilkId].pip = IOracleSecurityModule(pip);
+            ilks[ilkId].oracleSecurityModule = IOracleSecurityModule(oracleSecurityModule);
             ilks[ilkId].fixedPrice = false;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
 
-        emit File({ ilkId: ilkId, what: what, pip: pip });
+        emit File({ ilkId: ilkId, what: what, oracleSecurityModule: oracleSecurityModule });
     }
 
     /**
@@ -128,11 +128,11 @@ contract PriceConverter is IPriceConverter, AccessControl {
             if (data == 1) {
                 // Marking an ilk fixed pins it to $1 and detaches any oracle.
                 ilks[ilkId].fixedPrice = true;
-                ilks[ilkId].pip = IOracleSecurityModule(address(0));
+                ilks[ilkId].oracleSecurityModule = IOracleSecurityModule(address(0));
             } else {
                 // Clearing the fixed flag on an ilk with no oracle would silently brick its price updates and freeze
                 // spot at its last value (the dangerous direction: a stale price keeps authorizing mints). The flag is
-                // only clearable by assigning an oracle via file("pip"), which clears it atomically.
+                // only clearable by assigning an oracle via file("oracleSecurityModule"), which clears it atomically.
                 _revert(WouldOrphanIlk.selector);
             }
         } else {
@@ -157,11 +157,11 @@ contract PriceConverter is IPriceConverter, AccessControl {
             has = true;
         } else {
             // Oracle-backed collateral: the ilk must have an oracle assigned.
-            if (address(ilk.pip) == address(0)) {
+            if (address(ilk.oracleSecurityModule) == address(0)) {
                 _revert(InvalidAddress.selector);
             }
 
-            (val, has) = ilk.pip.peek(ilkId);
+            (val, has) = ilk.oracleSecurityModule.peek(ilkId);
         }
 
         // If the price is invalid, the price factor is set to ZERO, freezing new minting against this collateral until

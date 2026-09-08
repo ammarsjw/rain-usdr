@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 
 import { IOracleSecurityModule } from "./IOracleSecurityModule.sol";
 import { IReserveAccounting } from "./IReserveAccounting.sol";
+import { ISolvencyEngine } from "./ISolvencyEngine.sol";
 import { IVaultEngine } from "./IVaultEngine.sol";
 
 /**
@@ -151,7 +152,7 @@ interface IBalanceSheet {
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency {buybackReceiver}, {reserveAccounting}, {solvencyEngine} or {osm}.
+     * @notice Sets an address dependency {buybackReceiver}, {reserveAccounting}, {solvencyEngine} or {oracleSecurityModule}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -210,26 +211,16 @@ interface IBalanceSheet {
     function distributeSurplus() external returns (uint256 excess);
 
     /**
-     * @notice Returns the current surplus buffer target: max of {humpFloor} and {humpRate} of the total reserve.
-     * @return target The buffer target [rad].
-     */
-    function humpTarget() external view returns (uint256 target);
-
-    /**
      * @notice Refreshes the lagged reserve snapshot used by {humpTarget}, at most once per lag window.
      * @dev Permissionless: keepers keep the snapshot fresh so reserve growth eventually raises the dynamic target.
      */
     function snapshotReserve() external;
 
     /**
-     * @notice Returns the lagged total-reserve snapshot [wad] used by {humpTarget}'s dynamic term.
+     * @notice Returns the current surplus buffer target: max of {humpFloor} and {humpRate} of the total reserve.
+     * @return target The buffer target [rad].
      */
-    function laggedReserve() external view returns (uint256);
-
-    /**
-     * @notice Returns the timestamp of the last lagged-reserve snapshot.
-     */
-    function laggedReserveAt() external view returns (uint256);
+    function humpTarget() external view returns (uint256 target);
 
     /**
      * @notice Returns the Vault Engine this balance sheet reports to.
@@ -257,10 +248,14 @@ interface IBalanceSheet {
     function totalQueuedSin() external view returns (uint256);
 
     /**
-     * @notice Returns the queued bad debt for an era [rad].
-     * @param era Timestamp bucket.
+     * @notice Returns the lagged total-reserve snapshot [wad] used by {humpTarget}'s dynamic term.
      */
-    function sin(uint256 era) external view returns (uint256);
+    function laggedReserve() external view returns (uint256);
+
+    /**
+     * @notice Returns the timestamp of the last lagged-reserve snapshot.
+     */
+    function laggedReserveAt() external view returns (uint256);
 
     /**
      * @notice Returns the lifetime RAIN-backstop cap [rad].
@@ -283,11 +278,6 @@ interface IBalanceSheet {
     function rainIlk() external view returns (bytes32);
 
     /**
-     * @notice Returns the reserve accounting contract used for the dynamic buffer target. Zero when unset.
-     */
-    function reserveAccounting() external view returns (IReserveAccounting);
-
-    /**
      * @notice Returns the recipient of surplus distributions, the RAIN buyback-and-burn process.
      */
     function buybackReceiver() external view returns (address);
@@ -295,10 +285,20 @@ interface IBalanceSheet {
     /**
      * @notice Returns the Solvency Engine gating surplus distributions. Zero when unset.
      */
-    function solvencyEngine() external view returns (address);
+    function solvencyEngine() external view returns (ISolvencyEngine);
+
+    /**
+     * @notice Returns the reserve accounting contract used for the dynamic buffer target. Zero when unset.
+     */
+    function reserveAccounting() external view returns (IReserveAccounting);
 
     /**
      * @notice Returns the OSM used to price treasury RAIN for the backstop. Zero when unset.
      */
-    function osm() external view returns (IOracleSecurityModule);
+    function oracleSecurityModule() external view returns (IOracleSecurityModule);
+    /**
+     * @notice Returns the queued bad debt for an era [rad].
+     * @param era Timestamp bucket.
+     */
+    function sin(uint256 era) external view returns (uint256);
 }
