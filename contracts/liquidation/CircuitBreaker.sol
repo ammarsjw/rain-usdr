@@ -15,15 +15,15 @@ import { _revert } from "../shared/Globals.sol";
  * @title CircuitBreaker
  * @author Rain Team
  * @notice A defense against price manipulation during liquidation. Watches how far each watched collateral's delayed
- *         price has moved from its recent trend. If any move is too large too fast, it throttles liquidations,
- *         slowing them but never freezing them, so a manipulated price cannot trigger a wave of unfair liquidations.
- *         It never touches ordinary vault operations.
+ *         price has moved from its recent trend. If any move is too large too fast, it throttles liquidations, slowing
+ *         them but never freezing them, so a manipulated price cannot trigger a wave of unfair liquidations. It never
+ *         touches ordinary vault operations.
  * @dev A single instance watches every registered ilk and aggregates to ONE global verdict: {check} iterates the
  *      watched set, computes each ilk's deviation from its own trailing-average trend, and takes the maximum. The
- *      breaker activates when the maximum deviation exceeds the threshold (25%) and deactivates only after a full
- *      calm period (in seconds) has elapsed since activation AND every ilk's deviation is back under the threshold at
- *      that moment. Trend anchors are per-ilk (deviation is relative, so ilks at different price scales can never
- *      share a buffer), each anchored to the average of a small ring buffer of observations recorded at most once per
+ *      breaker activates when the maximum deviation exceeds the threshold (25%) and deactivates only after a full calm
+ *      period (in seconds) has elapsed since activation AND every ilk's deviation is back under the threshold at that
+ *      moment. Trend anchors are per-ilk (deviation is relative, so ilks at different price scales can never share a
+ *      buffer), each anchored to the average of a small ring buffer of observations recorded at most once per
  *      `obsInterval`, so a single manipulated observation moves an anchor by at most 1/N.
  *
  *      The global verdict is deliberate policy: a dislocation in ANY watched ilk throttles liquidations of ALL ilks,
@@ -181,8 +181,8 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
         bytes32 worstIlk;
 
         // A single global observation clock: one call samples every watched ilk simultaneously, so per-ilk timestamps
-        // would all carry the same value anyway. The clock only advances when at least one observation actually
-        // lands, so a round where every feed is dark does not silently consume an observation slot.
+        // would all carry the same value anyway. The clock only advances when at least one observation actually lands,
+        // so a round where every feed is dark does not silently consume an observation slot.
         bool record = lastObsTimestamp == 0 || block.timestamp - lastObsTimestamp >= obsInterval;
         bool recorded;
 
@@ -193,8 +193,8 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
 
             (bytes32 val, bool has) = ORACLE_SECURITY_MODULE.peek(ilkId);
 
-            // Fail-open per ilk: a dark feed is not price manipulation, and the breaker must never freeze
-            // liquidations because an oracle hiccuped. The ilk simply contributes no deviation this round.
+            // Fail-open per ilk: a dark feed is not price manipulation, and the breaker must never freeze liquidations
+            // because an oracle hiccuped. The ilk simply contributes no deviation this round.
             if (!has) {
                 continue;
             }
@@ -238,8 +238,8 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
 
             activatedAt = block.timestamp;
         } else if (active && block.timestamp >= activatedAt + calmPeriod) {
-            // Time-based deactivation: a full calm period has elapsed since the last above-threshold reading AND
-            // every watched ilk's deviation is back under the threshold right now (the maximum is under it).
+            // Time-based deactivation: a full calm period has elapsed since the last above-threshold reading AND every
+            // watched ilk's deviation is back under the threshold right now (the maximum is under it).
             active = false;
             activatedAt = 0;
 

@@ -230,7 +230,17 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             VAULT_ENGINE.suck(balanceSheet, kpr, coin);
         }
 
-        emit Kick({ id: id, ilkId: ilkId, top: top, tab: tab, lot: lot, vaultId: vaultId, usr: usr, kpr: kpr, coin: coin });
+        emit Kick({
+            id: id,
+            ilkId: ilkId,
+            top: top,
+            tab: tab,
+            lot: lot,
+            vaultId: vaultId,
+            usr: usr,
+            kpr: kpr,
+            coin: coin
+        });
     }
 
     /**

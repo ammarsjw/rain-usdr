@@ -220,8 +220,7 @@ interface ILiquidationTrigger {
     function circuitBreaker() external view returns (ICircuitBreaker);
 
     /**
-     * @notice Returns the Dutch auction house that seized collateral is sent to. A single global instance: the
-     *         auction house serves every collateral type.
+     * @notice Returns the dutch auction house that seized collateral is sent to.
      */
     function dutchAuction() external view returns (IDutchAuction);
 
@@ -238,7 +237,5 @@ interface ILiquidationTrigger {
      * @return dirt The amount currently being auctioned for this collateral [rad].
      * @return barkFactor Fraction of the required collateral ratio at which a vault becomes liquidatable [wad].
      */
-    function ilks(
-        bytes32 ilkId
-    ) external view returns (uint256 chop, uint256 hole, uint256 dirt, uint256 barkFactor);
+    function ilks(bytes32 ilkId) external view returns (uint256 chop, uint256 hole, uint256 dirt, uint256 barkFactor);
 }

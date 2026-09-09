@@ -232,8 +232,8 @@ interface IDutchAuction {
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency {oracleSecurityModule}, {liquidationTrigger}, {balanceSheet}, {priceCurve}
-     *         or {governor}.
+     * @notice Sets an address dependency {oracleSecurityModule}, {liquidationTrigger}, {balanceSheet}, {priceCurve} or
+     *         {governor}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -246,8 +246,8 @@ interface IDutchAuction {
      * @param ilkId Identifier of the collateral type being sold.
      * @param tab USDR debt to recover, including the penalty [rad].
      * @param lot Collateral for sale [wad].
-     * @param vaultId Identifier of the vault the collateral was seized from (used by emergency settlement to
-     *        reclaim in-flight auctions).
+     * @param vaultId Identifier of the vault the collateral was seized from (used by emergency settlement to reclaim
+     *        in-flight auctions).
      * @param usr Vault owner who receives any leftover collateral.
      * @param kpr Keeper eligible for the kick reward.
      * @return id Identifier of the new auction.
@@ -290,8 +290,8 @@ interface IDutchAuction {
     function yank(uint256 id) external;
 
     /**
-     * @notice Refreshes a collateral type's cached dust-times-chop threshold from the Vault Engine and the
-     *         Liquidation Trigger.
+     * @notice Refreshes a collateral type's cached dust-times-chop threshold from the Vault Engine and the Liquidation
+     *         Trigger.
      * @dev Permissionless. Must be called after the ilk's `dust` or `chop` changes.
      * @param ilkId Identifier of the collateral type.
      */

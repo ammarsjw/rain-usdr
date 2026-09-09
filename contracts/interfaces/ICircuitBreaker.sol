@@ -87,8 +87,7 @@ interface ICircuitBreaker {
     function check() external;
 
     /**
-     * @notice Returns a collateral type's trailing-average trend anchor price [wad]. Zero until its first
-     *         observation.
+     * @notice Returns a collateral type's trailing-average trend anchor price [wad]. Zero until its first observation.
      * @param ilkId Identifier of the collateral type.
      */
     function trendPrice(bytes32 ilkId) external view returns (uint256);
