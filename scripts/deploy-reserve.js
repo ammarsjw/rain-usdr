@@ -79,15 +79,6 @@ const deployReserve = async () => {
     const osmInstance = await hardhat.ethers.getContractAt("OracleSecurityModule", osmAddress);
     await (await osmInstance.grantRole(READER_ROLE, solvencyEngineAddress)).wait();
 
-    // Setting the prediction-market exposure cap BEFORE any reporter is wired ($250k launch cap): an unset (zero) cap
-    // would clamp every report to zero, silently suppressing real exposure.
-    await (
-        await solvencyEngineInstance["file(bytes32,uint256)"](
-            hardhat.ethers.encodeBytes32String("exposureCap"),
-            250000n * WAD
-        )
-    ).wait();
-
     // Wiring the solvency gate: risk-increasing frobs, PSM redemptions and surplus distributions consult the Solvency
     // Engine (hard gates); OSM pokes and drip refresh the breach flag softly.
     await (

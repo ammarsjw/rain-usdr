@@ -4,7 +4,7 @@ const hardhat = require("hardhat");
  * Verifies the post-deployment risk-parameter surface.
  *
  * Complements verify-roles.js (access control) with a systemic gate against the recurring
- * "correct code, never configured" class (rev-2 hump, rev-4 exposureCap, rev-5 buybackReceiver):
+ * "correct code, never configured" class (rev-2 hump, rev-5 buybackReceiver):
  * every governance risk parameter must be either explicitly set or intentionally default, and
  * every intentional default is asserted here so a drive-by change is caught too.
  *
@@ -108,7 +108,6 @@ const verifyConfig = async () => {
     assertEq("SolvencyEngine.stressMarkdown", await solvencyEngine.stressMarkdown(), WAD / 2n);
     assertEq("SolvencyEngine.stressDepth", await solvencyEngine.stressDepth(), (WAD * 35n) / 100n);
     assertEq("SolvencyEngine.reserveFactor", await solvencyEngine.reserveFactor(), (WAD * 9n) / 10n);
-    assertEq("SolvencyEngine.exposureCap", await solvencyEngine.exposureCap(), 250000n * WAD);
     assertNonZero("SolvencyEngine.osm", await solvencyEngine.osm());
     assertEq("SolvencyEngine.isVolatile(RAIN-A)", await solvencyEngine.isVolatile(rainIlk), true);
 

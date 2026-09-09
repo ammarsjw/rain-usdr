@@ -35,12 +35,11 @@ interface ISolvencyEngine {
     event RemoveVolatileIlk(bytes32 indexed ilkId);
 
     /**
-     * @dev Emitted when the external exposure reporter reverts or reports above the cap, and the conservative cap is
-     *      used instead.
-     * @param reported The value reported (`type(uint256).max` when the reporter reverted).
-     * @param cap The exposure cap that was applied [wad].
+     * @dev Emitted when the external exposure reporter could not be reached and the fail-closed structural bound was
+     *      substituted for a real measurement.
+     * @param substituted The exposure value that entered the worst-case loss instead [wad].
      */
-    event ExposureClamped(uint256 reported, uint256 cap);
+    event ExposureReportFailed(uint256 substituted);
 
     /**
      * @dev Emitted when the invariant is checked, for the monitoring system.
@@ -57,22 +56,17 @@ interface ISolvencyEngine {
      */
     error ParameterOutOfBounds();
 
-    /**
-     * @dev Indicates that an exposure reporter cannot be wired while the exposure cap is unset.
-     */
-    error ExposureCapNotSet();
-
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Adjusts a stress parameter {stressMarkdown} or {stressDepth}.
+     * @notice Adjusts a stress parameter {stressMarkdown}, {stressDepth} or {reserveFactor}.
      * @param what Name of the parameter.
      * @param data New value [wad].
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency {externalExposure}.
+     * @notice Sets an address dependency {externalExposure} or {osm}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -114,7 +108,8 @@ interface ISolvencyEngine {
     /**
      * @notice Calculates the most the protocol could lose, assuming a crisis.
      * @dev Assumes volatile assets marked down 50%, liquidation depth at 35% of normal, and correlated assets crashing
-     *      together, plus any reported prediction market exposure.
+     *      together, plus the prediction market layer's reported exposure at face value. An unreachable reporter
+     *      substitutes outstanding debt, the structural bound on exposure, so the figure fails CLOSED.
      * @return loss The worst-case loss under stress [wad].
      */
     function worstCaseLoss() external view returns (uint256 loss);
@@ -143,11 +138,6 @@ interface ISolvencyEngine {
      * @notice Returns the reserve fraction above which a worst-case loss flags a breach [wad]. 90% = 0.9 * WAD.
      */
     function reserveFactor() external view returns (uint256);
-
-    /**
-     * @notice Returns the cap applied to externally reported exposure [wad].
-     */
-    function exposureCap() external view returns (uint256);
 
     /**
      * @notice Returns the breach flag as last computed by {checkInvariant}.
