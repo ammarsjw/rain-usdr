@@ -26,10 +26,10 @@ contract Governor is IGovernor, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
     /// @inheritdoc IGovernor
-    uint256 public constant PAUSE_MAX = 72 hours;
+    uint256 public constant PAUSE_MAX = 259_200;
 
     /// @inheritdoc IGovernor
-    uint256 public constant PAUSE_COOLDOWN = 72 hours;
+    uint256 public constant PAUSE_COOLDOWN = 259_200;
 
     /// @inheritdoc IGovernor
     uint256 public immutable DELAY;

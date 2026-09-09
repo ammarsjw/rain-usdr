@@ -48,7 +48,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
 
     /// @dev Minimum age of the lagged liquidity snapshot used by the dynamic debt ceiling. Matches the surplus-buffer
     ///      lag: shrinking the input requires capital to stay away for a full day, not a flash round trip.
-    uint256 private constant _LIQUIDITY_LAG = 1 days;
+    uint256 private constant _LIQUIDITY_LAG = 86_400;
 
     /// @inheritdoc IVaultEngine
     uint256 public debt;

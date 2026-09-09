@@ -37,7 +37,7 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
 
     /// @dev Minimum age of the lagged reserve snapshot used by {humpTarget}. A day is long enough that shrinking the
     ///      dynamic term requires genuinely parking capital outside the reserve, not a flash round trip.
-    uint256 private constant _RESERVE_LAG = 1 days;
+    uint256 private constant _RESERVE_LAG = 86_400;
 
     /// @inheritdoc IBalanceSheet
     IVaultEngine public immutable VAULT_ENGINE;

@@ -162,6 +162,10 @@ const deployReserve = async () => {
     // Stability fee wiring: accrued fees (drip) are credited to the Balance Sheet as surplus. Only VOLATILE ilk's duty
     // needs to be filed, in our case RAIN-A will have ~2% APY = 1000000000627937192491029810n (ray, per-second factor
     // 1.02^(1/31536000)).
+    const rainDuty = process.env.RAIN_DUTY
+        ? BigInt(process.env.RAIN_DUTY)
+        : // ~10% APY default.
+          1000000003022265980097387650n;
     await (
         await vaultEngineInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("feeRecipient"),
@@ -172,7 +176,7 @@ const deployReserve = async () => {
         await vaultEngineInstance["file(bytes32,bytes32,uint256)"](
             rainIlk,
             hardhat.ethers.encodeBytes32String("duty"),
-            1000000000627937192491029810n
+            rainDuty
         )
     ).wait();
 
