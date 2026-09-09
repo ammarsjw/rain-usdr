@@ -1,7 +1,8 @@
 # Solvency flag freshness — keeper specification
 
+> Contract set: `refactor/multi-ilk-compatibility` @ `07d31e8` (post-`v1.0.0-alpha.4`).
 > This is the canonical policy for **Job 7** in the keeper catalog
-> ([`BACKEND.md`]. Jobs 0–6 and 8 (drip, OSM, spot, breaker,
+> ([`BACKEND.md`]). Jobs 0–6 and 8 (drip, OSM, spot, breaker,
 > liquidations, auctions, treasury, End stand-down) live there.
 
 ## Policy
@@ -72,7 +73,7 @@ The prediction-market exposure reporter calls `checkInvariant()` itself when its
 
 Keep a low-frequency poll of the comparison as a backstop — it is the only thing that detects the reporter being paused, upgraded, or calling out of order.
 
-Alert on `ExposureClamped(reported, cap)`. A `reported` value of `type(uint256).max` means the reporter reverted and the loss term has silently fallen back to the full `exposureCap`, which is the conservative maximum. A `reported` above `cap` means an honest report is being clamped.
+Alert on `ExposureReportFailed(substituted)` (the exposure cap and its `ExposureClamped` event were removed in `7b5c985` — exposure now enters the loss at face value, unclamped). The event firing means the reporter REVERTED and the engine substituted the structural bound — total outstanding USDR debt (`VaultEngine.debt() / RAY`) — in its place. That substitution is almost certainly large enough to flip the verdict into breach, so treat it as a page: the flag is behaving correctly, but the reporter is down and the protocol is gated until it recovers.
 
 ## Submission policy
 

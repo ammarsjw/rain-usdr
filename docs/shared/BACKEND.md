@@ -1,8 +1,31 @@
 # USDR Keeper Automation Spec — Backend Integration
 
-> Contract set: `feature/rate-accrual` @ `017b36a` (branched from `main`, which contains the
-> End + rev-4 remediations).
-> Changes vs the prior spec: **(a) stability fees** — each ilk now has a per-second
+> Contract set: `refactor/multi-ilk-compatibility` @ `07d31e8` (post-`v1.0.0-alpha.4`; the previous revision of this spec
+> was written against `feature/rate-accrual` @ `017b36a`).
+> Changes vs `017b36a`: **(i) exposure cap removed** (`7b5c985`) — `reportedExposure()` enters
+> `worstCaseLoss()` at face value; a REVERTING reporter substitutes the full outstanding debt
+> (`VaultEngine.debt() / RAY`, the structural bound) and emits
+> `ExposureReportFailed(substituted)`; `exposureCap`, `ExposureClamped` and the
+> cap-before-reporter deploy ordering are gone; **(ii) OSM staleness + rolling windows**
+> (`116a2ad`) — new governable `maxAge` (filed: 21600 s): `peek`/`read` fail CLOSED once the
+> last successful poke is older than `maxAge`; poke windows are no longer snapped to :00/:30 —
+> the poke timestamp is stored unsnapped and `HOP` (30 min) is a rolling minimum interval; the
+> last-poke getter is `delay(ilkId)`; **(iii) CircuitBreaker is a multi-ilk singleton**
+> (`0d94809`) — ONE instance watches a registry of ilks (`addIlk`/`removeIlk`) and aggregates
+> to ONE global verdict; deactivation is time-based (`calmPeriod`, 1800 s), not
+> calm-block-counted; events reshaped (see Job 3); **(iv) DutchAuction is a multi-ilk
+> singleton** (`68bc08e`, `0d94809`) — ONE auction house for all ilks; `Sale`/`sales(id)`
+> gained `ilkId` (8-tuple), `kick` takes `ilkId`, `buf`/`tail`/`cusp`/`chost` are per-ilk via
+> `ilks(ilkId)`, `upchost(ilkId)`, new `list(ilkId)` filter view; `LiquidationTrigger.ilks()`
+> shrank to a 4-tuple (auction address hoisted to a global `dutchAuction()`);
+> **(v) PriceConverter reads ONE global OSM** (`b032625`) — per-ilk `pip` is gone,
+> `ilks(ilkId)` is now a 2-tuple `(mat, fixedPrice)`; **(vi) dynamic liquidity ceilings + RAIN
+> backstop** (`116a2ad`) — `effectiveLine(ilkId) = min(line, liquidity × fSafety)` gates
+> minting when governance opts in (dormant at launch: `fSafety = 0`); `BalanceSheet.backstop`
+> sells treasury RAIN for USDR at an OSM-priced discount, capped by `backstopCap`, emitting
+> `Backstop(buyer, rad, rainWad)`; **(vii) role terminology** — OSM whitelisting is
+> `grantRole(READER_ROLE, addr)` (AccessControl); there is no `kiss`.
+> Carried over from the `017b36a` revision (still accurate): **(a) stability fees** — each ilk now has a per-second
 > compounding `duty` [ray]; `rate` grows via the new permissionless
 > `VaultEngine.drip(ilkId)`, fees are credited to the Balance Sheet (`feeRecipient`) as
 > surplus at accrual time; **(b) new Job 0** — periodic drip per ilk; **(c) gas bump**
@@ -26,15 +49,19 @@ intervention. Governance/file actions and emergency settlement (End) are out of 
 
 *General notes for the integrator:*
 - All jobs are permissionless *except reading OSM prices* (peek/peep require READER_ROLE — the
-  keeper's read address must be whitelisted via `kiss`, one-time governance action; alternatively
-  read the underlying IPriceSource directly, it's public).
+  keeper's read address must be whitelisted via `grantRole(READER_ROLE, addr)`, one-time
+  governance action; alternatively read the underlying IPriceSource directly, it's public).
 - Suggested architecture: one *event-driven watcher* (WebSocket subscription to contract events +
   new blocks) feeding a *tx dispatcher* with a funded EOA. Jobs 0–3 and 6 run from the
   protocol-operated keeper; jobs 4–5 are profit-bearing and may run in a separate wallet/pipeline
   with private-mempool submission.
 - The rain-usdr-sqd squid indexer is the recommended vault/auction registry data source. **Vaults
   are now discovered from `Open(ilkId, owner, vaultId)` events, not from `frob` sender addresses**
-  (see Job 4). The squid now also indexes the new **`Drip`** entity (`ilkId`, `rate`, `rad`).
+  (see Job 4). The squid indexes the **`Drip`** entity (`ilkId`, `rate`, `rad`) and, as of
+  rain-usdr-sqd `5725638`, the reshaped multi-ilk auction/breaker events (`ilkId` on
+  `Kick`/`Take`/`Redo`/`Upchost`/`Activated`, `worstIlk` on `Checked`, new
+  `AddIlk`/`RemoveIlk`/`Backstop` entities) — squids older than that miss every auction event
+  post-`0d94809` because the topic0 hashes changed.
 
 ---
 
@@ -58,10 +85,11 @@ intervention. Governance/file actions and emergency settlement (End) are out of 
 |---|---|
 | *Contract* | OracleSecurityModule |
 | *Method* | `poke(bytes32 ilkId)` — one call per registered ilk |
-| *Trigger type* | *Time-based* (30-min windows) |
-| *Proceed if* | `pass(ilkId) == true` (block.timestamp ≥ `zzz(ilkId)` + 1800) *and* `stopped(ilkId) == 0` |
-| *Data source* | `pass()`, `zzz()`, `stopped()` — all public views |
-| *Schedule* | `zzz` is rounded down to the 30-min boundary; windows open at fixed times (:00/:30). Fire at window open + small jitter; retry until `Poke` event observed |
+| *Trigger type* | *Time-based* (rolling 30-min minimum interval — windows are NO LONGER snapped to :00/:30) |
+| *Proceed if* | `pass(ilkId) == true` (block.timestamp ≥ `delay(ilkId)` + `HOP`) *and* `stopped(ilkId) == 0` |
+| *Data source* | `pass()`, `delay()`, `stopped()` — all public views. `delay(ilkId)` stores the UNSNAPPED timestamp of the last successful poke, so each poke opens the next window exactly `HOP` (1800 s) later |
+| *Schedule* | Fire as soon as `pass()` opens + small jitter; retry until `Poke` event observed. **Late pokes shift all subsequent windows late** — there is no fixed boundary to catch up to, so cumulative drift is the cost of a slow keeper |
+| *Staleness (NEW)* | Governance files `maxAge` on the OSM (deploy default 21600 s = 6 h). Once `block.timestamp > delay(ilkId) + maxAge`, `peek`/`read` fail CLOSED: `PriceConverter.poke` zeroes `spot`, and `worstCaseLoss()` values that collateral at zero. **Missing ~12 consecutive windows now escalates from "stale prices" to "minting frozen + solvency spike"** — the alerting bar is higher than it was |
 | *Note (L-10)* | If the price source returns zero/invalid, `poke` emits `PokeFailed` (not `Poke`) and does **not** advance — treat a `PokeFailed` as a missed window and alert; do not chain Job 2 off it |
 | *Solvency side-effect (NEW)* | After a successful advance (`Poke`, not `PokeFailed`), `poke` **softly refreshes the solvency flag** via `checkInvariant()` in a try/catch — a price crash flips `breached` in the same tx that lands the price, keeperless. Never reverts; the feed can never be blocked by the engine. Gas per poke is higher (volatile-ilk loop + escrow SSTORE); `InvariantChecked` is emitted per successful poke — dashboards charting it will see the cadence jump |
 | *Failure mode if missed* | Entire downstream stack (spot, liquidations, solvency) runs on stale prices — *highest-priority job* |
@@ -77,26 +105,26 @@ intervention. Governance/file actions and emergency settlement (End) are out of 
 | *Data source* | OSM `Poke(ilkId, current, next)` event |
 | *Effect* | Writes `spot` into `VaultEngine.ilks(ilkId)` — this is what makes new prices actionable for liquidations |
 
-## Job 3 — Circuit breaker check
+## Job 3 — Circuit breaker check  ⚠️ NOW A SINGLE MULTI-ILK INSTANCE
 
 | | |
 |---|---|
-| *Contract* | CircuitBreaker (one instance per watched ilk) |
-| *Method* | `check()` |
-| *Trigger type* | *Hybrid*: event-chained after every Job 1/2 bundle, *plus per-block while `active() == true`* (deactivation needs `calmBlocks` (3) consecutive calm blocks, each in a distinct block) |
-| *Proceed if* | Always safe to call (no revert path; no-ops if feed invalid). Gate on `active()` for the per-block loop to bound gas spend |
-| *Data source* | `active()` public view; `Activated`/`Deactivated`/`Checked` events |
-| *:warning: Prereq* | CircuitBreaker calls `pip.peek()` — the breaker contract address must be `kiss`ed on the OSM at deployment. Verify in the deploy checklist |
+| *Contract* | CircuitBreaker — **ONE instance for the whole system** (`0d94809`). It iterates a governance-managed registry of watched ilks (`addIlk`/`removeIlk`, `watchedIlks(i)`, `isWatched(ilkId)`, `ilkCount()`), computes each ilk's deviation from its own per-ilk trailing trend, and takes the MAX — one global `active()` verdict. A dislocation in ANY watched ilk throttles liquidations of ALL ilks |
+| *Method* | `check()` — still parameterless; one call samples every watched ilk |
+| *Trigger type* | *Hybrid*: event-chained after every Job 1/2 bundle, *plus periodic while `active() == true`* — **deactivation is TIME-based, not calm-block-counted**: it requires a full `calmPeriod` (1800 s) elapsed since the last above-threshold reading AND the max deviation back under `threshold` (0.25e18) at that check. An above-threshold reading re-anchors the calm clock. Call at least once per `obsInterval` (300 s) to keep the per-ilk trend buffers fresh |
+| *Proceed if* | Always safe to call (no revert path; a dark feed skips that ilk — fail-open per ilk). Gate on `active()` for the tighter loop to bound gas spend |
+| *Data source* | `active()`, `activatedAt()`, `trendPrice(ilkId)` (now takes the ilk), `lastObsTimestamp()`. Events reshaped: `Activated(ilkId, deviation)` (culprit ilk, indexed), `Checked(worstIlk, maxDeviation, active)`, `Deactivated()`, plus new `AddIlk(ilkId)`/`RemoveIlk(ilkId)` — update decoders and subgraph handlers |
+| *:warning: Prereq* | The breaker reads `ORACLE_SECURITY_MODULE.peek(ilkId)` — the single breaker address must hold READER_ROLE on the OSM, and every liquidatable volatile ilk must be `addIlk`ed (deploy wires RAIN-A). An un-watched ilk contributes no deviation and is never protected |
 
 ## Job 4 — Liquidation trigger  ⚠️ THRESHOLD NOW USES LIVE RATE
 
 | | |
 |---|---|
 | *Contract* | LiquidationTrigger |
-| *Method* | **`bark(bytes32 ilkId, uint256 vaultId, address kpr)`** — `kpr` = keeper's reward address. **The 2nd arg is now the `vaultId`, not the owner address.** |
+| *Method* | **`bark(uint256 vaultId, address kpr)`** — `kpr` = keeper's reward address. **No ilk argument: the ilk is read from the vault (`ilkOf(vaultId)`), and the 1st arg is the `vaultId`, not the owner address.** |
 | *Trigger type* | *Event-driven* — evaluate affected vaults in the block a new `spot` lands (after Job 2), and on every `VaultEngine.Frob`/`Grab` event (both now carry `vaultId`), **plus on a time schedule even without events**: with `duty > RAY`, vault debt drifts up between blocks, so vaults become barkable purely through fee accrual with no price move. Re-scan the near-threshold cohort at least once per drip interval |
-| *Proceed if (all):* | 1. **`ink × spot < (art × rate_virtual / WAD) × barkFactor(ilkId)`** where **`rate_virtual = rpow(duty, now − rho, RAY) × rate / RAY`** — the on-chain `rate` may be stale between drips; `bark` itself drips first, so simulate against the virtualized rate or your off-chain check will lag the on-chain truth. A vault is barkable at the **`barkFactor` threshold (0.65e18 = 65%)**, i.e. RAIN-A liquidates at ~260% collateralization, not at the 400% mint floor. Read `ink`/`art` from `vaultEngine.urns(vaultId)`, `spot`/`rate`/`duty`/`rho` from `vaultEngine.ilks(ilkId)` (**8-tuple now** — see below), `barkFactor` from `liquidationTrigger` |
-| | 2. `Hole() > Dirt()` **and** `ilks(ilkId).hole > ilks(ilkId).dirt` (per-ilk auction capacity) |
+| *Proceed if (all):* | 1. **`ink × spot < (art × rate_virtual / WAD) × barkFactor(ilkId)`** where **`rate_virtual = rpow(duty, now − rho, RAY) × rate / RAY`** — the on-chain `rate` may be stale between drips; `bark` itself drips first, so simulate against the virtualized rate or your off-chain check will lag the on-chain truth. A vault is barkable at the **`barkFactor` threshold (0.65e18 = 65%)**, i.e. RAIN-A liquidates at ~260% collateralization, not at the 400% mint floor. Read `ink`/`art` from `vaultEngine.urns(vaultId)`, `spot`/`rate`/`duty`/`rho` from `vaultEngine.ilks(ilkId)` (**8-tuple now** — see below), `barkFactor` from `liquidationTrigger.ilks(ilkId)` — **now a 4-tuple `(chop, hole, dirt, barkFactor)`**: the per-ilk auction address is gone; the auction house is the global `liquidationTrigger.dutchAuction()` (`68bc08e`) |
+| | 2. `globalHole() > globalDirt()` **and** `ilks(ilkId).hole > ilks(ilkId).dirt` (per-ilk auction capacity) |
 | | 3. Simulated `dink > 0` and no dusty-partial revert (replicate `bark`'s dart/dust math off-chain **at the accrued rate**, or `eth_call` simulate — simulation is now strongly preferred since the exact rate depends on the inclusion block's timestamp) |
 | | 4. `live() == 1` |
 | | 5. Economic: `tip + chip × tab > gasCost × safetyFactor` — note `tab` includes accrued fees, and **`bark` gas is higher now** (it drips first: rpow + fee-credit SSTOREs). Recompute `tab` on throttled room if `circuitBreaker.active()` |
@@ -111,20 +139,31 @@ Before `take`/`redo`, the keeper MUST check both **`auction.stopped()`** (0–3)
 `yank` is never gated. Prices keep decaying during a halt, so expect a `redo` wave when it lifts.
 Note the Governor pause **auto-expires after 72h** (L-6) — poll `paused()`, don't cache the event.
 
+**The auction house is now ONE contract for all ilks** (`68bc08e`, `0d94809`): resolve it once
+from `liquidationTrigger.dutchAuction()` instead of per-ilk. Every sale records its ilk —
+**`sales(id)` returns an 8-tuple `(ilkId, pos, tab, lot, vaultId, usr, tic, top)`** — and the
+curve parameters moved per-ilk: read `buf`/`tail`/`cusp`/`chost` from
+**`auction.ilks(ilkId)` (4-tuple)**, not from globals. `chip`/`tip`/`stopped`/`live` stay
+global. `upchost` takes the ilk: **`upchost(bytes32 ilkId)`**, one call per ilk after a `dust`
+or `chop` change. `list()` is still global; a per-ilk **`list(bytes32 ilkId)`** filter view
+exists for per-collateral keepers. Flash-callback buyers (`clipperCall`) MUST read the sale's
+`ilkId` to know which collateral they are receiving — assuming one collateral per auction
+address is now wrong.
+
 Stability-fee note: **`tab` is snapshotted at bark time (post-drip) and fixed for the
-auction's life** — no rate math inside Job 5 changes. `upchost`/`chost` (dust × chop) are
-rate-independent (both rad) and unchanged.
+auction's life** — no rate math inside Job 5 changes. `upchost(ilkId)`/`chost` (dust × chop)
+are rate-independent (both rad) and unchanged in formula.
 
 *5a. take*
 
 | | |
 |---|---|
-| *Contract* | DutchAuction (per ilk) |
-| *Method* | `take(uint256 id, uint256 amt, uint256 max, address who, bytes data)` — use a clipperCall flash-callback contract as `who` for atomic buy→DEX-sell→pay |
+| *Contract* | DutchAuction (single, all ilks) |
+| *Method* | `take(uint256 id, uint256 amt, uint256 max, address who, bytes data)` — signature unchanged (the ilk is read from the sale); use a clipperCall flash-callback contract as `who` for atomic buy→DEX-sell→pay |
 | *Trigger type* | *Computed-time + event-driven* — subscribe to `Kick`/`Redo`; the linear curve `price = top × (1 − dur/tau)` makes the target timestamp exactly computable |
 | *Proceed if* | `stopped() < 2` ∧ `!paused()` ∧ `getStatus(id).needsRedo == false` ∧ `price_ > 0` ∧ `price_ ≤ dexExecPrice × (1 − fees − margin)` |
-| *Params* | `max` = break-even price (slippage guard — never `uint.max`); `amt` sized to DEX depth; if partial, ensure `tab − owe ≥ chost` (per-ilk dust floor) |
-| *Data source* | `getStatus(id)`, **`sales(id)` now returns a 7-tuple `(pos, tab, lot, vaultId, usr, tic, top)`** — update any decoder expecting the old 6-tuple. `Kick`/`Redo` events now carry `vaultId` (indexed) |
+| *Params* | `max` = break-even price (slippage guard — never `uint.max`); `amt` sized to DEX depth; if partial, ensure `tab − owe ≥ ilks(ilkId).chost` (per-ilk dust floor) |
+| *Data source* | `getStatus(id)`, **`sales(id)` now returns an 8-tuple `(ilkId, pos, tab, lot, vaultId, usr, tic, top)`** — update any decoder expecting the old 7-tuple. **Event topics changed** (`0d94809`): `Kick(id, ilkId, top, tab, lot, vaultId, usr, kpr, coin)`, `Take(id, ilkId, max, price, owe, tab, lot, usr)`, `Redo(id, ilkId, top, tab, lot, usr, kpr, coin)`, `Upchost(ilkId, chost)` — `ilkId` indexed on all four; `kpr` is no longer indexed on `Kick`/`Redo`; re-derive all topic0 filters |
 
 *5b. redo*
 
@@ -194,17 +233,26 @@ and halt the normal loop**, because most flows revert once the system is caged.
 
 ## Deploy-time prerequisites (one-off role/wiring checklist)
 
-A broken role silently disables a whole job — `verify-roles.js` now asserts all of these:
+A broken role silently disables a whole job — `scripts/verify/verify-roles.js` asserts these:
 
-1. Keeper read address `kiss`ed on OSM (if reading `peek` directly); CircuitBreaker `kiss`ed on OSM.
+1. Keeper read address granted READER_ROLE on OSM (if reading `peek` directly); the single
+   CircuitBreaker granted READER_ROLE on OSM, and **every liquidatable ilk `addIlk`ed on it**.
 2. **SolvencyEngine has READER_ROLE on the OSM** (H-1 — it reads prices there now).
-3. **`exposureCap` filed (`$250k`) BEFORE any exposure reporter is wired** — the contract enforces
-   ordering (`ExposureCapNotSet`).
+3. **Exposure cap is GONE** (`7b5c985`) — no `exposureCap` filing, no ordering constraint. The
+   reporter is wired directly via `file("externalExposure", addr)`; a reverting reporter
+   substitutes total outstanding debt (fail-closed) rather than reverting the invariant.
 4. Liquidation wiring: trigger→auction `kick`, auction→trigger `digs`, auction/balanceSheet→
-   vaultEngine `suck`; **Governor pause wired into DutchAuction** (M-6).
+   vaultEngine `suck`; **Governor pause wired into DutchAuction** (M-6); **the global auction
+   address filed on the trigger via `file("dutchAuction", addr)`** (per-ilk filing is gone).
 5. **End wiring:** WARD on VaultEngine / LiquidationTrigger / PriceConverter / DutchAuction, plus
    READER on the OSM; `END_WAIT` set (default 7d, must exceed the sin-queue `wait`).
 6. Governor `delay` is **immutable** — chosen once at deploy, changing it means redeploying the Governor.
+   The pause is scoped (`_PAUSE_FROB`/`_PAUSE_PSM`/`_PAUSE_BARK`/`_PAUSE_AUCTION` bit flags);
+   `Pause(pausedAt, scope)` carries the scope — decode it before assuming a full stop.
+6b. **OSM `maxAge` filed** (deploy: 21600 s) — without it stale prices never expire; with it a
+   silent keeper outage freezes minting after `maxAge` (see Job 1). **`backstopCap` filed** if
+   the RAIN backstop is to be usable (`BalanceSheet.backstop` reverts `BackstopNotConfigured`
+   without `rainIlk`/OSM wiring, and sells nothing once `backstopUsed` reaches the cap).
 7. **NEW — `feeRecipient` filed on VaultEngine** (must be the BalanceSheet address; `verify-roles.js`
    asserts it). **`drip` reverts `FeeRecipientNotSet` if fees would accrue while it is unset** —
    with the wiring order in `deploy-reserve.js` (feeRecipient filed right after BalanceSheet
@@ -212,7 +260,7 @@ A broken role silently disables a whole job — `verify-roles.js` now asserts al
    `feeRecipient` is set. New File keys: per-ilk `"duty"` (≥ RAY, auto-drips at the old duty
    first — never retroactive), address `"feeRecipient"`. Example duty: 2% APY ≈
    `1.000000000627937192491029810e27`.
-8. **NEW @ `017b36a` — solvency gate wiring on two more contracts:** file `"solvencyEngine"` on the
+8. **Solvency gate wiring on two more contracts (since `017b36a`):** file `"solvencyEngine"` on the
    **OracleSecurityModule** (soft poke refresh) and on the **BalanceSheet** (hard distributeSurplus
    gate), in addition to the existing VaultEngine + PSM wiring. All are zero-address-tolerant
    (unset ⇒ hook skipped), and the soft sites are try/catch-wrapped — but wire them at deploy or
@@ -232,16 +280,20 @@ A broken role silently disables a whole job — `verify-roles.js` now asserts al
   strings (`NotSafe`, `NeedsReset`, `Stopped`, `SystemPaused`, `LiquidationLimitHit`,
   `FeeRecipientNotSet`, `InvalidDuty`, etc. — free telemetry).
 
-Main things to flag to whoever owns the keeper: **the `ilks()` tuple grew to 8 fields**
-`(globalArt, globalInk, rate, spot, line, dust, duty, rho)` — any decoder of the old 6-tuple
-breaks; **`rate` is live** — every solvency/liquidation formula that hardcoded `rate = RAY`
-must switch to the stored (or virtualized) rate; **`frob` (debt changes) and `bark` cost more
-gas** from the auto-drip; the new **Job 0 drip is a freshness job, not a correctness
-job** — nothing breaks if it's missed, but dashboards and the near-threshold bark scanner lag;
-and **@ `017b36a` the solvency gate is self-enforcing** — risk-increasing `frob`s,
-`buyStable` and `distributeSurplus` recompute the invariant on-chain (revert
-`SolvencyGateActive` on breach, add that selector to every simulation decoder), `poke`/`drip`
-refresh the flag as a side effect, and gas went up accordingly on all five paths (one OSM
-`peek` per volatile ilk + escrow SSTORE per recompute). Liquidations (`bark`/`take`/`redo`)
-remain deliberately ungated. **Job 7 flag freshness** remains a keeper duty — see
-[`BACKEND-SOLVENCY.md`].
+Main things to flag to whoever owns the keeper: **the `VaultEngine.ilks()` tuple grew to 8
+fields** `(globalArt, globalInk, rate, spot, line, dust, duty, rho)` — any decoder of the old
+6-tuple breaks; **`rate` is live** — every solvency/liquidation formula that hardcoded
+`rate = RAY` must switch to the stored (or virtualized) rate; **`frob` (debt changes) and
+`bark` cost more gas** from the auto-drip; the new **Job 0 drip is a freshness job, not a
+correctness job** — nothing breaks if it's missed, but dashboards and the near-threshold bark
+scanner lag; **the solvency gate is self-enforcing** — risk-increasing `frob`s, `buyStable`
+and `distributeSurplus` recompute the invariant on-chain (revert `SolvencyGateActive` on
+breach, add that selector to every simulation decoder), `poke`/`drip` refresh the flag as a
+side effect, and gas went up accordingly on all five paths (one OSM `peek` per volatile ilk +
+escrow SSTORE per recompute). Liquidations (`bark`/`take`/`redo`) remain deliberately
+ungated. **Post-alpha.4 (`07d31e8`): three more tuple/topic breaks** —
+`LiquidationTrigger.ilks()` is a 4-tuple + global `dutchAuction()`; `DutchAuction.sales()` is
+an 8-tuple led by `ilkId` with per-ilk `ilks(ilkId)` curve params, `upchost(ilkId)`, and NEW
+topic0 hashes on `Kick`/`Take`/`Redo`/`Upchost`; the CircuitBreaker is one multi-ilk instance
+with reshaped `Activated`/`Checked` events and time-based deactivation. **Job 7 flag
+freshness** remains a keeper duty — see [`BACKEND-SOLVENCY.md`].

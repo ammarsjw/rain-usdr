@@ -1,6 +1,7 @@
-> Updated for stability fees: `feature/rate-accrual` @ `b850750`.
-
-Here's the updated doc in full:
+> Contract set: `refactor/multi-ilk-compatibility` @ `07d31e8` (post-`v1.0.0-alpha.4`; originally written for
+> `feature/rate-accrual` @ `b850750` and re-verified against the current head — the exposure
+> semantics below, face-value + revert-substitutes-debt, already describe the post-`7b5c985`
+> contracts).
 
 ---
 

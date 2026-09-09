@@ -10,6 +10,17 @@ against each other.
 
 > **Status:** implemented. Auction parameters re-read from Arbitrum One 2026-09-09 and matching the
 > values filed below.
+>
+> **Repo-head note (`refactor/multi-ilk-compatibility` @ `07d31e8`, post-`v1.0.0-alpha.4`) — the DEPLOYED contracts this doc
+> describes predate the multi-ilk auction refactor (`68bc08e`, `0d94809`).** On the current head
+> the DutchAuction is ONE contract for all ilks: `sales(id)` is an **8-tuple led by `ilkId`**
+> `(ilkId, pos, tab, lot, vaultId, usr, tic, top)`; `buf`/`tail`/`cusp`/`chost` moved into a
+> per-ilk **`ilks(ilkId)`** struct (the global getters are gone); `upchost` takes the ilk
+> (**`upchost(ilkId)`**); a per-ilk **`list(ilkId)`** view was added; the price-curve getter is
+> **`priceCurve()`**; and the `Kick`/`Take`/`Redo`/`Upchost` **event topics changed** (`ilkId`
+> added and indexed; `usr` indexed on `Take`; `kpr` un-indexed on `Kick`/`Redo`). Every read and
+> decode below marked with its old shape must be updated when the frontend re-points at a
+> deployment built from the current head. Until then, this doc matches what is live.
 
 ---
 

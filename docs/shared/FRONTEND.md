@@ -1,6 +1,6 @@
 # USDR Frontend/Integrator Requirements Doc
 
-> Contract set: `feature/rate-accrual` @ `017b36a` (branched from `main`, which contains the End + rev-4 remediations).
+> Contract set audited: the **deployed** Arbitrum One contracts (built from `feature/rate-accrual` @ `017b36a`). Repo head when this revision was last reviewed: `refactor/multi-ilk-compatibility` @ `07d31e8` (post-`v1.0.0-alpha.4`) — **the head has moved past the deployment**; every place they diverge carries a **[repo-head]** note. The deployed shapes remain authoritative for the live frontend until a redeploy.
 > Supersedes the `f881aff`/`9a9c81a` doc. Changes in this revision: **(1) stability fees exist** — `rate` is no longer fixed at RAY; debt = `art × rate` with `rate` live-growing per ilk; **(2) `ilks()` tuple gained `duty` and `rho`** — every decoder of the old 6-tuple breaks; **(3) new permissionless `VaultEngine.drip(ilkId)`** + `Drip` event + `feeRecipient` wiring; **(4) position cards must VIRTUALIZE debt between drips; (5) NEW @ `017b36a` — the solvency gate is now self-enforcing at every risk-increasing entry point:** borrow/withdraw `frob`s recompute the invariant on-chain (like `buyStable` already did) and revert `SolvencyGateActive` on breach — `isBreached()` reads are for pre-disabling buttons only, never a guarantee; simulate every gated tx. Everything from the prior revision (multi-vault, auction breaker, self-checking redemption gate, End, immutable timelock delay) carries over.
 
 > **What this document is.** The previous revisions of this file were a requirements doc written from the contract side. This revision rewrites it to describe **how the `rain-usdr` frontend is actually integrated** against the deployed contracts, with file references so code and doc can be checked against each other. Contract facts that were stated but turned out not to match the deployment are corrected inline and marked **[corrected]**.
@@ -91,9 +91,9 @@ The one exception: `useTransfer` (sending tokens out of the connected EOA) uses 
 - **`VaultEngine.ilks(ilkId)` returns an 8-tuple:** `(globalArt, globalInk, rate, spot, line, dust, duty, rho)`. Every destructure in this repo expects 8.
 - `VaultEngine.frob(vaultId, v, w, dink, dart)`; `urns(vaultId)`; `open(ilkId, usr)`.
 - `PSM.ilks(ilkId) -> (token, to18ConversionFactor, vaultId)` — the third field is the PSM's own dedicated vault for that ilk.
-- `LiquidationTrigger.ilks(ilkId) -> (clip, chop, hole, dirt, barkFactor)`.
-- `PriceConverter.ilks(ilkId) -> (pip, mat, fixedPrice)`.
-- `DutchAuction.sales(id) -> (pos, tab, lot, vaultId, usr, tic, top)`.
+- `LiquidationTrigger.ilks(ilkId) -> (clip, chop, hole, dirt, barkFactor)`. **[repo-head]** now a 4-tuple `(chop, hole, dirt, barkFactor)`; the auction address is the global `liquidationTrigger.dutchAuction()` (`68bc08e`).
+- `PriceConverter.ilks(ilkId) -> (pip, mat, fixedPrice)`. **[repo-head]** now a 2-tuple `(mat, fixedPrice)`; the OSM is the single global `priceConverter.oracleSecurityModule()` (`b032625`).
+- `DutchAuction.sales(id) -> (pos, tab, lot, vaultId, usr, tic, top)`. **[repo-head]** now an 8-tuple led by `ilkId`; `buf`/`tail`/`cusp`/`chost` are per-ilk via `auction.ilks(ilkId)`, `upchost(ilkId)`, and the `Kick`/`Take`/`Redo`/`Upchost` topics changed (`0d94809`) — see the repo-head note in `FRONTEND-AUCTION.md`.
 - No PSM fees: `tin`/`tout` do not exist.
 
 Errors are decoded from 4-byte selectors, never string-matched — `src/utils/txError.ts` (`describeTxError`) builds a selector map from six ABIs and is wired into 16 call sites across 9 files. Nothing surfaces a raw RPC error object to the user.
@@ -231,7 +231,7 @@ SolvencyEngine.worstCaseLoss()     [wad]
 SolvencyEngine.breached()          [bool]
 SolvencyEngine.reserveFactor()     [wad]  -- 0.9
 SolvencyEngine.externalExposure()  [address]
-SolvencyEngine.exposureCap()       [wad]
+SolvencyEngine.exposureCap()       [wad]  -- deployed only; REMOVED on repo head (7b5c985), drop after redeploy
 ReserveAccounting.totalReserve()   [wad]
 RainExposureReporter.reportedExposure() [wad]
 ```
@@ -326,7 +326,7 @@ The third matters as much as the first: `RedeemView` re-checks breach state imme
 
 Previous revisions stated: *"There is no cap on external exposure — `reportedExposure()` enters `worstCaseLoss()` at face value, so never display a clamped or capped figure"*, and that `ExposureClamped` was replaced by `ExposureReportFailed`.
 
-The verified source at `0x2484d495258C3e281217995D30Bda16BeF6192dF` says otherwise:
+The verified source at `0x2484d495258C3e281217995D30Bda16BeF6192dF` (the DEPLOYED engine) says otherwise:
 
 | Symbol | Deployed source |
 | --- | --- |
@@ -334,7 +334,7 @@ The verified source at `0x2484d495258C3e281217995D30Bda16BeF6192dF` says otherwi
 | `ExposureClamped` | present, emitted at lines 211 and 214 |
 | `ExposureReportFailed` | **not present** |
 
-The frontend therefore clamps: `exposure = min(reportedExposure, exposureCap)`. The doc describes a build newer than what is deployed.
+The frontend therefore clamps: `exposure = min(reportedExposure, exposureCap)`. The doc described a build newer than what is deployed — and that build has since landed: **[repo-head]** `7b5c985` removed `exposureCap`/`ExposureClamped` and added `ExposureReportFailed(substituted)` (a reverting reporter substitutes total outstanding debt, `VaultEngine.debt() / RAY`). After a redeploy the clamp must be dropped and the §5 multicall must remove the `exposureCap()` read — it will revert.
 
 ### 5.3 Chart and history
 
@@ -423,7 +423,7 @@ transports: { [arbitrum.id]: http(rpcUrl, { batch: { wait: 250, batchSize: 20 } 
 - **`rate` is live** — never display raw `art`; always `art * rate_now`. `duty` on RAIN-A is 10.00% APY today (§0.2).
 - **`hope` is per smart account**, not per EOA, and covers all that account's vaults.
 - Vaults are not transferable and ids are never reused; `vaultId` is a safe permanent key.
-- One `DutchAuction` per collateral type — resolve the clip per ilk from `LiquidationTrigger.ilks(ilkId).clip`, not a constant.
+- One `DutchAuction` per collateral type on the DEPLOYED contracts — resolve the clip per ilk from `LiquidationTrigger.ilks(ilkId).clip`, not a constant. **[repo-head]** inverted: ONE auction house serves all ilks, resolved once from `liquidationTrigger.dutchAuction()`; each sale carries its `ilkId` (`68bc08e`, `0d94809`).
 - SCSS is global and page-scoped: a class nested under one page's parent selector does not apply in another component tree. This has caused the same bug three times.
 
 ---
