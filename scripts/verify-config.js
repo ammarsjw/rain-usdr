@@ -170,7 +170,7 @@ const verifyConfig = async () => {
     assertEq("LiquidationTrigger.ilks(RAIN-A).chop", rainLiquidation.chop, (WAD * 113n) / 100n);
     assertEq("LiquidationTrigger.ilks(RAIN-A).hole", rainLiquidation.hole, 50000n * RAD);
     assertEq("LiquidationTrigger.ilks(RAIN-A).barkFactor", rainLiquidation.barkFactor, (WAD * 65n) / 100n);
-    assertNonZero("LiquidationTrigger.ilks(RAIN-A).dutchAuction", rainLiquidation.dutchAuction);
+    assertNonZero("LiquidationTrigger.dutchAuction", await liquidationTrigger.dutchAuction());
 
     assertEq("DutchAuction.buf", await dutchAuction.buf(), (RAY * 105n) / 100n);
     assertEq("DutchAuction.tail", await dutchAuction.tail(), 1800n);

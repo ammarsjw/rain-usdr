@@ -152,9 +152,7 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
             _revert(TagNotDefined.selector);
         }
 
-        (address dutchAuctionAddress, , , , ) = liquidationTrigger.ilks(ilkId);
-
-        IDutchAuction dutchAuction = IDutchAuction(dutchAuctionAddress);
+        IDutchAuction dutchAuction = liquidationTrigger.dutchAuction();
 
         (, uint256 tab, uint256 lot, uint256 vaultId, , , ) = dutchAuction.sales(auctionId);
 
@@ -376,15 +374,16 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
 
         art[ilkId] = globalArt;
 
-        // Halting this collateral's auction house: after global settlement the auction price keeps decaying while the
-        // settlement price below is fixed forever, so any still-running auction becomes a risk-free arbitrage against
-        // USDR redeemers once the curve crosses break-even and collateral bought there leaves the redemption pool
-        // permanently. `yank` is deliberately not live-gated, so `skip` still reclaims in-flight auctions after the
-        // halt. Ilks with no auction house configured (e.g. PSM stables) skip this.
-        (address dutchAuctionAddress, , , , ) = liquidationTrigger.ilks(ilkId);
+        // Halting the auction house: after global settlement the auction price keeps decaying while the settlement
+        // price below is fixed forever, so any still-running auction becomes a risk-free arbitrage against USDR
+        // redeemers once the curve crosses break-even and collateral bought there leaves the redemption pool
+        // permanently. The auction house is global (it serves every collateral type), so the first caged ilk halts it
+        // and later cages skip the already-dead house. `yank` is deliberately not live-gated, so `skip` still reclaims
+        // in-flight auctions after the halt. Deployments with no auction house configured skip this.
+        IDutchAuction dutchAuction = liquidationTrigger.dutchAuction();
 
-        if (dutchAuctionAddress != address(0) && IDutchAuction(dutchAuctionAddress).live() == 1) {
-            IDutchAuction(dutchAuctionAddress).cage();
+        if (address(dutchAuction) != address(0) && dutchAuction.live() == 1) {
+            dutchAuction.cage();
         }
 
         // The settlement price is par (USDR's target value) divided by the collateral's last delayed price: collateral

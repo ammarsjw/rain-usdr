@@ -82,7 +82,7 @@ contract LiquidationTest is BaseTest {
 
         uint256 id = liquidationTrigger.bark(vaultId, keeper);
 
-        (, , , uint256 dirt, ) = liquidationTrigger.ilks(RAIN_ILK);
+        (, , uint256 dirt, ) = liquidationTrigger.ilks(RAIN_ILK);
         assertEq(dirt, 226 * _RAD, "dirt filled");
 
         // The second vault cannot bark: no capacity.
@@ -95,7 +95,7 @@ contract LiquidationTest is BaseTest {
         vm.prank(address(0xB1D));
         dutchAuction.take(id, 800e18, price, address(0xB1D), "");
 
-        (, , , dirt, ) = liquidationTrigger.ilks(RAIN_ILK);
+        (, , dirt, ) = liquidationTrigger.ilks(RAIN_ILK);
         assertEq(dirt, 0, "capacity freed");
 
         liquidationTrigger.bark(second, keeper);

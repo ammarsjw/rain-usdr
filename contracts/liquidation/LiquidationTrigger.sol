@@ -49,6 +49,9 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     ICircuitBreaker public circuitBreaker;
 
     /// @inheritdoc ILiquidationTrigger
+    IDutchAuction public dutchAuction;
+
+    /// @inheritdoc ILiquidationTrigger
     IGovernor public governor;
 
     /// @inheritdoc ILiquidationTrigger
@@ -106,6 +109,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             balanceSheet = IBalanceSheet(data);
         } else if (what == "circuitBreaker") {
             circuitBreaker = ICircuitBreaker(data);
+        } else if (what == "dutchAuction") {
+            dutchAuction = IDutchAuction(data);
         } else if (what == "governor") {
             governor = IGovernor(data);
         } else {
@@ -140,19 +145,6 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         }
 
         emit File({ ilkId: ilkId, what: what, data: data });
-    }
-
-    /**
-     * @inheritdoc ILiquidationTrigger
-     */
-    function file(bytes32 ilkId, bytes32 what, address dutchAuction) external onlyRole(_WARD_ROLE) {
-        if (what == "dutchAuction") {
-            ilks[ilkId].dutchAuction = dutchAuction;
-        } else {
-            _revert(UnrecognizedParameter.selector);
-        }
-
-        emit File({ ilkId: ilkId, what: what, addr: dutchAuction });
     }
 
     /**
@@ -248,7 +240,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         }
 
         // Seizing the vault: collateral moves to the auction, debt moves to the balance sheet.
-        VAULT_ENGINE.grab(vaultId, milk.dutchAuction, address(balanceSheet), -int256(dink), -int256(dart));
+        VAULT_ENGINE.grab(vaultId, address(dutchAuction), address(balanceSheet), -int256(dink), -int256(dart));
 
         uint256 due = dart * rate;
 
@@ -264,7 +256,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             // Starting the Dutch auction. Whoever called bark is eligible for the keeper reward. Any leftover
             // collateral from the auction is returned to the vault's owner. The vault id rides along so emergency
             // settlement can reclaim the auction into the vault it was seized from.
-            id = IDutchAuction(milk.dutchAuction).kick({ tab: tab, lot: dink, vaultId: vaultId, usr: owner, kpr: kpr });
+            id = dutchAuction.kick({ tab: tab, lot: dink, vaultId: vaultId, usr: owner, kpr: kpr });
         }
 
         emit Bark({
@@ -274,7 +266,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             ink: dink,
             art: dart,
             due: due,
-            dutchAuction: milk.dutchAuction,
+            dutchAuction: address(dutchAuction),
             id: id
         });
     }

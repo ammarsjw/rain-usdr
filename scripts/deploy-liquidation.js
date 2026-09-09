@@ -100,8 +100,7 @@ const deployLiquidation = async () => {
         )
     ).wait();
     await (
-        await liquidationTriggerInstance["file(bytes32,bytes32,address)"](
-            rainIlk,
+        await liquidationTriggerInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("dutchAuction"),
             dutchAuctionAddress
         )

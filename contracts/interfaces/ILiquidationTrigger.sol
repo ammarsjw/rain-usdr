@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import { IBalanceSheet } from "./IBalanceSheet.sol";
+import { IDutchAuction } from "./IDutchAuction.sol";
 import { IGovernor } from "./IGovernor.sol";
 import { ICircuitBreaker } from "./ICircuitBreaker.sol";
 import { IVaultEngine } from "./IVaultEngine.sol";
@@ -17,7 +18,6 @@ interface ILiquidationTrigger {
 
     /**
      * @notice Liquidation settings for a collateral type.
-     * @param dutchAuction The Dutch auction contract for this collateral.
      * @param chop The liquidation penalty [wad]. 13% = 1.13 * WAD.
      * @param hole The maximum active liquidation size for this collateral [rad].
      * @param dirt The amount currently being auctioned for this collateral [rad].
@@ -25,7 +25,6 @@ interface ILiquidationTrigger {
      *        65% = 0.65 * WAD.
      */
     struct IlkLiquidation {
-        address dutchAuction;
         uint256 chop;
         uint256 hole;
         uint256 dirt;
@@ -55,14 +54,6 @@ interface ILiquidationTrigger {
      * @param data New value.
      */
     event File(bytes32 indexed ilkId, bytes32 indexed what, uint256 data);
-
-    /**
-     * @dev Emitted when a per-collateral address dependency is updated.
-     * @param ilkId Identifier of the collateral type.
-     * @param what Name of the parameter.
-     * @param addr New address.
-     */
-    event File(bytes32 indexed ilkId, bytes32 indexed what, address addr);
 
     /**
      * @dev Emitted when an unsafe vault is liquidated.
@@ -150,7 +141,7 @@ interface ILiquidationTrigger {
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets a global address dependency {balanceSheet} or {circuitBreaker}.
+     * @notice Sets a global address dependency {balanceSheet}, {circuitBreaker}, {dutchAuction} or {governor}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -163,14 +154,6 @@ interface ILiquidationTrigger {
      * @param data New value.
      */
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
-
-    /**
-     * @notice Assigns the Dutch auction contract for a collateral type {dutchAuction}.
-     * @param ilkId Identifier of the collateral type.
-     * @param what Name of the parameter.
-     * @param dutchAuction Address of the Dutch auction contract.
-     */
-    function file(bytes32 ilkId, bytes32 what, address dutchAuction) external;
 
     /**
      * @notice Seizes an under-collateralized vault and starts an auction for its collateral.
@@ -237,6 +220,12 @@ interface ILiquidationTrigger {
     function circuitBreaker() external view returns (ICircuitBreaker);
 
     /**
+     * @notice Returns the Dutch auction house that seized collateral is sent to. A single global instance: the
+     *         auction house serves every collateral type.
+     */
+    function dutchAuction() external view returns (IDutchAuction);
+
+    /**
      * @notice Returns the Governor consulted for the emergency pause.
      */
     function governor() external view returns (IGovernor);
@@ -244,7 +233,6 @@ interface ILiquidationTrigger {
     /**
      * @notice Returns the liquidation settings for a collateral type.
      * @param ilkId Identifier of the collateral type.
-     * @return dutchAuction The Dutch auction contract for this collateral.
      * @return chop The liquidation penalty [wad].
      * @return hole The maximum active liquidation size for this collateral [rad].
      * @return dirt The amount currently being auctioned for this collateral [rad].
@@ -252,5 +240,5 @@ interface ILiquidationTrigger {
      */
     function ilks(
         bytes32 ilkId
-    ) external view returns (address dutchAuction, uint256 chop, uint256 hole, uint256 dirt, uint256 barkFactor);
+    ) external view returns (uint256 chop, uint256 hole, uint256 dirt, uint256 barkFactor);
 }
