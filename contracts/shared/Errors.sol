@@ -63,3 +63,8 @@ error FeeRecipientNotSet();
  * @dev Indicates that the solvency invariant is breached and reserve-decreasing operations are gated.
  */
 error SolvencyGateActive();
+
+/**
+ * @dev Indicates that a new pause cannot start until the cooldown after the previous pause has elapsed.
+ */
+error PauseCooldownActive();

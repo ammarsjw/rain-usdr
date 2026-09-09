@@ -15,7 +15,7 @@ import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { _RAY, _USDR_ILK, _WARD_ROLE } from "../shared/Constants.sol";
+import { _PAUSE_PSM, _RAY, _USDR_ILK, _WARD_ROLE } from "../shared/Constants.sol";
 import {
     IlkAlreadyInitialized,
     InvalidAddress,
@@ -56,10 +56,10 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
     IUSDR public immutable USDR;
 
     /// @inheritdoc IPegStabilityModule
-    address public solvencyEngine;
+    ISolvencyEngine public solvencyEngine;
 
     /// @inheritdoc IPegStabilityModule
-    address public governor;
+    IGovernor public governor;
 
     /// @inheritdoc IPegStabilityModule
     mapping(bytes32 ilkId => Ilk ilk) public ilks;
@@ -136,9 +136,9 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
      */
     function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
         if (what == "solvencyEngine") {
-            solvencyEngine = data;
+            solvencyEngine = ISolvencyEngine(data);
         } else if (what == "governor") {
-            governor = data;
+            governor = IGovernor(data);
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -160,10 +160,10 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(InvalidAmount.selector);
         }
 
-        // Emergency pause check (full stop).
+        // Emergency pause check (PSM scope).
         // Note: This is never gated by the solvency engine: selling stables INCREASES the reserve, so it remains
         // available during a solvency breach.
-        if (governor != address(0) && IGovernor(governor).paused()) {
+        if (address(governor) != address(0) && governor.paused(_PAUSE_PSM)) {
             _revert(SystemPaused.selector);
         }
 
@@ -204,8 +204,8 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(InvalidAmount.selector);
         }
 
-        // Emergency pause check (full stop).
-        if (governor != address(0) && IGovernor(governor).paused()) {
+        // Emergency pause check (PSM scope).
+        if (address(governor) != address(0) && governor.paused(_PAUSE_PSM)) {
             _revert(SystemPaused.selector);
         }
 
@@ -213,10 +213,10 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
         // breached. The invariant is recomputed HERE, at redemption time, rather than trusting the keeper-maintained
         // flag: a stable flag (keeper down during a price collapse) would otherwise hand early redeemers a bank-run
         // ordering advantage, letting them exit whole at par against a stale escrow while a live loss stands.
-        if (solvencyEngine != address(0)) {
-            ISolvencyEngine(solvencyEngine).checkInvariant();
+        if (address(solvencyEngine) != address(0)) {
+            solvencyEngine.checkInvariant();
 
-            if (ISolvencyEngine(solvencyEngine).isBreached()) {
+            if (solvencyEngine.isBreached()) {
                 _revert(SolvencyGateActive.selector);
             }
         }
@@ -246,7 +246,7 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
 
     /**
      * @dev Reverts unless the ilk's debt multiplier is exactly RAY. The module's 1:1 vault accounting is only sound at
-     *      par; see the guards in {init} and {VaultEngine.exemptFee}.
+     *      par; see the guards in {init} and {VaultEngine.file}(ilkId, "noFee", 1).
      * @param ilkId Identifier of the stable collateral type.
      */
     function _requireRatePar(bytes32 ilkId) private view {

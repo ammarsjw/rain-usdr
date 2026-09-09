@@ -46,9 +46,6 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
     IVaultEngine public immutable VAULT_ENGINE;
 
     /// @inheritdoc IEnd
-    uint256 public live;
-
-    /// @inheritdoc IEnd
     uint256 public when;
 
     /// @inheritdoc IEnd
@@ -56,6 +53,9 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
 
     /// @inheritdoc IEnd
     uint256 public debt;
+
+    /// @inheritdoc IEnd
+    uint256 public live;
 
     /// @inheritdoc IEnd
     ILiquidationTrigger public liquidationTrigger;
@@ -147,85 +147,16 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
     /**
      * @inheritdoc IEnd
      */
-    function cage() external onlyRole(_WARD_ROLE) {
-        if (live != 1) {
-            _revert(AlreadyCaged.selector);
-        }
-
-        live = 0;
-        when = block.timestamp;
-
-        // Freezing the system: no new debt, no new liquidations, no more price pokes. The Oracle Security Module is
-        // deliberately NOT frozen since `cage(ilkId)` still needs its last delayed price.
-        VAULT_ENGINE.cage();
-        liquidationTrigger.cage();
-        priceConverter.cage();
-
-        emit Cage();
-    }
-
-    /**
-     * @inheritdoc IEnd
-     */
-    function cage(bytes32 ilkId) external {
-        if (live != 0) {
-            _revert(StillLive.selector);
-        }
-
-        if (tag[ilkId] != 0) {
-            _revert(TagAlreadyDefined.selector);
-        }
-
-        (uint256 globalArt, , , , , , , ) = VAULT_ENGINE.ilks(ilkId);
-
-        art[ilkId] = globalArt;
-
-        // Halting this collateral's auction house: after global settlement the auction price keeps decaying while the
-        // settlement price below is fixed forever, so any still-running auction becomes a risk-free arbitrage against
-        // USDR redeemers once the curve crosses break-even and collateral bought there leaves the redemption pool
-        // permanently. `yank` is deliberately not live-gated, so `skip` still reclaims in-flight auctions after the
-        // halt. Ilks with no auction house configured (e.g. PSM stables) skip this.
-        (address clipAddress, , , , ) = liquidationTrigger.ilks(ilkId);
-
-        if (clipAddress != address(0) && IDutchAuction(clipAddress).live() == 1) {
-            IDutchAuction(clipAddress).cage();
-        }
-
-        // The settlement price is par (USDR's target value) divided by the collateral's last delayed price: collateral
-        // units owed per USDR of debt [ray]. Fixed-price ilks settle at exactly $1, matching the price they minted at;
-        // oracle-backed ilks read the OSM's current value one final time.
-        (IOracleSecurityModule pip, , bool fixedPrice) = priceConverter.ilks(ilkId);
-
-        uint256 price;
-
-        if (fixedPrice) {
-            price = _WAD;
-        } else {
-            if (address(pip) == address(0)) {
-                _revert(InvalidAddress.selector);
-            }
-
-            price = uint256(pip.read(ilkId));
-        }
-
-        tag[ilkId] = (priceConverter.par() * _WAD) / price;
-
-        emit CageIlk({ ilkId: ilkId, tag: tag[ilkId], art: globalArt });
-    }
-
-    /**
-     * @inheritdoc IEnd
-     */
     function skip(bytes32 ilkId, uint256 auctionId) external nonReentrant {
         if (tag[ilkId] == 0) {
             _revert(TagNotDefined.selector);
         }
 
-        (address clipAddress, , , , ) = liquidationTrigger.ilks(ilkId);
+        (address dutchAuctionAddress, , , , ) = liquidationTrigger.ilks(ilkId);
 
-        IDutchAuction clip = IDutchAuction(clipAddress);
+        IDutchAuction dutchAuction = IDutchAuction(dutchAuctionAddress);
 
-        (, uint256 tab, uint256 lot, uint256 vaultId, , , ) = clip.sales(auctionId);
+        (, uint256 tab, uint256 lot, uint256 vaultId, , , ) = dutchAuction.sales(auctionId);
 
         (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
@@ -235,7 +166,7 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         VAULT_ENGINE.suck(address(balanceSheet), address(balanceSheet), tab);
 
         // Yanking the auction moves its remaining collateral to this contract.
-        clip.yank(auctionId);
+        dutchAuction.yank(auctionId);
 
         // Restoring the vault: the debt including the liquidation penalty is reinstated so the owner settles on the
         // same terms as everyone else.
@@ -407,5 +338,76 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         }
 
         emit Cash({ ilkId: ilkId, usr: msg.sender, wad: wad, ink: (wad * fix[ilkId]) / _RAY });
+    }
+
+    /**
+     * @inheritdoc IEnd
+     */
+    function cage() external onlyRole(_WARD_ROLE) {
+        if (live != 1) {
+            _revert(AlreadyCaged.selector);
+        }
+
+        live = 0;
+        when = block.timestamp;
+
+        // Freezing the system: no new debt, no new liquidations, no more price pokes. The Oracle Security Module is
+        // deliberately NOT frozen since `cage(ilkId)` still needs its last delayed price.
+        VAULT_ENGINE.cage();
+        liquidationTrigger.cage();
+        priceConverter.cage();
+
+        emit Cage();
+    }
+
+    /**
+     * @inheritdoc IEnd
+     */
+    function cage(bytes32 ilkId) external {
+        if (live != 0) {
+            _revert(StillLive.selector);
+        }
+
+        if (tag[ilkId] != 0) {
+            _revert(TagAlreadyDefined.selector);
+        }
+
+        (uint256 globalArt, , , , , , , ) = VAULT_ENGINE.ilks(ilkId);
+
+        art[ilkId] = globalArt;
+
+        // Halting this collateral's auction house: after global settlement the auction price keeps decaying while the
+        // settlement price below is fixed forever, so any still-running auction becomes a risk-free arbitrage against
+        // USDR redeemers once the curve crosses break-even and collateral bought there leaves the redemption pool
+        // permanently. `yank` is deliberately not live-gated, so `skip` still reclaims in-flight auctions after the
+        // halt. Ilks with no auction house configured (e.g. PSM stables) skip this.
+        (address dutchAuctionAddress, , , , ) = liquidationTrigger.ilks(ilkId);
+
+        if (dutchAuctionAddress != address(0) && IDutchAuction(dutchAuctionAddress).live() == 1) {
+            IDutchAuction(dutchAuctionAddress).cage();
+        }
+
+        // The settlement price is par (USDR's target value) divided by the collateral's last delayed price: collateral
+        // units owed per USDR of debt [ray]. Fixed-price ilks settle at exactly $1, matching the price they minted at;
+        // oracle-backed ilks read the OSM's current value one final time.
+        (, bool fixedPrice) = priceConverter.ilks(ilkId);
+
+        uint256 price;
+
+        if (fixedPrice) {
+            price = _WAD;
+        } else {
+            IOracleSecurityModule oracleSecurityModule = priceConverter.oracleSecurityModule();
+
+            if (address(oracleSecurityModule) == address(0)) {
+                _revert(InvalidAddress.selector);
+            }
+
+            price = uint256(oracleSecurityModule.read(ilkId));
+        }
+
+        tag[ilkId] = (priceConverter.par() * _WAD) / price;
+
+        emit CageIlk({ ilkId: ilkId, tag: tag[ilkId], art: globalArt });
     }
 }

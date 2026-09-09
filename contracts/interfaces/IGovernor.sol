@@ -52,8 +52,9 @@ interface IGovernor {
     /**
      * @dev Emitted when the emergency pause begins.
      * @param pausedAt Timestamp when the pause began.
+     * @param scope Bitmask of modules halted for this pause window.
      */
-    event Pause(uint256 pausedAt);
+    event Pause(uint256 pausedAt, uint256 scope);
 
     /**
      * @dev Emitted when the pause is lifted.
@@ -122,11 +123,13 @@ interface IGovernor {
     function cancel(uint256 id) external;
 
     /**
-     * @notice Halts every pausable operation during an emergency.
-     * @dev Deliberately unscoped: every consumer reads the same {paused} boolean, so a pause is always a full stop.
-     *      Auto-expires after 72 hours.
+     * @notice Halts the modules selected by `scope` during an emergency.
+     * @dev Auto-expires after 72 hours. A new pause cannot start until {PAUSE_COOLDOWN} has elapsed since the previous
+     *      pause ended. `scope` is a bitmask of module bits (`_PAUSE_FROB`, `_PAUSE_PSM`, `_PAUSE_BARK`,
+     *      `_PAUSE_AUCTION`, or `_PAUSE_ALL`).
+     * @param scope Bitmask of modules to pause.
      */
-    function pause() external;
+    function pause(uint256 scope) external;
 
     /**
      * @notice Lifts the pause. Governance may lift it early. After 72 hours anyone may.
@@ -134,14 +137,30 @@ interface IGovernor {
     function unpause() external;
 
     /**
+     * @notice Returns whether the pause window is currently active. Auto-expires 72 hours after it began.
+     */
+    function paused() external view returns (bool);
+
+    /**
+     * @notice Returns whether the pause window is active AND includes the given module bit(s).
+     * @param scope Module bit or mask to test against {pauseScope}.
+     */
+    function paused(uint256 scope) external view returns (bool);
+
+    /**
      * @notice Returns the maximum pause duration in seconds, after which anyone can un-pause.
      */
     function PAUSE_MAX() external view returns (uint256);
 
     /**
+     * @notice Returns the mandatory cooldown between the end of one pause and the start of the next.
+     */
+    function PAUSE_COOLDOWN() external view returns (uint256);
+
+    /**
      * @notice Returns the mandatory timelock delay in seconds.
      */
-    function delay() external view returns (uint256);
+    function DELAY() external view returns (uint256);
 
     /**
      * @notice Returns the timestamp when the current pause began.
@@ -149,14 +168,19 @@ interface IGovernor {
     function pausedAt() external view returns (uint256);
 
     /**
+     * @notice Returns the module bitmask of the current (or last) pause.
+     */
+    function pauseScope() external view returns (uint256);
+
+    /**
+     * @notice Returns when the previous pause window ended (early unpause or auto-expiry). Zero before any pause.
+     */
+    function lastPauseEnd() external view returns (uint256);
+
+    /**
      * @notice Returns the change id counter, the number of changes scheduled so far.
      */
     function changeCount() external view returns (uint256);
-
-    /**
-     * @notice Returns whether the system is currently paused.
-     */
-    function paused() external view returns (bool);
 
     /**
      * @notice Returns a scheduled change's details.

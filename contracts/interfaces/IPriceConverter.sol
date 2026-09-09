@@ -15,12 +15,10 @@ interface IPriceConverter {
 
     /**
      * @notice Oracle configuration for a collateral type.
-     * @param pip The collateral's Oracle Security Module. Zero for fixed-price ilks.
      * @param mat The required collateralization ratio [ray]. 400% = 4 * RAY.
-     * @param fixedPrice Whether the ilk is a supported stablecoin pinned to $1 (no oracle).
+     * @param fixedPrice Whether the ilk is a supported stablecoin pinned to $1 (no oracle lookup).
      */
     struct IlkOracle {
-        IOracleSecurityModule pip;
         uint256 mat;
         bool fixedPrice;
     }
@@ -28,12 +26,11 @@ interface IPriceConverter {
     /* ========================== EVENTS ========================== */
 
     /**
-     * @dev Emitted when a collateral type's oracle is assigned.
-     * @param ilkId Identifier of the collateral type.
+     * @dev Emitted when an address dependency is updated.
      * @param what Name of the parameter.
-     * @param pip Address of the Oracle Security Module.
+     * @param addr New address.
      */
-    event File(bytes32 indexed ilkId, bytes32 indexed what, address pip);
+    event File(bytes32 indexed what, address addr);
 
     /**
      * @dev Emitted when a global parameter is updated.
@@ -66,20 +63,20 @@ interface IPriceConverter {
     error MatBelowOne();
 
     /**
-     * @dev Indicates that clearing the fixed flag would leave the ilk with no price source. Assign an oracle via
-     *      `file("pip")` instead, which clears the flag atomically.
+     * @dev Indicates that the collateral type has never been configured (its `mat` is unset), so no spot may be
+     *      derived for it.
      */
-    error WouldOrphanIlk();
+    error IlkNotConfigured();
 
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Assigns which oracle a collateral type reads from.
-     * @param ilkId Identifier of the collateral type.
-     * @param what Name of the parameter {pip}.
-     * @param pip Address of the Oracle Security Module.
+     * @notice Sets an address dependency {oracleSecurityModule}, the single system-wide Oracle Security Module every
+     *         oracle-backed ilk reads from.
+     * @param what Name of the parameter.
+     * @param data New address.
      */
-    function file(bytes32 ilkId, bytes32 what, address pip) external;
+    function file(bytes32 what, address data) external;
 
     /**
      * @notice Updates a global parameter {par}.
@@ -90,8 +87,8 @@ interface IPriceConverter {
 
     /**
      * @notice Sets a collateral type's collateralization ratio {mat} or marks it as a supported stablecoin pinned to
-     *         $1 ({fixed}, 1 to set and 0 to clear). Marking an ilk fixed detaches any assigned oracle, as the two
-     *         kinds are mutually exclusive.
+     *         $1 ({fixed}, 1 to set and 0 to clear). A cleared flag makes the ilk oracle-backed via the single
+     *         system-wide OSM; if the OSM does not serve the ilk, {poke} fails closed to a zero spot.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
      * @param data New value [ray] for {mat}, or 1 or 0 for {fixed}.
@@ -99,18 +96,19 @@ interface IPriceConverter {
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
 
     /**
-     * @notice Shuts the converter down.
-     */
-    function cage() external;
-
-    /**
      * @notice Recalculates a collateral type's price factor and pushes it into the Vault Engine. Fixed-price ilks
-     *         convert at $1 without an oracle lookup. Oracle-backed ilks read the latest delayed price from their OSM.
-     * @dev Public, anyone can trigger it. Does nothing if the price is invalid, and reverts for ilks configured
-     *      neither fixed nor with an oracle.
+     *         convert at $1 without an oracle lookup. Oracle-backed ilks read the latest delayed price from the
+     *         single system-wide OSM.
+     * @dev Public, anyone can trigger it. Zeroes the spot (freezing mints) if the price is invalid, and reverts for
+     *      ilks that were never configured.
      * @param ilkId Identifier of the collateral type.
      */
     function poke(bytes32 ilkId) external;
+
+    /**
+     * @notice Shuts the converter down.
+     */
+    function cage() external;
 
     /**
      * @notice Returns the Vault Engine this converter reports to.
@@ -128,11 +126,15 @@ interface IPriceConverter {
     function live() external view returns (uint256);
 
     /**
+     * @notice Returns the single system-wide Oracle Security Module every oracle-backed ilk reads from.
+     */
+    function oracleSecurityModule() external view returns (IOracleSecurityModule);
+
+    /**
      * @notice Returns a collateral type's oracle configuration.
      * @param ilkId Identifier of the collateral type.
-     * @return pip The collateral's Oracle Security Module. Zero for fixed-price ilks.
      * @return mat The required collateralization ratio [ray].
      * @return fixedPrice Whether the ilk is a supported stablecoin pinned to $1.
      */
-    function ilks(bytes32 ilkId) external view returns (IOracleSecurityModule pip, uint256 mat, bool fixedPrice);
+    function ilks(bytes32 ilkId) external view returns (uint256 mat, bool fixedPrice);
 }

@@ -5,18 +5,27 @@ pragma solidity 0.8.30;
 import { IEnd } from "../contracts/interfaces/IEnd.sol";
 import { IGovernor } from "../contracts/interfaces/IGovernor.sol";
 import { Governor } from "../contracts/governance/Governor.sol";
-import { InvalidAmount, NotLive, SystemPaused } from "../contracts/shared/Errors.sol";
-import { _RAD, _RAY, _USDR_ILK, _WARD_ROLE } from "../contracts/shared/Constants.sol";
+import { InvalidAmount, NotLive, PauseCooldownActive, SystemPaused } from "../contracts/shared/Errors.sol";
+import {
+    _PAUSE_ALL,
+    _PAUSE_BARK,
+    _PAUSE_FROB,
+    _PAUSE_PSM,
+    _RAD,
+    _RAY,
+    _USDR_ILK,
+    _WARD_ROLE
+} from "../contracts/shared/Constants.sol";
 
 import { BaseTest } from "./shared/BaseTest.sol";
 
-/* ========================== GOVERNOR (timelock & pause) ========================== */
+/* ========================== GOVERNOR (TIMELOCK & PAUSE) ========================== */
 
 /**
  * @title GovernanceTest
  * @author Rain Team
- * @notice Adversarial coverage of the Governor: timelock immutability (M-4), schedule/execute/cancel lifecycle, and
- *         the real 72-hour pause auto-expiry (L-6).
+ * @notice Adversarial coverage of the Governor: timelock immutability, schedule/execute/cancel lifecycle, and
+ *         the real 72-hour pause auto-expiry.
  */
 contract GovernanceTest is BaseTest {
     /* ========================== 1. IMMUTABLE DELAY ========================== */
@@ -29,7 +38,7 @@ contract GovernanceTest is BaseTest {
         );
 
         assertFalse(success, "no file function on Governor");
-        assertEq(governor.delay(), 48 hours, "delay fixed at construction");
+        assertEq(governor.DELAY(), 48 hours, "delay fixed at construction");
     }
 
     function test_constructorRejectsZeroDelay() public {
@@ -103,7 +112,7 @@ contract GovernanceTest is BaseTest {
     /* ========================== 3. REAL PAUSE AUTO-EXPIRY ========================== */
 
     function test_pauseAutoExpiresForConsumers() public {
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
         assertTrue(governor.paused(), "paused");
 
         // 72 hours later the pause is over for every consumer, with NO unpause transaction.
@@ -137,7 +146,7 @@ contract GovernanceTest is BaseTest {
         vaultEngine.frob(vaultId, user, user, int256(400e18), int256(100e18));
         vm.stopPrank();
 
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
 
         // frob blocked, including repayment (full stop is stricter than the solvency gate).
         vm.prank(user);
@@ -157,8 +166,43 @@ contract GovernanceTest is BaseTest {
         liquidationTrigger.bark(vaultId, keeper);
     }
 
+    function test_scopedPauseLeavesOtherModulesRunning() public {
+        rainPriceSource.setPrice(1e18);
+        vm.warp(((vm.getBlockTimestamp() / 1800) + 2) * 1800);
+        osm.poke(RAIN_ILK);
+        vm.warp(vm.getBlockTimestamp() + 3600);
+        osm.poke(RAIN_ILK);
+        priceConverter.poke(RAIN_ILK);
+
+        rain.mint(user, 400e18);
+        vm.startPrank(user);
+        rain.approve(address(collateralAdapter), 400e18);
+        collateralAdapter.join(RAIN_ILK, user, 400e18);
+        uint256 vaultId = vaultEngine.open(RAIN_ILK, user);
+        vaultEngine.frob(vaultId, user, user, int256(400e18), int256(100e18));
+        vm.stopPrank();
+
+        // PSM-only pause must NOT freeze liquidations or frobs.
+        governor.pause(_PAUSE_PSM);
+
+        assertTrue(governor.paused(_PAUSE_PSM), "psm scoped");
+        assertFalse(governor.paused(_PAUSE_FROB), "frob not scoped");
+        assertFalse(governor.paused(_PAUSE_BARK), "bark not scoped");
+
+        usdt.mint(keeper, 10e6);
+        vm.startPrank(keeper);
+        usdt.approve(address(psm), 10e6);
+        vm.expectRevert(SystemPaused.selector);
+        psm.sellStable(USDT_ILK, keeper, 10e6);
+        vm.stopPrank();
+
+        // Risk-reducing frob still works (full repay avoids leaving a dusty vault).
+        vm.prank(user);
+        vaultEngine.frob(vaultId, user, user, 0, -int256(100e18));
+    }
+
     function test_unpauseAuthBeforeAndAfterWindow() public {
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
 
         // A stranger cannot unpause early.
         vm.prank(address(0xBAD));
@@ -169,8 +213,11 @@ contract GovernanceTest is BaseTest {
         governor.unpause();
         assertFalse(governor.paused(), "governance early unpause");
 
+        // Cooldown must elapse before a fresh pause.
+        vm.warp(vm.getBlockTimestamp() + governor.PAUSE_COOLDOWN());
+
         // Re-pause; after the window ANYONE can clear the stale flag.
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
         vm.warp(vm.getBlockTimestamp() + 72 hours);
 
         vm.prank(address(0xBAD));
@@ -179,23 +226,27 @@ contract GovernanceTest is BaseTest {
     }
 
     function test_doublePauseReverts() public {
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
 
         vm.expectRevert(IGovernor.AlreadyPaused.selector);
-        governor.pause();
+        governor.pause(_PAUSE_ALL);
     }
 
-    function test_repauseAfterExpiryWorks() public {
-        governor.pause();
+    function test_repauseRequiresCooldown() public {
+        governor.pause(_PAUSE_ALL);
         vm.warp(vm.getBlockTimestamp() + 72 hours);
 
-        // The old pause auto-expired, so a fresh pause is legitimate (new incident, new window).
-        governor.pause();
-        assertTrue(governor.paused(), "fresh pause after expiry");
+        // Auto-expiry alone is not enough: chaining windows is blocked until PAUSE_COOLDOWN elapses.
+        vm.expectRevert(PauseCooldownActive.selector);
+        governor.pause(_PAUSE_ALL);
+
+        vm.warp(vm.getBlockTimestamp() + governor.PAUSE_COOLDOWN());
+        governor.pause(_PAUSE_ALL);
+        assertTrue(governor.paused(), "fresh pause after cooldown");
     }
 }
 
-/* ========================== EMERGENCY SETTLEMENT (End — governance-triggered) ========================== */
+/* ========================== EMERGENCY SETTLEMENT (END — GOVERNANCE-TRIGGERED) ========================== */
 
 /**
  * @title SettlementTest
@@ -347,7 +398,7 @@ contract SettlementTest is BaseTest {
     }
 
     function test_cageIlkHaltsAuctionHouse() public {
-        // Audit C-2: End.cage(ilkId) must cage the ilk's auction house. Before the fix, in-flight auctions kept
+        // Regression: End.cage(ilkId) must cage the ilk's auction house. Before the fix, in-flight auctions kept
         // decaying against the FIXED settlement price — a risk-free, unbounded arbitrage against redeemers once the
         // curve crossed break-even, with the bought collateral permanently leaving the redemption pool.
         _setRainPrice(1e18);
@@ -384,10 +435,10 @@ contract SettlementTest is BaseTest {
     }
 
     function test_skipRestoresArtSnapshotSoFixIsExact() public {
-        // Audit H-4: skip reinstates the auction's debt into the vault (grab) AND must add it back to the ilk's
+        // Regression: skip reinstates the auction's debt into the vault (grab) AND must add it back to the ilk's
         // settlement snapshot. Before the fix, thaw's total debt included the restored debt while art[ilk] did not,
         // so flow divided a short numerator by a full denominator — understating fix and stranding collateral in
-        // End forever (measured ~53% stranded in the audit).
+        // End forever (over half the collateral could be stranded).
         _setRainPrice(1e18);
 
         uint256 vaultId = _openVault(user, 400e18, 100e18);
@@ -431,7 +482,7 @@ contract SettlementTest is BaseTest {
 
         assertEq(end.fix(RAIN_ILK), expectedFix, "fix computed on the full snapshot");
 
-        // The conservation identity H-4 broke: the ENTIRE fixed debt redeemed at fix reclaims exactly the RAIN End
+        // The conservation identity that used to break: the ENTIRE fixed debt redeemed at fix reclaims exactly the RAIN End
         // holds (sub-wei truncation dust aside) — nothing is stranded. Before the fix, the snapshot missed the
         // restored debt, fix was understated by ~50%, and most of the pot was unreachable forever.
         uint256 held = vaultEngine.collateral(RAIN_ILK, address(end));

@@ -174,21 +174,6 @@ interface IEnd {
     function file(bytes32 what, address data) external;
 
     /**
-     * @notice Phase 1: freezes the system. Cages the Vault Engine, the Liquidation Trigger and the Price Converter,
-     *         and starts the settlement clock.
-     * @dev Only governance may call this.
-     */
-    function cage() external;
-
-    /**
-     * @notice Phase 2: fixes a collateral type's settlement price from its last delayed oracle price and snapshots its
-     *         total debt.
-     * @dev Permissionless once settlement has been triggered. Fixed-price ilks settle at exactly $1.
-     * @param ilkId Identifier of the collateral type.
-     */
-    function cage(bytes32 ilkId) external;
-
-    /**
      * @notice Phase 3a: reclaims an in-flight Dutch auction, returning its collateral and debt to the vault it was
      *         seized from so the vault settles like every other.
      * @param ilkId Identifier of the collateral type.
@@ -236,14 +221,24 @@ interface IEnd {
     function cash(bytes32 ilkId, uint256 wad) external;
 
     /**
+     * @notice Phase 1: freezes the system. Cages the Vault Engine, the Liquidation Trigger and the Price Converter,
+     *         and starts the settlement clock.
+     * @dev Only governance may call this.
+     */
+    function cage() external;
+
+    /**
+     * @notice Phase 2: fixes a collateral type's settlement price from its last delayed oracle price and snapshots its
+     *         total debt.
+     * @dev Permissionless once settlement has been triggered. Fixed-price ilks settle at exactly $1.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function cage(bytes32 ilkId) external;
+
+    /**
      * @notice Returns the Vault Engine being settled.
      */
     function VAULT_ENGINE() external view returns (IVaultEngine);
-
-    /**
-     * @notice Returns the liveness flag. `1` while live, `0` once settlement is triggered.
-     */
-    function live() external view returns (uint256);
 
     /**
      * @notice Returns the timestamp at which settlement was triggered.
@@ -259,6 +254,11 @@ interface IEnd {
      * @notice Returns the fixed total debt for redemption [rad]. Zero until {thaw}.
      */
     function debt() external view returns (uint256);
+
+    /**
+     * @notice Returns the liveness flag. `1` while live, `0` once settlement is triggered.
+     */
+    function live() external view returns (uint256);
 
     /**
      * @notice Returns the Liquidation Trigger.

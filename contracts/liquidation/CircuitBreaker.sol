@@ -34,7 +34,7 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
     bytes32 public immutable ILK_ID;
 
     /// @inheritdoc ICircuitBreaker
-    IOracleSecurityModule public immutable PIP;
+    IOracleSecurityModule public immutable ORACLE_SECURITY_MODULE;
 
     /// @inheritdoc ICircuitBreaker
     uint256 public threshold;
@@ -68,14 +68,14 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
     /**
      * @notice Initializes the breaker.
      * @param ilkId_ Identifier of the collateral type to watch.
-     * @param pip_ Address of the Oracle Security Module to watch.
+     * @param oracleSecurityModule_ Address of the Oracle Security Module to watch.
      */
-    constructor(bytes32 ilkId_, IOracleSecurityModule pip_) {
+    constructor(bytes32 ilkId_, IOracleSecurityModule oracleSecurityModule_) {
         if (ilkId_ == bytes32(0)) {
             _revert(InvalidBytes.selector);
         }
 
-        if (address(pip_) == address(0)) {
+        if (address(oracleSecurityModule_) == address(0)) {
             _revert(InvalidAddress.selector);
         }
 
@@ -84,7 +84,7 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
         _grantRole(_WARD_ROLE, msg.sender);
 
         ILK_ID = ilkId_;
-        PIP = pip_;
+        ORACLE_SECURITY_MODULE = oracleSecurityModule_;
 
         threshold = _WAD / 4;
         calmPeriod = 1800;
@@ -114,7 +114,7 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
      * @inheritdoc ICircuitBreaker
      */
     function check() external {
-        (bytes32 val, bool has) = PIP.peek(ILK_ID);
+        (bytes32 val, bool has) = ORACLE_SECURITY_MODULE.peek(ILK_ID);
 
         if (!has) {
             return;

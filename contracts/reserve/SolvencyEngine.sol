@@ -48,13 +48,13 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
     uint256 public reserveFactor;
 
     /// @inheritdoc ISolvencyEngine
-    bool public breached;
-
-    /// @inheritdoc ISolvencyEngine
     IExternalExposure public externalExposure;
 
     /// @inheritdoc ISolvencyEngine
-    IOracleSecurityModule public osm;
+    IOracleSecurityModule public oracleSecurityModule;
+
+    /// @inheritdoc ISolvencyEngine
+    bool public breached;
 
     /// @inheritdoc ISolvencyEngine
     bytes32[] public volatileIlks;
@@ -127,8 +127,8 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
     function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
         if (what == "externalExposure") {
             externalExposure = IExternalExposure(data);
-        } else if (what == "osm") {
-            osm = IOracleSecurityModule(data);
+        } else if (what == "oracleSecurityModule") {
+            oracleSecurityModule = IOracleSecurityModule(data);
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -252,7 +252,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
             // which is the conservative direction (loss rises).
             uint256 collateralValue;
 
-            (bytes32 val, bool has) = osm.peek(ilkId);
+            (bytes32 val, bool has) = oracleSecurityModule.peek(ilkId);
 
             if (has) {
                 collateralValue = (globalInk * uint256(val)) / _WAD;

@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import { IBalanceSheet } from "./IBalanceSheet.sol";
+import { IGovernor } from "./IGovernor.sol";
 import { ICircuitBreaker } from "./ICircuitBreaker.sol";
 import { IVaultEngine } from "./IVaultEngine.sol";
 
@@ -16,7 +17,7 @@ interface ILiquidationTrigger {
 
     /**
      * @notice Liquidation settings for a collateral type.
-     * @param clip The Dutch auction contract for this collateral.
+     * @param dutchAuction The Dutch auction contract for this collateral.
      * @param chop The liquidation penalty [wad]. 13% = 1.13 * WAD.
      * @param hole The maximum active liquidation size for this collateral [rad].
      * @param dirt The amount currently being auctioned for this collateral [rad].
@@ -24,7 +25,7 @@ interface ILiquidationTrigger {
      *        65% = 0.65 * WAD.
      */
     struct IlkLiquidation {
-        address clip;
+        address dutchAuction;
         uint256 chop;
         uint256 hole;
         uint256 dirt;
@@ -71,7 +72,7 @@ interface ILiquidationTrigger {
      * @param ink Collateral seized [wad].
      * @param art Normalized debt seized [wad].
      * @param due Debt to recover before the penalty [rad].
-     * @param clip Auction contract the collateral was sent to.
+     * @param dutchAuction Auction contract the collateral was sent to.
      * @param id Identifier of the started auction.
      */
     event Bark(
@@ -81,7 +82,7 @@ interface ILiquidationTrigger {
         uint256 ink,
         uint256 art,
         uint256 due,
-        address clip,
+        address dutchAuction,
         uint256 id
     );
 
@@ -164,17 +165,12 @@ interface ILiquidationTrigger {
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
 
     /**
-     * @notice Assigns the Dutch auction contract for a collateral type {clip}.
+     * @notice Assigns the Dutch auction contract for a collateral type {dutchAuction}.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
-     * @param clip Address of the Dutch auction contract.
+     * @param dutchAuction Address of the Dutch auction contract.
      */
-    function file(bytes32 ilkId, bytes32 what, address clip) external;
-
-    /**
-     * @notice Shuts the trigger down.
-     */
-    function cage() external;
+    function file(bytes32 ilkId, bytes32 what, address dutchAuction) external;
 
     /**
      * @notice Seizes an under-collateralized vault and starts an auction for its collateral.
@@ -192,6 +188,11 @@ interface ILiquidationTrigger {
      * @param rad Amount of capacity to free [rad].
      */
     function digs(bytes32 ilkId, uint256 rad) external;
+
+    /**
+     * @notice Shuts the trigger down.
+     */
+    function cage() external;
 
     /**
      * @notice Returns the liquidation penalty for a collateral type.
@@ -236,14 +237,14 @@ interface ILiquidationTrigger {
     function circuitBreaker() external view returns (ICircuitBreaker);
 
     /**
-     * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
+     * @notice Returns the Governor consulted for the emergency pause.
      */
-    function governor() external view returns (address);
+    function governor() external view returns (IGovernor);
 
     /**
      * @notice Returns the liquidation settings for a collateral type.
      * @param ilkId Identifier of the collateral type.
-     * @return clip The Dutch auction contract for this collateral.
+     * @return dutchAuction The Dutch auction contract for this collateral.
      * @return chop The liquidation penalty [wad].
      * @return hole The maximum active liquidation size for this collateral [rad].
      * @return dirt The amount currently being auctioned for this collateral [rad].
@@ -251,5 +252,5 @@ interface ILiquidationTrigger {
      */
     function ilks(
         bytes32 ilkId
-    ) external view returns (address clip, uint256 chop, uint256 hole, uint256 dirt, uint256 barkFactor);
+    ) external view returns (address dutchAuction, uint256 chop, uint256 hole, uint256 dirt, uint256 barkFactor);
 }

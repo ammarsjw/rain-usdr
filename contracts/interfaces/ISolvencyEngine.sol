@@ -66,7 +66,7 @@ interface ISolvencyEngine {
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency {externalExposure} or {osm}.
+     * @notice Sets an address dependency {externalExposure} or {oracleSecurityModule}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -140,19 +140,19 @@ interface ISolvencyEngine {
     function reserveFactor() external view returns (uint256);
 
     /**
-     * @notice Returns the breach flag as last computed by {checkInvariant}.
+     * @notice Returns the prediction market layer's exposure reporter.
      */
-    function breached() external view returns (bool);
+    function externalExposure() external view returns (IExternalExposure);
 
     /**
      * @notice Returns the Oracle Security Module the stress scenario prices collateral from.
      */
-    function osm() external view returns (IOracleSecurityModule);
+    function oracleSecurityModule() external view returns (IOracleSecurityModule);
 
     /**
-     * @notice Returns the prediction market layer's exposure reporter.
+     * @notice Returns the breach flag as last computed by {checkInvariant}.
      */
-    function externalExposure() external view returns (IExternalExposure);
+    function breached() external view returns (bool);
 
     /**
      * @notice Returns a volatile collateral type included in the stress calculation.

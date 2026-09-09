@@ -5,7 +5,9 @@ pragma solidity ^0.8.0;
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import { ICollateralAdapter } from "./ICollateralAdapter.sol";
+import { IGovernor } from "./IGovernor.sol";
 import { IReserveAccounting } from "./IReserveAccounting.sol";
+import { ISolvencyEngine } from "./ISolvencyEngine.sol";
 import { IUSDR } from "./IUSDR.sol";
 import { IVaultEngine } from "./IVaultEngine.sol";
 
@@ -138,6 +140,16 @@ interface IPegStabilityModule {
     function USDR() external view returns (IUSDR);
 
     /**
+     * @notice Returns the Solvency Engine consulted before redemptions.
+     */
+    function solvencyEngine() external view returns (ISolvencyEngine);
+
+    /**
+     * @notice Returns the Governor consulted for the emergency pause.
+     */
+    function governor() external view returns (IGovernor);
+
+    /**
      * @notice Returns the configuration of a stablecoin ilk.
      * @param ilkId Identifier of the stablecoin's collateral type.
      * @return token The stablecoin.
@@ -146,14 +158,4 @@ interface IPegStabilityModule {
     function ilks(
         bytes32 ilkId
     ) external view returns (IERC20Metadata token, uint256 to18ConversionFactor, uint256 vaultId);
-
-    /**
-     * @notice Returns the Solvency Engine consulted before redemptions. Zero when unset.
-     */
-    function solvencyEngine() external view returns (address);
-
-    /**
-     * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
-     */
-    function governor() external view returns (address);
 }

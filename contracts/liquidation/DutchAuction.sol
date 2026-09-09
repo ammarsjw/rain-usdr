@@ -13,7 +13,7 @@ import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceCurve } from "../interfaces/IPriceCurve.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
+import { _PAUSE_AUCTION, _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, InvalidBytes, NotLive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -57,25 +57,25 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     uint256 public chost;
 
     /// @inheritdoc IDutchAuction
-    uint256 public live;
-
-    /// @inheritdoc IDutchAuction
     uint256 public stopped;
 
     /// @inheritdoc IDutchAuction
-    address public vow;
+    uint256 public live;
 
     /// @inheritdoc IDutchAuction
-    address public governor;
+    address public balanceSheet;
 
     /// @inheritdoc IDutchAuction
-    ILiquidationTrigger public dog;
+    IGovernor public governor;
 
     /// @inheritdoc IDutchAuction
-    IOracleSecurityModule public pip;
+    ILiquidationTrigger public liquidationTrigger;
 
     /// @inheritdoc IDutchAuction
-    IPriceCurve public calc;
+    IOracleSecurityModule public oracleSecurityModule;
+
+    /// @inheritdoc IDutchAuction
+    IPriceCurve public priceCurve;
 
     /// @inheritdoc IDutchAuction
     uint256[] public active;
@@ -149,16 +149,16 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             _revert(NotLive.selector);
         }
 
-        if (what == "pip") {
-            pip = IOracleSecurityModule(data);
-        } else if (what == "dog") {
-            dog = ILiquidationTrigger(data);
-        } else if (what == "vow") {
-            vow = data;
-        } else if (what == "calc") {
-            calc = IPriceCurve(data);
+        if (what == "oracleSecurityModule") {
+            oracleSecurityModule = IOracleSecurityModule(data);
+        } else if (what == "liquidationTrigger") {
+            liquidationTrigger = ILiquidationTrigger(data);
+        } else if (what == "balanceSheet") {
+            balanceSheet = data;
+        } else if (what == "priceCurve") {
+            priceCurve = IPriceCurve(data);
         } else if (what == "governor") {
-            governor = data;
+            governor = IGovernor(data);
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -221,7 +221,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         if (tip > 0 || chip > 0) {
             coin = tip + (tab * chip) / _WAD;
 
-            VAULT_ENGINE.suck(vow, kpr, coin);
+            VAULT_ENGINE.suck(balanceSheet, kpr, coin);
         }
 
         emit Kick({ id: id, top: top, tab: tab, lot: lot, vaultId: vaultId, usr: usr, kpr: kpr, coin: coin });
@@ -279,7 +279,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             if (tab >= chost && lot * feedPrice >= chost) {
                 coin = tip + (tab * chip) / _WAD;
 
-                VAULT_ENGINE.suck(vow, kpr, coin);
+                VAULT_ENGINE.suck(balanceSheet, kpr, coin);
             }
         }
 
@@ -362,15 +362,15 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             VAULT_ENGINE.flux(ILK_ID, address(this), who, slice);
 
             // Flash-loan-style buying: the callback can resell the collateral and pay in the same transaction.
-            if (data.length > 0 && who != address(VAULT_ENGINE) && who != address(dog)) {
+            if (data.length > 0 && who != address(VAULT_ENGINE) && who != address(liquidationTrigger)) {
                 IDutchAuctionCallee(who).clipperCall(msg.sender, owe, slice, data);
             }
 
             // Collecting payment from the keeper and covering the corresponding debt.
-            VAULT_ENGINE.move(msg.sender, vow, owe);
+            VAULT_ENGINE.move(msg.sender, balanceSheet, owe);
 
             // Freeing auction capacity for the covered portion.
-            dog.digs(ILK_ID, lot == 0 ? tab + owe : owe);
+            liquidationTrigger.digs(ILK_ID, lot == 0 ? tab + owe : owe);
 
             emit Take({ id: id, max: max, price: price, owe: owe, tab: tab, lot: lot, usr: usr });
         }
@@ -400,7 +400,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         // during emergency settlement the caller is the End, which reclaims the collateral into the the seized vault
         // so the position settles like every other. Handing it to the vault owner here instead would erase the debt
         // side and leak value at settlement.
-        dog.digs(ILK_ID, sales[id].tab);
+        liquidationTrigger.digs(ILK_ID, sales[id].tab);
         VAULT_ENGINE.flux(ILK_ID, address(this), msg.sender, sales[id].lot);
 
         _remove(id);
@@ -411,22 +411,22 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     /**
      * @inheritdoc IDutchAuction
      */
-    function cage() external onlyRole(_WARD_ROLE) {
-        live = 0;
+    function upchost() external {
+        (, , , , , uint256 dust, , ) = VAULT_ENGINE.ilks(ILK_ID);
 
-        emit Cage();
+        // Caching dust [rad] times the liquidation penalty chop [wad], scaled back to rad: wmul(dust, chop).
+        chost = (dust * liquidationTrigger.chop(ILK_ID)) / _WAD;
+
+        emit Upchost({ chost: chost });
     }
 
     /**
      * @inheritdoc IDutchAuction
      */
-    function upchost() external {
-        (, , , , , uint256 dust, , ) = VAULT_ENGINE.ilks(ILK_ID);
+    function cage() external onlyRole(_WARD_ROLE) {
+        live = 0;
 
-        // Caching dust [rad] times the liquidation penalty chop [wad], scaled back to rad: wmul(dust, chop).
-        chost = (dust * dog.chop(ILK_ID)) / _WAD;
-
-        emit Upchost({ chost: chost });
+        emit Cage();
     }
 
     /**
@@ -469,7 +469,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             _revert(Stopped.selector);
         }
 
-        if (governor != address(0) && IGovernor(governor).paused()) {
+        if (address(governor) != address(0) && governor.paused(_PAUSE_AUCTION)) {
             _revert(SystemPaused.selector);
         }
     }
@@ -498,7 +498,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      * @return feedPrice The current delayed price [ray].
      */
     function _getFeedPrice() private view returns (uint256 feedPrice) {
-        (bytes32 val, bool has) = pip.peek(ILK_ID);
+        (bytes32 val, bool has) = oracleSecurityModule.peek(ILK_ID);
 
         if (!has) {
             _revert(InvalidPrice.selector);
@@ -515,7 +515,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      * @return price The current price [ray].
      */
     function _status(uint96 tic, uint256 top) private view returns (bool done, uint256 price) {
-        price = calc.price(top, block.timestamp - tic);
+        price = priceCurve.price(top, block.timestamp - tic);
         done = (block.timestamp - tic > tail || (price * _RAY) / top < cusp);
     }
 }

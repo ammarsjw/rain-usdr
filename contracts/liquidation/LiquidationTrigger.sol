@@ -11,7 +11,7 @@ import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
 import { IGovernor } from "../interfaces/IGovernor.sol";
 import { ILiquidationTrigger } from "../interfaces/ILiquidationTrigger.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
-import { _WAD, _WARD_ROLE } from "../shared/Constants.sol";
+import { _PAUSE_BARK, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
 import { InvalidAddress, NotLive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
@@ -49,7 +49,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     ICircuitBreaker public circuitBreaker;
 
     /// @inheritdoc ILiquidationTrigger
-    address public governor;
+    IGovernor public governor;
 
     /// @inheritdoc ILiquidationTrigger
     mapping(bytes32 ilkId => IlkLiquidation liquidation) public ilks;
@@ -107,7 +107,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         } else if (what == "circuitBreaker") {
             circuitBreaker = ICircuitBreaker(data);
         } else if (what == "governor") {
-            governor = data;
+            governor = IGovernor(data);
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -145,23 +145,14 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function file(bytes32 ilkId, bytes32 what, address clip) external onlyRole(_WARD_ROLE) {
-        if (what == "clip") {
-            ilks[ilkId].clip = clip;
+    function file(bytes32 ilkId, bytes32 what, address dutchAuction) external onlyRole(_WARD_ROLE) {
+        if (what == "dutchAuction") {
+            ilks[ilkId].dutchAuction = dutchAuction;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
 
-        emit File({ ilkId: ilkId, what: what, addr: clip });
-    }
-
-    /**
-     * @inheritdoc ILiquidationTrigger
-     */
-    function cage() external onlyRole(_WARD_ROLE) {
-        live = 0;
-
-        emit Cage();
+        emit File({ ilkId: ilkId, what: what, addr: dutchAuction });
     }
 
     /**
@@ -172,8 +163,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             _revert(NotLive.selector);
         }
 
-        // Emergency pause check (full stop).
-        if (governor != address(0) && IGovernor(governor).paused()) {
+        // Emergency pause check (bark scope).
+        if (address(governor) != address(0) && governor.paused(_PAUSE_BARK)) {
             _revert(SystemPaused.selector);
         }
 
@@ -257,7 +248,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         }
 
         // Seizing the vault: collateral moves to the auction, debt moves to the balance sheet.
-        VAULT_ENGINE.grab(vaultId, milk.clip, address(balanceSheet), -int256(dink), -int256(dart));
+        VAULT_ENGINE.grab(vaultId, milk.dutchAuction, address(balanceSheet), -int256(dink), -int256(dart));
 
         uint256 due = dart * rate;
 
@@ -273,7 +264,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             // Starting the Dutch auction. Whoever called bark is eligible for the keeper reward. Any leftover
             // collateral from the auction is returned to the vault's owner. The vault id rides along so emergency
             // settlement can reclaim the auction into the vault it was seized from.
-            id = IDutchAuction(milk.clip).kick({ tab: tab, lot: dink, vaultId: vaultId, usr: owner, kpr: kpr });
+            id = IDutchAuction(milk.dutchAuction).kick({ tab: tab, lot: dink, vaultId: vaultId, usr: owner, kpr: kpr });
         }
 
         emit Bark({
@@ -283,7 +274,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             ink: dink,
             art: dart,
             due: due,
-            clip: milk.clip,
+            dutchAuction: milk.dutchAuction,
             id: id
         });
     }
@@ -296,6 +287,15 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         ilks[ilkId].dirt -= rad;
 
         emit Digs({ ilkId: ilkId, rad: rad });
+    }
+
+    /**
+     * @inheritdoc ILiquidationTrigger
+     */
+    function cage() external onlyRole(_WARD_ROLE) {
+        live = 0;
+
+        emit Cage();
     }
 
     /**

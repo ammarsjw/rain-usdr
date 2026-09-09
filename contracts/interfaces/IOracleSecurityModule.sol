@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import { IPriceSource } from "./IPriceSource.sol";
+import { ISolvencyEngine } from "./ISolvencyEngine.sol";
 
 /**
  * @title IOracleSecurityModule
@@ -35,6 +36,13 @@ interface IOracleSecurityModule {
      * @param addr New address.
      */
     event File(bytes32 indexed what, address addr);
+
+    /**
+     * @dev Emitted when a numeric parameter is updated.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
+    event File(bytes32 indexed what, uint256 data);
 
     /**
      * @dev Emitted when a collateral's price updates are frozen.
@@ -98,6 +106,14 @@ interface IOracleSecurityModule {
      * @param data New address.
      */
     function file(bytes32 what, address data) external;
+
+    /**
+     * @notice Sets a numeric parameter {maxAge}. Zero disables the staleness check; a nonzero value makes {peek}/
+     *         {read} treat prices older than `maxAge` seconds since the last successful poke as invalid.
+     * @param what Name of the parameter.
+     * @param data New value [seconds].
+     */
+    function file(bytes32 what, uint256 data) external;
 
     /**
      * @notice Freezes a collateral's price updates.
@@ -197,7 +213,12 @@ interface IOracleSecurityModule {
     function HOP() external view returns (uint16);
 
     /**
-     * @notice Returns the Solvency Engine softly refreshed on every successful poke. Zero when unset.
+     * @notice Returns the maximum age of a current price in seconds. Zero means no staleness check.
      */
-    function solvencyEngine() external view returns (address);
+    function maxAge() external view returns (uint256);
+
+    /**
+     * @notice Returns the Solvency Engine softly refreshed on every successful poke.
+     */
+    function solvencyEngine() external view returns (ISolvencyEngine);
 }

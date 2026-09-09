@@ -50,12 +50,16 @@ const deployOracles = async () => {
     // Whitelisting the Price Converter to read the OSM.
     await (await osmInstance.grantRole(READER_ROLE, priceConverterAddress)).wait();
 
-    // Configuring RAIN as oracle-backed (400%) and the stablecoins as fixed $1 (100%).
+    // Staleness bound: peek/read (and therefore spot updates) fail closed once the last poke is older than maxAge.
+    const maxAge = process.env.OSM_MAX_AGE ? BigInt(process.env.OSM_MAX_AGE) : 21600n; // 6 hours default.
+    await (await osmInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("maxAge"), maxAge)).wait();
+
+    // Wiring the single system-wide OSM, then configuring RAIN as oracle-backed (400%) and the stablecoins as fixed
+    // $1 (100%).
     const RAY = 10n ** 27n;
     await (
-        await priceConverterInstance["file(bytes32,bytes32,address)"](
-            rainIlk,
-            hardhat.ethers.encodeBytes32String("pip"),
+        await priceConverterInstance["file(bytes32,address)"](
+            hardhat.ethers.encodeBytes32String("oracleSecurityModule"),
             osmAddress
         )
     ).wait();

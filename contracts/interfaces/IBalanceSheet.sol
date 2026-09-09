@@ -2,7 +2,9 @@
 
 pragma solidity ^0.8.0;
 
+import { IOracleSecurityModule } from "./IOracleSecurityModule.sol";
 import { IReserveAccounting } from "./IReserveAccounting.sol";
+import { ISolvencyEngine } from "./ISolvencyEngine.sol";
 import { IVaultEngine } from "./IVaultEngine.sol";
 
 /**
@@ -26,6 +28,13 @@ interface IBalanceSheet {
      * @param addr New address.
      */
     event File(bytes32 indexed what, address addr);
+
+    /**
+     * @dev Emitted when a bytes32 parameter is updated.
+     * @param what Name of the parameter.
+     * @param dataBytes32 New value.
+     */
+    event File(bytes32 indexed what, bytes32 dataBytes32);
 
     /**
      * @dev Emitted when uncovered debt is registered.
@@ -65,6 +74,14 @@ interface IBalanceSheet {
      */
     event SnapshotReserve(uint256 reserve);
 
+    /**
+     * @dev Emitted when treasury RAIN is sold through the bad-debt backstop.
+     * @param buyer Account that paid USDR and received RAIN.
+     * @param rad USDR amount healed [rad].
+     * @param rainWad RAIN amount sold [wad].
+     */
+    event Backstop(address indexed buyer, uint256 rad, uint256 rainWad);
+
     /* ========================== ERRORS ========================== */
 
     /**
@@ -98,22 +115,56 @@ interface IBalanceSheet {
      */
     error ReserveBackingShortfall();
 
+    /**
+     * @dev Indicates that the RAIN backstop has not been configured (missing ilk or OSM).
+     */
+    error BackstopNotConfigured();
+
+    /**
+     * @dev Indicates that there is no unqueued bad debt beyond surplus for the backstop to absorb.
+     */
+    error BackstopNotNeeded();
+
+    /**
+     * @dev Indicates that the cumulative backstop cap has been exhausted.
+     */
+    error BackstopCapExceeded();
+
+    /**
+     * @dev Indicates that the RAIN oracle price is missing or zero.
+     */
+    error BackstopPriceInvalid();
+
+    /**
+     * @dev Indicates that the Balance Sheet holds too little free RAIN collateral for the sale.
+     */
+    error InsufficientBackstopRain();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Adjusts the surplus buffer floor {humpFloor} [rad], the dynamic buffer rate {humpRate} [wad], or the bad
-     *         debt queue delay {wait} [seconds].
+     * @notice Adjusts the surplus buffer floor {humpFloor} [rad], the dynamic buffer rate {humpRate} [wad], the bad
+     *         debt queue delay {wait} [seconds], the backstop lifetime cap {backstopCap} [rad], or the backstop sale
+     *         haircut {backstopHaircut} [wad].
      * @param what Name of the parameter.
      * @param data New value.
      */
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency {buybackReceiver}, {reserveAccounting} or {solvencyEngine}.
+     * @notice Sets an address dependency {buybackReceiver}, {reserveAccounting}, {solvencyEngine} or
+     *         {oracleSecurityModule}.
      * @param what Name of the parameter.
      * @param data New address.
      */
     function file(bytes32 what, address data) external;
+
+    /**
+     * @notice Sets a bytes32 parameter {rainIlk}, the RAIN collateral type used by {backstop}.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
+    function file(bytes32 what, bytes32 data) external;
 
     /**
      * @notice Registers bad debt when an auction fails to fully cover a vault's debt.
@@ -145,17 +196,21 @@ interface IBalanceSheet {
     function suck(address kpr, uint256 rad) external;
 
     /**
+     * @notice Sells treasury RAIN for USDR at a haircuted oracle price and heals the proceeds against unqueued bad
+     *         debt. Waterfall step 4 after the surplus buffer is exhausted.
+     * @dev The caller must have hoped this contract (or be paying from its own balance). Clamped to the remaining hole
+     *      and {backstopCap}. Returns the RAIN amount transferred.
+     * @param rad Maximum USDR amount to heal [rad].
+     * @return rainWad RAIN sold [wad].
+     */
+    function backstop(uint256 rad) external returns (uint256 rainWad);
+
+    /**
      * @notice Sends the surplus above the buffer target toward RAIN buyback-and-burn.
      * @dev Returns 0 without effect when the buffer is at or below target, the strict "fill before burn" rule.
      * @return excess Amount released [rad].
      */
     function distributeSurplus() external returns (uint256 excess);
-
-    /**
-     * @notice Returns the current surplus buffer target: max of {humpFloor} and {humpRate} of the total reserve.
-     * @return target The buffer target [rad].
-     */
-    function humpTarget() external view returns (uint256 target);
 
     /**
      * @notice Refreshes the lagged reserve snapshot used by {humpTarget}, at most once per lag window.
@@ -164,14 +219,10 @@ interface IBalanceSheet {
     function snapshotReserve() external;
 
     /**
-     * @notice Returns the lagged total-reserve snapshot [wad] used by {humpTarget}'s dynamic term.
+     * @notice Returns the current surplus buffer target: max of {humpFloor} and {humpRate} of the total reserve.
+     * @return target The buffer target [rad].
      */
-    function laggedReserve() external view returns (uint256);
-
-    /**
-     * @notice Returns the timestamp of the last lagged-reserve snapshot.
-     */
-    function laggedReserveAt() external view returns (uint256);
+    function humpTarget() external view returns (uint256 target);
 
     /**
      * @notice Returns the Vault Engine this balance sheet reports to.
@@ -199,15 +250,34 @@ interface IBalanceSheet {
     function totalQueuedSin() external view returns (uint256);
 
     /**
-     * @notice Returns the queued bad debt for an era [rad].
-     * @param era Timestamp bucket.
+     * @notice Returns the lagged total-reserve snapshot [wad] used by {humpTarget}'s dynamic term.
      */
-    function sin(uint256 era) external view returns (uint256);
+    function laggedReserve() external view returns (uint256);
 
     /**
-     * @notice Returns the reserve accounting contract used for the dynamic buffer target. Zero when unset.
+     * @notice Returns the timestamp of the last lagged-reserve snapshot.
      */
-    function reserveAccounting() external view returns (IReserveAccounting);
+    function laggedReserveAt() external view returns (uint256);
+
+    /**
+     * @notice Returns the lifetime RAIN-backstop cap [rad].
+     */
+    function backstopCap() external view returns (uint256);
+
+    /**
+     * @notice Returns how much of the backstop cap has already been used [rad].
+     */
+    function backstopUsed() external view returns (uint256);
+
+    /**
+     * @notice Returns the backstop sale haircut [wad]. Sale price = oracle × haircut.
+     */
+    function backstopHaircut() external view returns (uint256);
+
+    /**
+     * @notice Returns the RAIN collateral type used by the backstop.
+     */
+    function rainIlk() external view returns (bytes32);
 
     /**
      * @notice Returns the recipient of surplus distributions, the RAIN buyback-and-burn process.
@@ -215,7 +285,23 @@ interface IBalanceSheet {
     function buybackReceiver() external view returns (address);
 
     /**
-     * @notice Returns the Solvency Engine gating surplus distributions. Zero when unset.
+     * @notice Returns the Solvency Engine gating surplus distributions.
      */
-    function solvencyEngine() external view returns (address);
+    function solvencyEngine() external view returns (ISolvencyEngine);
+
+    /**
+     * @notice Returns the reserve accounting contract used for the dynamic buffer target.
+     */
+    function reserveAccounting() external view returns (IReserveAccounting);
+
+    /**
+     * @notice Returns the OSM used to price treasury RAIN for the backstop.
+     */
+    function oracleSecurityModule() external view returns (IOracleSecurityModule);
+
+    /**
+     * @notice Returns the queued bad debt for an era [rad].
+     * @param era Timestamp bucket.
+     */
+    function sin(uint256 era) external view returns (uint256);
 }

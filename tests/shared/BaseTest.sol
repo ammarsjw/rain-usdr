@@ -114,9 +114,9 @@ abstract contract BaseTest is Test {
         vaultEngine.init(USDT_ILK);
         vaultEngine.init(USDC_ILK);
 
-        // Permanently pinning the stable (PSM) ilks' stability fee to zero (audit C-1). PSM.init requires this.
-        vaultEngine.exemptFee(USDT_ILK);
-        vaultEngine.exemptFee(USDC_ILK);
+        // Permanently pinning the stable (PSM) ilks' stability fee to zero. PSM.init requires this.
+        vaultEngine.file(USDT_ILK, "noFee", 1);
+        vaultEngine.file(USDC_ILK, "noFee", 1);
 
         // Deploying the PSMs and the Governor.
         psm = new PegStabilityModule(collateralAdapter, reserveAccounting);
@@ -139,7 +139,9 @@ abstract contract BaseTest is Test {
         osm.grantRole(_READER_ROLE, address(priceConverter));
         osm.grantRole(_READER_ROLE, address(dutchAuction));
         osm.grantRole(_READER_ROLE, address(circuitBreaker));
-        priceConverter.file(RAIN_ILK, "pip", address(osm));
+        // Staleness: a current price older than six hours fails closed on peek/read (and therefore on poke → spot=0).
+        osm.file("maxAge", 6 hours);
+        priceConverter.file("oracleSecurityModule", address(osm));
         priceConverter.file(RAIN_ILK, "mat", 4 * _RAY);
         priceConverter.file(USDT_ILK, "mat", _RAY);
         priceConverter.file(USDC_ILK, "mat", _RAY);
@@ -152,7 +154,7 @@ abstract contract BaseTest is Test {
         reserveAccounting.grantRole(_COMMITTER_ROLE, address(solvencyEngine));
         reserveAccounting.grantRole(_RECORDER_ROLE, address(psm));
         solvencyEngine.addVolatileIlk(RAIN_ILK);
-        solvencyEngine.file("osm", address(osm));
+        solvencyEngine.file("oracleSecurityModule", address(osm));
         osm.grantRole(_READER_ROLE, address(solvencyEngine));
 
         // Wiring the solvency gate: hard gates (frob, PSM redemption, surplus distribution) and soft refresh hooks
@@ -160,6 +162,10 @@ abstract contract BaseTest is Test {
         vaultEngine.file("solvencyEngine", address(solvencyEngine));
         psm.file("solvencyEngine", address(solvencyEngine));
         balanceSheet.file("solvencyEngine", address(solvencyEngine));
+        balanceSheet.file("oracleSecurityModule", address(osm));
+        balanceSheet.file("rainIlk", RAIN_ILK);
+        balanceSheet.file("backstopCap", 50_000 * _RAD);
+        osm.grantRole(_READER_ROLE, address(balanceSheet));
         osm.file("solvencyEngine", address(solvencyEngine));
 
         // Wiring the liquidation stack (launch parameters from the spec).
@@ -169,7 +175,7 @@ abstract contract BaseTest is Test {
         liquidationTrigger.file("circuitBreaker", address(circuitBreaker));
         liquidationTrigger.file(RAIN_ILK, "chop", (_WAD * 113) / 100);
         liquidationTrigger.file(RAIN_ILK, "hole", 50_000 * _RAD);
-        liquidationTrigger.file(RAIN_ILK, "clip", address(dutchAuction));
+        liquidationTrigger.file(RAIN_ILK, "dutchAuction", address(dutchAuction));
         liquidationTrigger.file(RAIN_ILK, "barkFactor", (_WAD * 65) / 100);
         liquidationTrigger.grantRole(_WARD_ROLE, address(dutchAuction));
         balanceSheet.grantRole(_WARD_ROLE, address(liquidationTrigger));
@@ -178,10 +184,10 @@ abstract contract BaseTest is Test {
         dutchAuction.file("tail", 1800);
         dutchAuction.file("cusp", (_RAY * 40) / 100);
         dutchAuction.file("chip", (_WAD * 2) / 100);
-        dutchAuction.file("pip", address(osm));
-        dutchAuction.file("dog", address(liquidationTrigger));
-        dutchAuction.file("vow", address(balanceSheet));
-        dutchAuction.file("calc", address(priceCurve));
+        dutchAuction.file("oracleSecurityModule", address(osm));
+        dutchAuction.file("liquidationTrigger", address(liquidationTrigger));
+        dutchAuction.file("balanceSheet", address(balanceSheet));
+        dutchAuction.file("priceCurve", address(priceCurve));
         dutchAuction.grantRole(_WARD_ROLE, address(liquidationTrigger));
 
         // Wiring the Governor's emergency pause into the gated entry points (deploy-script parity).
@@ -202,12 +208,20 @@ abstract contract BaseTest is Test {
         dutchAuction.grantRole(_WARD_ROLE, address(end));
         osm.grantRole(_READER_ROLE, address(end));
 
-        // Setting launch ceilings and minimum vault size.
+        // Setting launch ceilings, liquidity-based safety factors, and minimum vault size.
         vaultEngine.file("globalLine", 1_100_000 * _RAD);
         vaultEngine.file(RAIN_ILK, "line", 100_000 * _RAD);
         vaultEngine.file(USDT_ILK, "line", 500_000 * _RAD);
         vaultEngine.file(USDC_ILK, "line", 500_000 * _RAD);
         vaultEngine.file(RAIN_ILK, "dust", 100 * _RAD);
+        // Spec defaults: f_safety 0.05 RAIN / 0.50 stables. Liquidity set at the hard cap so effectiveLine == line
+        // until governance files a tighter market figure.
+        vaultEngine.file(RAIN_ILK, "fSafety", (_WAD * 5) / 100);
+        vaultEngine.file(USDT_ILK, "fSafety", (_WAD * 50) / 100);
+        vaultEngine.file(USDC_ILK, "fSafety", (_WAD * 50) / 100);
+        vaultEngine.file(RAIN_ILK, "liquidity", 2_000_000 * _WAD); // 2M * 0.05 = 100k
+        vaultEngine.file(USDT_ILK, "liquidity", 1_000_000 * _WAD); // 1M * 0.50 = 500k
+        vaultEngine.file(USDC_ILK, "liquidity", 1_000_000 * _WAD);
 
         // Caching the auction's dust-times-chop threshold now that dust and chop are set.
         dutchAuction.upchost();

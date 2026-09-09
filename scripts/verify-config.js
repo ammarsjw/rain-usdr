@@ -86,6 +86,27 @@ const verifyConfig = async () => {
 
     assertEq("VaultEngine.ilks(RAIN-A).dust", (await vaultEngine.ilks(rainIlk)).dust, 100n * RAD);
 
+    // The dynamic (liquidity-based) ceiling is disabled at launch: a zero safety factor leaves the static line as
+    // the only cap, so effectiveLine must equal line until governance opts in by filing fSafety and liquidity.
+    assertEq(
+        "VaultEngine.liquidityCeilings(RAIN-A).fSafety",
+        (await vaultEngine.liquidityCeilings(rainIlk)).fSafety,
+        0n
+    );
+    assertEq(
+        "VaultEngine.liquidityCeilings(USDT-A).fSafety",
+        (await vaultEngine.liquidityCeilings(usdtIlk)).fSafety,
+        0n
+    );
+    assertEq(
+        "VaultEngine.liquidityCeilings(USDC-A).fSafety",
+        (await vaultEngine.liquidityCeilings(usdcIlk)).fSafety,
+        0n
+    );
+    assertEq("VaultEngine.effectiveLine(RAIN-A)", await vaultEngine.effectiveLine(rainIlk), 100000n * RAD);
+    assertEq("VaultEngine.effectiveLine(USDT-A)", await vaultEngine.effectiveLine(usdtIlk), 500000n * RAD);
+    assertEq("VaultEngine.effectiveLine(USDC-A)", await vaultEngine.effectiveLine(usdcIlk), 500000n * RAD);
+
     // Invariant: every PSM stable ilk is permanently fee-exempt; the volatile ilk is not.
     assertEq("VaultEngine.noFee(USDT-A)", await vaultEngine.noFee(usdtIlk), true);
     assertEq("VaultEngine.noFee(USDC-A)", await vaultEngine.noFee(usdcIlk), true);
@@ -100,7 +121,7 @@ const verifyConfig = async () => {
     assertEq("PriceConverter.ilks(USDC-A).mat", (await priceConverter.ilks(usdcIlk)).mat, RAY);
     assertEq("PriceConverter.ilks(USDT-A).fixedPrice", (await priceConverter.ilks(usdtIlk)).fixedPrice, true);
     assertEq("PriceConverter.ilks(USDC-A).fixedPrice", (await priceConverter.ilks(usdcIlk)).fixedPrice, true);
-    assertNonZero("PriceConverter.ilks(RAIN-A).pip", (await priceConverter.ilks(rainIlk)).pip);
+    assertNonZero("PriceConverter.oracleSecurityModule", await priceConverter.oracleSecurityModule());
 
     // ------------------------------------------------------------------ SolvencyEngine
     const solvencyEngine = await hardhat.ethers.getContractAt("SolvencyEngine", addresses.SolvencyEngine);
@@ -108,7 +129,7 @@ const verifyConfig = async () => {
     assertEq("SolvencyEngine.stressMarkdown", await solvencyEngine.stressMarkdown(), WAD / 2n);
     assertEq("SolvencyEngine.stressDepth", await solvencyEngine.stressDepth(), (WAD * 35n) / 100n);
     assertEq("SolvencyEngine.reserveFactor", await solvencyEngine.reserveFactor(), (WAD * 9n) / 10n);
-    assertNonZero("SolvencyEngine.osm", await solvencyEngine.osm());
+    assertNonZero("SolvencyEngine.oracleSecurityModule", await solvencyEngine.oracleSecurityModule());
     assertEq("SolvencyEngine.isVolatile(RAIN-A)", await solvencyEngine.isVolatile(rainIlk), true);
 
     // ------------------------------------------------------------------ BalanceSheet
@@ -120,6 +141,14 @@ const verifyConfig = async () => {
     assertNonZero("BalanceSheet.reserveAccounting", await balanceSheet.reserveAccounting());
     assertNonZero("BalanceSheet.solvencyEngine", await balanceSheet.solvencyEngine());
     assertNonZero("BalanceSheet.buybackReceiver", await balanceSheet.buybackReceiver());
+    assertNonZero("BalanceSheet.oracleSecurityModule", await balanceSheet.oracleSecurityModule());
+    assertEq("BalanceSheet.rainIlk", await balanceSheet.rainIlk(), rainIlk);
+    assertNonZero("BalanceSheet.backstopCap", await balanceSheet.backstopCap());
+    assertEq("BalanceSheet.backstopHaircut", await balanceSheet.backstopHaircut(), (WAD * 90n) / 100n);
+
+    // ------------------------------------------------------------------ OSM
+    const osm = await hardhat.ethers.getContractAt("OracleSecurityModule", addresses.OracleSecurityModule);
+    assertEq("OracleSecurityModule.maxAge", await osm.maxAge(), 21600n);
 
     // ------------------------------------------------------------------ PSM
     const psm = await hardhat.ethers.getContractAt("PegStabilityModule", addresses.PegStabilityModule);
@@ -141,7 +170,7 @@ const verifyConfig = async () => {
     assertEq("LiquidationTrigger.ilks(RAIN-A).chop", rainLiquidation.chop, (WAD * 113n) / 100n);
     assertEq("LiquidationTrigger.ilks(RAIN-A).hole", rainLiquidation.hole, 50000n * RAD);
     assertEq("LiquidationTrigger.ilks(RAIN-A).barkFactor", rainLiquidation.barkFactor, (WAD * 65n) / 100n);
-    assertNonZero("LiquidationTrigger.ilks(RAIN-A).clip", rainLiquidation.clip);
+    assertNonZero("LiquidationTrigger.ilks(RAIN-A).dutchAuction", rainLiquidation.dutchAuction);
 
     assertEq("DutchAuction.buf", await dutchAuction.buf(), (RAY * 105n) / 100n);
     assertEq("DutchAuction.tail", await dutchAuction.tail(), 1800n);
@@ -154,6 +183,8 @@ const verifyConfig = async () => {
     const endInstance = await hardhat.ethers.getContractAt("End", addresses.End);
 
     assertNonZero("Governor.delay", await governor.delay());
+    assertEq("Governor.PAUSE_MAX", await governor.PAUSE_MAX(), 72n * 3600n);
+    assertEq("Governor.PAUSE_COOLDOWN", await governor.PAUSE_COOLDOWN(), 72n * 3600n);
     assertNonZero("End.wait", await endInstance.wait());
     assertNonZero("End.liquidationTrigger", await endInstance.liquidationTrigger());
     assertNonZero("End.balanceSheet", await endInstance.balanceSheet());

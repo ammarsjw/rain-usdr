@@ -2,6 +2,7 @@
 
 pragma solidity ^0.8.0;
 
+import { IGovernor } from "./IGovernor.sol";
 import { ILiquidationTrigger } from "./ILiquidationTrigger.sol";
 import { IOracleSecurityModule } from "./IOracleSecurityModule.sol";
 import { IPriceCurve } from "./IPriceCurve.sol";
@@ -192,7 +193,8 @@ interface IDutchAuction {
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency {pip}, {dog}, {vow} or {calc}.
+     * @notice Sets an address dependency {oracleSecurityModule}, {liquidationTrigger}, {balanceSheet}, {priceCurve}
+     *         or {governor}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -221,12 +223,6 @@ interface IDutchAuction {
     function redo(uint256 id, address kpr) external;
 
     /**
-     * @notice Refreshes the cached dust-times-chop threshold from the Vault Engine and the Liquidation Trigger.
-     * @dev Permissionless. Must be called after `dust` or `chop` changes.
-     */
-    function upchost() external;
-
-    /**
      * @notice Lets a keeper buy some or all of the collateral at the current descending price.
      * @dev Supports flash-loan-style buying via the callback. Reverts if the auction needs a reset or if the current
      *      price exceeds the keeper's maximum.
@@ -245,6 +241,12 @@ interface IDutchAuction {
      * @param id Identifier of the auction.
      */
     function yank(uint256 id) external;
+
+    /**
+     * @notice Refreshes the cached dust-times-chop threshold from the Vault Engine and the Liquidation Trigger.
+     * @dev Permissionless. Must be called after `dust` or `chop` changes.
+     */
+    function upchost() external;
 
     /**
      * @notice Shuts the auction house down. Blocks kick, take and redo; yank remains available so settlement can
@@ -320,40 +322,40 @@ interface IDutchAuction {
     function chost() external view returns (uint256);
 
     /**
-     * @notice Returns the liveness flag. `1` while live, `0` after shutdown.
-     */
-    function live() external view returns (uint256);
-
-    /**
      * @notice Returns the breaker level: 0 = normal, 1 = no new kicks, 2 = no kicks or takes, 3 = no kicks, takes or
      *         redos. Yank is never gated.
      */
     function stopped() external view returns (uint256);
 
     /**
-     * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
+     * @notice Returns the liveness flag. `1` while live, `0` after shutdown.
      */
-    function governor() external view returns (address);
+    function live() external view returns (uint256);
 
     /**
      * @notice Returns the balance sheet that receives auction proceeds.
      */
-    function vow() external view returns (address);
+    function balanceSheet() external view returns (address);
+
+    /**
+     * @notice Returns the Governor consulted for the emergency pause.
+     */
+    function governor() external view returns (IGovernor);
 
     /**
      * @notice Returns the liquidation trigger.
      */
-    function dog() external view returns (ILiquidationTrigger);
+    function liquidationTrigger() external view returns (ILiquidationTrigger);
 
     /**
      * @notice Returns the collateral's Oracle Security Module, used for the starting price.
      */
-    function pip() external view returns (IOracleSecurityModule);
+    function oracleSecurityModule() external view returns (IOracleSecurityModule);
 
     /**
      * @notice Returns the price curve calculator.
      */
-    function calc() external view returns (IPriceCurve);
+    function priceCurve() external view returns (IPriceCurve);
 
     /**
      * @notice Returns the id of an active auction by its position.
