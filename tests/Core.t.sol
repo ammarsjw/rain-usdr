@@ -999,7 +999,7 @@ contract StabilityFeeTest is BaseTest {
         assertGt(rate, (_RAY * 199) / 100, "rate roughly doubled");
 
         // The auction tab reflects the accrued debt times the penalty (chop 113%).
-        (, uint256 tab, , , , , ) = dutchAuction.sales(id);
+        (, , uint256 tab, , , , , ) = dutchAuction.sales(id);
 
         assertGt(tab, 190e18 * rate, "tab includes accrued fees plus penalty");
     }

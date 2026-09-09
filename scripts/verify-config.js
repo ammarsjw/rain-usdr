@@ -26,6 +26,7 @@ const verifyConfig = async () => {
         PriceCurve: process.env.PRICE_CURVE_ADDRESS,
         LiquidationTrigger: process.env.LIQUIDATION_TRIGGER_ADDRESS,
         DutchAuction: process.env.DUTCH_AUCTION_ADDRESS,
+        CircuitBreaker: process.env.CIRCUIT_BREAKER_ADDRESS,
         Governor: process.env.GOVERNOR_ADDRESS,
         End: process.env.END_ADDRESS
     };
@@ -172,11 +173,16 @@ const verifyConfig = async () => {
     assertEq("LiquidationTrigger.ilks(RAIN-A).barkFactor", rainLiquidation.barkFactor, (WAD * 65n) / 100n);
     assertNonZero("LiquidationTrigger.dutchAuction", await liquidationTrigger.dutchAuction());
 
-    assertEq("DutchAuction.buf", await dutchAuction.buf(), (RAY * 105n) / 100n);
-    assertEq("DutchAuction.tail", await dutchAuction.tail(), 1800n);
-    assertEq("DutchAuction.cusp", await dutchAuction.cusp(), (RAY * 40n) / 100n);
+    const rainAuction = await dutchAuction.ilks(rainIlk);
+    assertEq("DutchAuction.ilks(RAIN-A).buf", rainAuction.buf, (RAY * 105n) / 100n);
+    assertEq("DutchAuction.ilks(RAIN-A).tail", rainAuction.tail, 1800n);
+    assertEq("DutchAuction.ilks(RAIN-A).cusp", rainAuction.cusp, (RAY * 40n) / 100n);
     assertEq("DutchAuction.chip", await dutchAuction.chip(), (WAD * 2n) / 100n);
-    assertNonZero("DutchAuction.chost (upchost run)", await dutchAuction.chost());
+    assertNonZero("DutchAuction.ilks(RAIN-A).chost (upchost run)", rainAuction.chost);
+
+    const circuitBreaker = await hardhat.ethers.getContractAt("CircuitBreaker", addresses.CircuitBreaker);
+    assertEq("CircuitBreaker.isWatched(RAIN-A)", await circuitBreaker.isWatched(rainIlk), true);
+    assertEq("CircuitBreaker.ilkCount", await circuitBreaker.ilkCount(), 1n);
 
     // ------------------------------------------------------------------ Governor & End
     const governor = await hardhat.ethers.getContractAt("Governor", addresses.Governor);

@@ -18,6 +18,7 @@ interface IDutchAuction {
 
     /**
      * @notice A live auction.
+     * @param ilkId Identifier of the collateral type being sold.
      * @param pos Index in the active auctions array.
      * @param tab USDR debt to recover, including the penalty [rad].
      * @param lot Collateral for sale [wad].
@@ -27,6 +28,7 @@ interface IDutchAuction {
      * @param top Starting price [ray].
      */
     struct Sale {
+        bytes32 ilkId;
         uint256 pos;
         uint256 tab;
         uint256 lot;
@@ -36,14 +38,36 @@ interface IDutchAuction {
         uint256 top;
     }
 
+    /**
+     * @notice Auction curve settings for a collateral type.
+     * @param buf The auction start markup [ray]. 5% = 1.05 * RAY.
+     * @param tail The reset time in seconds, after which a stale auction may be reset.
+     * @param cusp The reset threshold [ray], below which a stale auction may be reset.
+     * @param chost The cached dust-times-chop threshold used for reward gating and partial purchases [rad].
+     */
+    struct IlkAuction {
+        uint256 buf;
+        uint256 tail;
+        uint256 cusp;
+        uint256 chost;
+    }
+
     /* ========================== EVENTS ========================== */
 
     /**
-     * @dev Emitted when a numeric parameter is updated.
+     * @dev Emitted when a global numeric parameter is updated.
      * @param what Name of the parameter.
      * @param data New value.
      */
     event File(bytes32 indexed what, uint256 data);
+
+    /**
+     * @dev Emitted when a per-collateral numeric parameter is updated.
+     * @param ilkId Identifier of the collateral type.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
+    event File(bytes32 indexed ilkId, bytes32 indexed what, uint256 data);
 
     /**
      * @dev Emitted when an address dependency is updated.
@@ -55,6 +79,7 @@ interface IDutchAuction {
     /**
      * @dev Emitted when a new auction opens.
      * @param id Identifier of the new auction.
+     * @param ilkId Identifier of the collateral type being sold.
      * @param top Starting price [ray].
      * @param tab USDR debt to recover, including the penalty [rad].
      * @param lot Collateral for sale [wad].
@@ -65,10 +90,11 @@ interface IDutchAuction {
      */
     event Kick(
         uint256 indexed id,
+        bytes32 indexed ilkId,
         uint256 top,
         uint256 tab,
         uint256 lot,
-        uint256 indexed vaultId,
+        uint256 vaultId,
         address usr,
         address indexed kpr,
         uint256 coin
@@ -77,6 +103,7 @@ interface IDutchAuction {
     /**
      * @dev Emitted when a keeper buys from an auction.
      * @param id Identifier of the auction.
+     * @param ilkId Identifier of the collateral type being sold.
      * @param max Highest acceptable price stated by the keeper [ray].
      * @param price The price paid [ray].
      * @param owe USDR paid [rad].
@@ -86,6 +113,7 @@ interface IDutchAuction {
      */
     event Take(
         uint256 indexed id,
+        bytes32 indexed ilkId,
         uint256 max,
         uint256 price,
         uint256 owe,
@@ -97,6 +125,7 @@ interface IDutchAuction {
     /**
      * @dev Emitted when a stale auction is reset.
      * @param id Identifier of the auction.
+     * @param ilkId Identifier of the collateral type being sold.
      * @param top Refreshed starting price [ray].
      * @param tab USDR debt to recover, including the penalty [rad].
      * @param lot Collateral for sale [wad].
@@ -106,10 +135,11 @@ interface IDutchAuction {
      */
     event Redo(
         uint256 indexed id,
+        bytes32 indexed ilkId,
         uint256 top,
         uint256 tab,
         uint256 lot,
-        address indexed usr,
+        address usr,
         address indexed kpr,
         uint256 coin
     );
@@ -121,10 +151,11 @@ interface IDutchAuction {
     event Yank(uint256 indexed id);
 
     /**
-     * @dev Emitted when the cached dust-times-chop threshold is refreshed.
+     * @dev Emitted when a collateral type's cached dust-times-chop threshold is refreshed.
+     * @param ilkId Identifier of the collateral type.
      * @param chost The refreshed threshold [rad].
      */
-    event Upchost(uint256 chost);
+    event Upchost(bytes32 indexed ilkId, uint256 chost);
 
     /* ========================== ERRORS ========================== */
 
@@ -186,11 +217,19 @@ interface IDutchAuction {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Adjusts an auction parameter {buf}, {tail}, {cusp}, {chip} or {tip}.
+     * @notice Adjusts a global auction parameter {chip}, {tip} or {stopped}.
      * @param what Name of the parameter.
      * @param data New value.
      */
     function file(bytes32 what, uint256 data) external;
+
+    /**
+     * @notice Adjusts a per-collateral auction curve parameter {buf}, {tail} or {cusp}.
+     * @param ilkId Identifier of the collateral type.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
+    function file(bytes32 ilkId, bytes32 what, uint256 data) external;
 
     /**
      * @notice Sets an address dependency {oracleSecurityModule}, {liquidationTrigger}, {balanceSheet}, {priceCurve}
@@ -203,7 +242,8 @@ interface IDutchAuction {
     /**
      * @notice Opens a new auction for a seized vault's collateral.
      * @dev Only the Liquidation Trigger can call this. The starting price is set to the current market price plus the
-     *      markup.
+     *      ilk's markup.
+     * @param ilkId Identifier of the collateral type being sold.
      * @param tab USDR debt to recover, including the penalty [rad].
      * @param lot Collateral for sale [wad].
      * @param vaultId Identifier of the vault the collateral was seized from (used by emergency settlement to
@@ -212,7 +252,14 @@ interface IDutchAuction {
      * @param kpr Keeper eligible for the kick reward.
      * @return id Identifier of the new auction.
      */
-    function kick(uint256 tab, uint256 lot, uint256 vaultId, address usr, address kpr) external returns (uint256 id);
+    function kick(
+        bytes32 ilkId,
+        uint256 tab,
+        uint256 lot,
+        uint256 vaultId,
+        address usr,
+        address kpr
+    ) external returns (uint256 id);
 
     /**
      * @notice Restarts an auction that has gone too long or fallen too far without a buyer.
@@ -243,10 +290,12 @@ interface IDutchAuction {
     function yank(uint256 id) external;
 
     /**
-     * @notice Refreshes the cached dust-times-chop threshold from the Vault Engine and the Liquidation Trigger.
-     * @dev Permissionless. Must be called after `dust` or `chop` changes.
+     * @notice Refreshes a collateral type's cached dust-times-chop threshold from the Vault Engine and the
+     *         Liquidation Trigger.
+     * @dev Permissionless. Must be called after the ilk's `dust` or `chop` changes.
+     * @param ilkId Identifier of the collateral type.
      */
-    function upchost() external;
+    function upchost(bytes32 ilkId) external;
 
     /**
      * @notice Shuts the auction house down. Blocks kick, take and redo; yank remains available so settlement can
@@ -267,6 +316,13 @@ interface IDutchAuction {
     function list() external view returns (uint256[] memory);
 
     /**
+     * @notice Returns the ids of all active auctions selling a specific collateral type.
+     * @param ilkId Identifier of the collateral type.
+     * @return auctionIds Array of active auction ids for the collateral type.
+     */
+    function list(bytes32 ilkId) external view returns (uint256[] memory auctionIds);
+
+    /**
      * @notice Returns the status of an auction.
      * @param id Identifier of the auction.
      * @return needsRedo Whether the auction needs a reset.
@@ -275,11 +331,6 @@ interface IDutchAuction {
      * @return tab Debt remaining [rad].
      */
     function getStatus(uint256 id) external view returns (bool needsRedo, uint256 price, uint256 lot, uint256 tab);
-
-    /**
-     * @notice Returns the identifier of the collateral type this auction house serves.
-     */
-    function ILK_ID() external view returns (bytes32);
 
     /**
      * @notice Returns the Vault Engine this auction house reports to.
@@ -297,29 +348,19 @@ interface IDutchAuction {
     function tip() external view returns (uint192);
 
     /**
-     * @notice Returns the auction start markup [ray]. 5% = 1.05 * RAY.
-     */
-    function buf() external view returns (uint256);
-
-    /**
-     * @notice Returns the reset time in seconds, after which a stale auction may be reset.
-     */
-    function tail() external view returns (uint256);
-
-    /**
-     * @notice Returns the reset threshold [ray], below which a stale auction may be reset.
-     */
-    function cusp() external view returns (uint256);
-
-    /**
      * @notice Returns the auction id counter, the number of auctions started so far.
      */
     function kicks() external view returns (uint256);
 
     /**
-     * @notice Returns the cached dust-times-chop threshold used for reward gating and partial purchases [rad].
+     * @notice Returns the auction curve settings for a collateral type.
+     * @param ilkId Identifier of the collateral type.
+     * @return buf The auction start markup [ray].
+     * @return tail The reset time in seconds, after which a stale auction may be reset.
+     * @return cusp The reset threshold [ray], below which a stale auction may be reset.
+     * @return chost The cached dust-times-chop threshold used for reward gating and partial purchases [rad].
      */
-    function chost() external view returns (uint256);
+    function ilks(bytes32 ilkId) external view returns (uint256 buf, uint256 tail, uint256 cusp, uint256 chost);
 
     /**
      * @notice Returns the breaker level: 0 = normal, 1 = no new kicks, 2 = no kicks or takes, 3 = no kicks, takes or
@@ -367,6 +408,7 @@ interface IDutchAuction {
     /**
      * @notice Returns a live auction's details.
      * @param id Identifier of the auction.
+     * @return ilkId Identifier of the collateral type being sold.
      * @return pos Index in the active auctions array.
      * @return tab USDR debt to recover, including the penalty [rad].
      * @return lot Collateral for sale [wad].
@@ -380,5 +422,14 @@ interface IDutchAuction {
     )
         external
         view
-        returns (uint256 pos, uint256 tab, uint256 lot, uint256 vaultId, address usr, uint96 tic, uint256 top);
+        returns (
+            bytes32 ilkId,
+            uint256 pos,
+            uint256 tab,
+            uint256 lot,
+            uint256 vaultId,
+            address usr,
+            uint96 tic,
+            uint256 top
+        );
 }

@@ -14,7 +14,7 @@ import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceConverter } from "../interfaces/IPriceConverter.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, InvalidAmount, NotAuthorized, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, InvalidBytes, NotAuthorized, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -154,7 +154,14 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
 
         IDutchAuction dutchAuction = liquidationTrigger.dutchAuction();
 
-        (, uint256 tab, uint256 lot, uint256 vaultId, , , ) = dutchAuction.sales(auctionId);
+        (bytes32 saleIlkId, , uint256 tab, uint256 lot, uint256 vaultId, , , ) = dutchAuction.sales(auctionId);
+
+        // The auction house is global, so the sale's recorded ilk must match the one being settled: a mismatch would
+        // reinstate the debt at the wrong ilk's rate and corrupt the wrong settlement snapshot. Before the auction
+        // house went multi-ilk this was structurally impossible (the auction was looked up via the ilk).
+        if (saleIlkId != ilkId) {
+            _revert(InvalidBytes.selector);
+        }
 
         (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 

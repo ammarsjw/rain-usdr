@@ -105,8 +105,8 @@ abstract contract BaseTest is Test {
         // Deploying the liquidation stack.
         priceCurve = new PriceCurve();
         liquidationTrigger = new LiquidationTrigger(vaultEngine);
-        dutchAuction = new DutchAuction(RAIN_ILK, vaultEngine);
-        circuitBreaker = new CircuitBreaker(RAIN_ILK, osm);
+        dutchAuction = new DutchAuction(vaultEngine);
+        circuitBreaker = new CircuitBreaker(vaultEngine, osm);
 
         // Wiring the core. Vault Engine ilks must exist before the PSM registers its ilks: PSM registration opens the
         // module's dedicated vault in the Vault Engine.
@@ -173,6 +173,7 @@ abstract contract BaseTest is Test {
         liquidationTrigger.file("globalHole", 100_000 * _RAD);
         liquidationTrigger.file("balanceSheet", address(balanceSheet));
         liquidationTrigger.file("circuitBreaker", address(circuitBreaker));
+        circuitBreaker.addIlk(RAIN_ILK);
         liquidationTrigger.file(RAIN_ILK, "chop", (_WAD * 113) / 100);
         liquidationTrigger.file(RAIN_ILK, "hole", 50_000 * _RAD);
         liquidationTrigger.file("dutchAuction", address(dutchAuction));
@@ -180,9 +181,9 @@ abstract contract BaseTest is Test {
         liquidationTrigger.grantRole(_WARD_ROLE, address(dutchAuction));
         balanceSheet.grantRole(_WARD_ROLE, address(liquidationTrigger));
         balanceSheet.grantRole(_WARD_ROLE, address(dutchAuction));
-        dutchAuction.file("buf", (_RAY * 105) / 100);
-        dutchAuction.file("tail", 1800);
-        dutchAuction.file("cusp", (_RAY * 40) / 100);
+        dutchAuction.file(RAIN_ILK, "buf", (_RAY * 105) / 100);
+        dutchAuction.file(RAIN_ILK, "tail", 1800);
+        dutchAuction.file(RAIN_ILK, "cusp", (_RAY * 40) / 100);
         dutchAuction.file("chip", (_WAD * 2) / 100);
         dutchAuction.file("oracleSecurityModule", address(osm));
         dutchAuction.file("liquidationTrigger", address(liquidationTrigger));
@@ -224,6 +225,11 @@ abstract contract BaseTest is Test {
         vaultEngine.file(USDC_ILK, "liquidity", 1_000_000 * _WAD);
 
         // Caching the auction's dust-times-chop threshold now that dust and chop are set.
-        dutchAuction.upchost();
+        dutchAuction.upchost(RAIN_ILK);
+    }
+
+    /// @dev Reads RAIN's cached dust-times-chop threshold from the auction house's per-ilk settings.
+    function _rainChost() internal view returns (uint256 chost) {
+        (, , , chost) = dutchAuction.ilks(RAIN_ILK);
     }
 }

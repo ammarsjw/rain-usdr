@@ -6,7 +6,9 @@ import { CircuitBreaker } from "../contracts/liquidation/CircuitBreaker.sol";
 import { IDutchAuction } from "../contracts/interfaces/IDutchAuction.sol";
 import { ILiquidationTrigger } from "../contracts/interfaces/ILiquidationTrigger.sol";
 import { IOracleSecurityModule } from "../contracts/interfaces/IOracleSecurityModule.sol";
+import { IVaultEngine } from "../contracts/interfaces/IVaultEngine.sol";
 import {
+    IlkAlreadyInitialized,
     InvalidAddress,
     InvalidAmount,
     InvalidBytes,
@@ -257,12 +259,12 @@ contract LiquidationTest is BaseTest {
     }
 
     function test_upchostTracksDustTimesChop() public {
-        assertEq(dutchAuction.chost(), ((100 * _RAD * 113) / 100 / _WAD) * _WAD, "launch chost");
+        assertEq(_rainChost(), ((100 * _RAD * 113) / 100 / _WAD) * _WAD, "launch chost");
 
         vaultEngine.file(RAIN_ILK, "dust", 200 * _RAD);
-        dutchAuction.upchost();
+        dutchAuction.upchost(RAIN_ILK);
 
-        assertEq(dutchAuction.chost(), ((200 * _RAD) * ((_WAD * 113) / 100)) / _WAD, "chost refreshed");
+        assertEq(_rainChost(), ((200 * _RAD) * ((_WAD * 113) / 100)) / _WAD, "chost refreshed");
     }
 
     function test_barkSafeVaultReverts() public {
@@ -308,10 +310,10 @@ contract CircuitBreakerTest is BaseTest {
 
     function test_constructorGuardsAndLaunchParameters() public {
         vm.expectRevert(InvalidAddress.selector);
-        new CircuitBreaker(RAIN_ILK, IOracleSecurityModule(address(0)));
+        new CircuitBreaker(vaultEngine, IOracleSecurityModule(address(0)));
 
-        vm.expectRevert(InvalidBytes.selector);
-        new CircuitBreaker(bytes32(0), osm);
+        vm.expectRevert(InvalidAddress.selector);
+        new CircuitBreaker(IVaultEngine(address(0)), osm);
 
         assertEq(circuitBreaker.threshold(), _WAD / 4, "25% threshold");
         assertEq(circuitBreaker.calmPeriod(), 1800, "30 min calm");
@@ -422,14 +424,14 @@ contract CircuitBreakerTest is BaseTest {
         _setOsmPrice(1e18);
         _seedTrend(12);
 
-        uint256 trendBefore = circuitBreaker.trendPrice();
+        uint256 trendBefore = circuitBreaker.trendPrice(RAIN_ILK);
         assertEq(trendBefore, 1e18, "clean trend");
 
         // One manipulated 10x observation moves the average by at most 1/12.
         _setOsmPrice(10e18);
         circuitBreaker.check();
 
-        uint256 trendAfter = circuitBreaker.trendPrice();
+        uint256 trendAfter = circuitBreaker.trendPrice(RAIN_ILK);
         assertLe(trendAfter, trendBefore + (10e18 - 1e18) / 12 + 1, "anchor moved by at most 1/OBS_COUNT");
     }
 
@@ -453,7 +455,39 @@ contract CircuitBreakerTest is BaseTest {
     }
 
     function test_trendZeroBeforeAnyObservation() public view {
-        assertEq(circuitBreaker.trendPrice(), 0, "empty buffer");
+        assertEq(circuitBreaker.trendPrice(RAIN_ILK), 0, "empty buffer");
+    }
+
+    /* ========================== 4. WATCHED ILK REGISTRY ========================== */
+
+    function test_ilkRegistryGuardsAndLifecycle() public {
+        // Already watched (wired in BaseTest).
+        vm.expectRevert(IlkAlreadyInitialized.selector);
+        circuitBreaker.addIlk(RAIN_ILK);
+
+        // Unknown ilk (never initialized in the Vault Engine).
+        vm.expectRevert(InvalidBytes.selector);
+        circuitBreaker.addIlk("GHOST-A");
+
+        assertTrue(circuitBreaker.isWatched(RAIN_ILK), "watched");
+        assertEq(circuitBreaker.ilkCount(), 1, "one watched ilk");
+
+        // Removal clears the trend state so a re-add starts fresh.
+        _setOsmPrice(1e18);
+        _seedTrend(3);
+        assertGt(circuitBreaker.trendPrice(RAIN_ILK), 0, "trend seeded");
+
+        circuitBreaker.removeIlk(RAIN_ILK);
+
+        assertFalse(circuitBreaker.isWatched(RAIN_ILK), "unwatched");
+        assertEq(circuitBreaker.ilkCount(), 0, "empty set");
+        assertEq(circuitBreaker.trendPrice(RAIN_ILK), 0, "trend cleared on removal");
+
+        vm.expectRevert(InvalidBytes.selector);
+        circuitBreaker.removeIlk(RAIN_ILK);
+
+        circuitBreaker.addIlk(RAIN_ILK);
+        assertTrue(circuitBreaker.isWatched(RAIN_ILK), "re-added");
     }
 }
 
@@ -534,18 +568,21 @@ contract AuctionDepthTest is BaseTest {
     }
 
     function test_kickGuards() public {
+        vm.expectRevert(InvalidBytes.selector);
+        dutchAuction.kick(bytes32(0), 1 * _RAD, 1e18, 1, user, keeper);
+
         vm.expectRevert(IDutchAuction.ZeroTab.selector);
-        dutchAuction.kick(0, 1e18, 1, user, keeper);
+        dutchAuction.kick(RAIN_ILK, 0, 1e18, 1, user, keeper);
 
         vm.expectRevert(IDutchAuction.ZeroLot.selector);
-        dutchAuction.kick(1 * _RAD, 0, 1, user, keeper);
+        dutchAuction.kick(RAIN_ILK, 1 * _RAD, 0, 1, user, keeper);
 
         vm.expectRevert(IDutchAuction.ZeroUser.selector);
-        dutchAuction.kick(1 * _RAD, 1e18, 1, address(0), keeper);
+        dutchAuction.kick(RAIN_ILK, 1 * _RAD, 1e18, 1, address(0), keeper);
 
         vm.prank(address(0xBAD));
         vm.expectRevert();
-        dutchAuction.kick(1 * _RAD, 1e18, 1, user, keeper);
+        dutchAuction.kick(RAIN_ILK, 1 * _RAD, 1e18, 1, user, keeper);
     }
 
     /* ========================== 2. FLASH CALLBACK ========================== */
@@ -608,7 +645,7 @@ contract AuctionDepthTest is BaseTest {
         uint256 id = liquidationTrigger.bark(vaultId, keeper);
 
         (, uint256 price, , uint256 tab) = dutchAuction.getStatus(id);
-        assertEq(tab, dutchAuction.chost(), "tab pinned at chost");
+        assertEq(tab, _rainChost(), "tab pinned at chost");
 
         // A partial (anything less than the full lot value) must revert.
         uint256 slice = (tab / price) / 2;
@@ -672,7 +709,7 @@ contract AuctionDepthTest is BaseTest {
         dutchAuction.cage();
 
         vm.expectRevert(NotLive.selector);
-        dutchAuction.kick(1 * _RAD, 1e18, 1, user, keeper);
+        dutchAuction.kick(RAIN_ILK, 1 * _RAD, 1e18, 1, user, keeper);
 
         (, uint256 price, , ) = dutchAuction.getStatus(id);
 
@@ -696,8 +733,14 @@ contract AuctionDepthTest is BaseTest {
         assertEq(dutchAuction.list()[0], id, "listed");
         assertEq(dutchAuction.active(0), id, "indexed");
 
+        // The per-ilk filter view returns matches for the sale's ilk and nothing for others.
+        assertEq(dutchAuction.list(RAIN_ILK).length, 1, "per-ilk listed");
+        assertEq(dutchAuction.list(RAIN_ILK)[0], id, "per-ilk id");
+        assertEq(dutchAuction.list(bytes32("OTHER-A")).length, 0, "other ilk empty");
+
         dutchAuction.yank(id);
         assertEq(dutchAuction.count(), 0, "removed");
+        assertEq(dutchAuction.list(RAIN_ILK).length, 0, "per-ilk removed");
     }
 
     function test_fileGuardsAndCageGating() public {
@@ -710,7 +753,7 @@ contract AuctionDepthTest is BaseTest {
         dutchAuction.cage();
 
         vm.expectRevert(NotLive.selector);
-        dutchAuction.file("buf", _RAY);
+        dutchAuction.file(RAIN_ILK, "buf", _RAY);
 
         vm.expectRevert(NotLive.selector);
         dutchAuction.file("oracleSecurityModule", address(osm));
@@ -871,7 +914,7 @@ contract LiquidationRegressionTest is BaseTest {
         _setRainPrice(0.6e18);
 
         uint256 id = liquidationTrigger.bark(vaultId, keeper);
-        uint256 chost = dutchAuction.chost();
+        uint256 chost = _rainChost();
 
         (, , , uint256 tab) = dutchAuction.getStatus(id);
         assertEq(tab, 226 * _RAD, "tab = 2x chost");
@@ -918,7 +961,7 @@ contract LiquidationRegressionTest is BaseTest {
 
         dutchAuction.take(id, type(uint256).max, type(uint256).max, address(this), "");
 
-        (, uint256 tab, , , , , ) = dutchAuction.sales(id);
+        (, , uint256 tab, , , , , ) = dutchAuction.sales(id);
         assertEq(tab, 0, "auction fully takeable under the new tau");
     }
 }

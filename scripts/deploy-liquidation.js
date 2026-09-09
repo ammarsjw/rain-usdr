@@ -45,10 +45,10 @@ const deployLiquidation = async () => {
         liquidationTriggerConstructorArguments
     );
 
-    const dutchAuctionConstructorArguments = [rainIlk, vaultEngineAddress];
+    const dutchAuctionConstructorArguments = [vaultEngineAddress];
     const dutchAuctionAddress = await deployContract(dutchAuctionName, dutchAuctionConstructorArguments);
 
-    const circuitBreakerConstructorArguments = [rainIlk, osmAddress];
+    const circuitBreakerConstructorArguments = [vaultEngineAddress, osmAddress];
     const circuitBreakerAddress = await deployContract(circuitBreakerName, circuitBreakerConstructorArguments);
 
     // Setting up the liquidation stack.
@@ -114,18 +114,25 @@ const deployLiquidation = async () => {
         )
     ).wait();
 
-    // Dutch auction: 5% start markup, 30 minute reset time, 40% reset threshold, 2% keeper reward.
+    // Dutch auction: per-ilk curve for RAIN (5% start markup, 30 minute reset time, 40% reset threshold) and the
+    // global 2% keeper reward.
     await (
-        await dutchAuctionInstance["file(bytes32,uint256)"](
+        await dutchAuctionInstance["file(bytes32,bytes32,uint256)"](
+            rainIlk,
             hardhat.ethers.encodeBytes32String("buf"),
             (RAY * 105n) / 100n
         )
     ).wait();
     await (
-        await dutchAuctionInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("tail"), 1800n)
+        await dutchAuctionInstance["file(bytes32,bytes32,uint256)"](
+            rainIlk,
+            hardhat.ethers.encodeBytes32String("tail"),
+            1800n
+        )
     ).wait();
     await (
-        await dutchAuctionInstance["file(bytes32,uint256)"](
+        await dutchAuctionInstance["file(bytes32,bytes32,uint256)"](
+            rainIlk,
             hardhat.ethers.encodeBytes32String("cusp"),
             (RAY * 40n) / 100n
         )
@@ -172,16 +179,18 @@ const deployLiquidation = async () => {
     await (await dutchAuctionInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
     await (await balanceSheetInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
 
-    // Circuit breaker: 30 minute calm period, 5 minute observation interval (constructor defaults; set explicitly).
+    // Circuit breaker: 30 minute calm period, 5 minute observation interval (constructor defaults; set explicitly),
+    // and watching RAIN (the volatile ilk).
     await (
         await circuitBreakerInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("calmPeriod"), 1800n)
     ).wait();
     await (
         await circuitBreakerInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("obsInterval"), 300n)
     ).wait();
+    await (await circuitBreakerInstance.addIlk(rainIlk)).wait();
 
-    // Caching the auction's dust-times-chop threshold now that dust and chop are set.
-    await (await dutchAuctionInstance.upchost()).wait();
+    // Caching the auction's dust-times-chop threshold for RAIN now that dust and chop are set.
+    await (await dutchAuctionInstance.upchost(rainIlk)).wait();
 
     console.log("Liquidation setup complete");
 

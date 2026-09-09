@@ -114,9 +114,9 @@ const deployGovernance = async () => {
         )
     ).wait();
 
-    // Refreshing the auction's dust-times-chop cache now that dust is final.
+    // Refreshing the auction's dust-times-chop cache for RAIN now that dust is final.
     const dutchAuctionInstance = await hardhat.ethers.getContractAt("DutchAuction", dutchAuctionAddress);
-    await (await dutchAuctionInstance.upchost()).wait();
+    await (await dutchAuctionInstance.upchost(rainIlk)).wait();
 
     // Wiring the Governor's emergency pause into the gated entry points.
     const governorWhat = hardhat.ethers.encodeBytes32String("governor");

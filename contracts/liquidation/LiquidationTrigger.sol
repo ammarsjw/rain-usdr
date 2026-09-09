@@ -256,7 +256,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             // Starting the Dutch auction. Whoever called bark is eligible for the keeper reward. Any leftover
             // collateral from the auction is returned to the vault's owner. The vault id rides along so emergency
             // settlement can reclaim the auction into the vault it was seized from.
-            id = dutchAuction.kick({ tab: tab, lot: dink, vaultId: vaultId, usr: owner, kpr: kpr });
+            id = dutchAuction.kick({ ilkId: ilkId, tab: tab, lot: dink, vaultId: vaultId, usr: owner, kpr: kpr });
         }
 
         emit Bark({
