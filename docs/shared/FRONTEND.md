@@ -3,295 +3,442 @@
 > Contract set: `feature/rate-accrual` @ `017b36a` (branched from `main`, which contains the End + rev-4 remediations).
 > Supersedes the `f881aff`/`9a9c81a` doc. Changes in this revision: **(1) stability fees exist** — `rate` is no longer fixed at RAY; debt = `art × rate` with `rate` live-growing per ilk; **(2) `ilks()` tuple gained `duty` and `rho`** — every decoder of the old 6-tuple breaks; **(3) new permissionless `VaultEngine.drip(ilkId)`** + `Drip` event + `feeRecipient` wiring; **(4) position cards must VIRTUALIZE debt between drips; (5) NEW @ `017b36a` — the solvency gate is now self-enforcing at every risk-increasing entry point:** borrow/withdraw `frob`s recompute the invariant on-chain (like `buyStable` already did) and revert `SolvencyGateActive` on breach — `isBreached()` reads are for pre-disabling buttons only, never a guarantee; simulate every gated tx. Everything from the prior revision (multi-vault, auction breaker, self-checking redemption gate, End, immutable timelock delay) carries over.
 
-## 0. Conventions used in this doc
+> **What this document is.** The previous revisions of this file were a requirements doc written from the contract side. This revision rewrites it to describe **how the `rain-usdr` frontend is actually integrated** against the deployed contracts, with file references so code and doc can be checked against each other. Contract facts that were stated but turned out not to match the deployment are corrected inline and marked **[corrected]**.
+>
+> Auctions have their own document: see `FRONTEND-AUCTION.md`. This file covers units, the account model, mint, redeem, borrow, solvency, data sources and polling.
+>
+> Deployment audited: **Arbitrum One (42161)**, `NEXT_PUBLIC_ENV=development`. All on-chain values re-read 2026-09-09.
 
-**Units.** Every number in the protocol is one of:
+---
+
+## 0. Conventions
+
+### 0.0 Units
 
 | Unit | Decimals | Used for |
 | --- | --- | --- |
 | `wad` | 1e18 | token quantities, normalized debt (`art`, `globalArt`), collateral (`ink`, `globalInk`), reserve figures |
-| `ray` | 1e27 | rates and price factors (`rate`, `duty`, `spot`, `mat`, auction prices `top`/`price`/`max`, `buf`, `cusp`) |
-| `rad` | 1e45 | internal USDR debt values (`debt`, `globalLine`, `line`, `dust`, `hole`, `globalHole`, `tab`, internal `usdr`/`sin` balances) = wad × ray |
+| `ray` | 1e27 | rates and price factors (`rate`, `duty`, `spot`, `mat`, auction prices, `buf`, `cusp`) |
+| `rad` | 1e45 | internal USDR values (`debt`, `globalLine`, `line`, `dust`, `hole`, `tab`, internal `usdr`/`sin`) = wad x ray |
 
-Token decimals: **USDR = 18. USDT/USDC = 6. RAIN = 18.** The adapter/PSM convert 6→18 internally (`to18ConversionFactor = 1e12`); *external* calls always pass amounts in the **token's native decimals**.
+Token decimals: **USDR 18, USDT 6, USDC 6, RAIN 18.** The adapter/PSM convert 6→18 internally (`to18ConversionFactor = 1e12`); external calls always pass the token's native decimals.
 
-Conversions you will use constantly:
-- rad → USDR (18-dec display): `x / 1e27`
-- rad → whole dollars: `x / 1e45`
-- wad × ray → rad; rad / ray → wad; rad / wad → ray
+**As built.** `src/lib/contracts.ts` holds `TOKEN_DECIMALS` and treats USDT/USDC/USDR as $1-pegged constants. RAIN has no static price — it comes from `useRainPrice()`, a server-side CoinGecko proxy at `/api/rain-price`.
 
-### 0.1 The vault model (read before anything else)
+Fixed-point arithmetic is `BigInt` throughout the auction path (`src/lib/auctionQuote.ts`). Elsewhere — mint, redeem, borrow, solvency — values are converted to `number` for display after the bounds have been computed in `BigInt`. The one rule enforced everywhere: **a balance check or a submitted amount never round-trips through a `number`.**
 
-Positions ("vaults") are identified by a **sequential `uint256 vaultId`**, allocated by `VaultEngine.open(ilkId, usr)`. Key facts:
+### 0.1 The vault model
 
-- **One user can hold any number of vaults per ilk.** Each vault has its own `ink`/`art`, its own health, and is liquidated independently.
-- A vault is **permanently bound** to one ilk and one owner at open time. There is **no transfer** (`give` does not exist) and ids are never reused.
-- `VaultEngine.ownerOf(vaultId)` → owner address; `ilkOf(vaultId)` → ilk; `vaultCount()` → latest id; `urns(vaultId)` → `(ink, art)`.
-- `open` is **permissionless** and takes an explicit `usr`: a future router can open vaults on behalf of users. When the frontend calls it directly, pass the connected wallet as `usr`.
-- `hope`/`nope` (operator permissions) remain **address-level**: an operator approved via `hope` can manage **all** of the owner's vaults. There is no per-vault approval.
+Positions are identified by a sequential `uint256 vaultId` from `VaultEngine.open(ilkId, usr)`.
 
-**Frontend mapping: one position card = one `vaultId`.** "Open a position" = `open()` + `frob(newVaultId, …)`. Depositing into an existing position = `frob(existingVaultId, …)` — same card updates, never a new card. A card disappears when its vault reaches `ink == 0 && art == 0` (fully closed or fully liquidated).
+- One user can hold any number of vaults per ilk; each is liquidated independently.
+- A vault is permanently bound to one ilk and one owner. No transfer; ids never reused.
+- `ownerOf(vaultId)`, `ilkOf(vaultId)`, `vaultCount()`, `urns(vaultId) -> (ink, art)`.
+- `hope`/`nope` are **address-level**: an operator approved via `hope` can manage all of that address's vaults. There is no per-vault approval.
 
-### 0.15 Stability fees (NEW — read before rendering any debt number)
+**As built.** One position card = one `vaultId`. A card disappears at `ink == 0 && art == 0`. `vaultId` is used directly as the React key.
 
-Each ilk now carries:
-- **`duty`** [ray] — per-second compounding factor. `RAY` (1e27) = zero fee. E.g. 2% APY ≈ `1.000000000627937192491029810e27`.
-- **`rho`** — timestamp of the last accrual.
-- **`rate`** [ray] — the debt multiplier, now **live-growing**: starts at RAY and increases every time `drip(ilkId)` runs.
+### 0.2 Stability fees — `duty` is live **[corrected]**
 
-Mechanics that matter to the frontend:
-- **`VaultEngine.drip(bytes32 ilkId) returns (uint256)` is public and permissionless** — anyone can accrue. Emits `Drip(ilkId indexed, rate, rad)`.
-- **`frob` auto-drips whenever `dart != 0`**, `bark` drips before liquidating, and filing a new `duty` drips at the old duty first — users never get charged retroactively and never escape accrued fees. Gas estimate for borrow/repay txs is higher than before (rpow + fee-credit inside).
-- Accrued fees are minted as internal USDR to **`feeRecipient()`** (the Balance Sheet) as surplus, with `debt()` increased equally.
-- After `cage()`, `drip` is a no-op — rates freeze for settlement.
-- **What interest means for the user (the number-one support question):** interest accrues on the **debt side only**. Collateral (`ink`) is untouched — repaying the full (grown) debt always frees **exactly the RAIN that was locked**, never less. A user who borrows 1,950 USDR at 8%/yr owes ~2,106 USDR a year later and gets 100% of their RAIN back on close. Render the growing delta explicitly ("+X USDR interest" on the card, as in the design mocks) so the repay quote > original draw is never a surprise.
-- **NEW @ `017b36a`: `drip` softly refreshes the solvency flag** — when a nonzero fee accrues it also runs `checkInvariant()` (never reverts). Practical effect for the UI: `isBreached()` and `InvariantChecked` events now update from ordinary user activity and 30-min pokes, so the solvency badge is near-real-time without any keeper.
-
-**⚠️ VIRTUALIZE DEBT.** Between drips, the stored `rate` is stale. Any debt number you display must be computed as:
+Previous revisions stated: *"All launch duties are `RAY` (zero fee) until governance files otherwise."* **This is no longer true.** Read live from `VaultEngine.ilks("RAIN-A")`:
 
 ```
-rate_now = rpow(duty, now − rho, RAY) × rate / RAY      // ray
-debt_wad = art × rate_now / 1e27
+duty = 1000000003022265980097387650   ->  10.00% APY
 ```
 
-with `rpow` = fixed-point binary exponentiation (same as Maker; a bigint JS implementation is ~10 lines — square-and-multiply with RAY rounding). At `duty == RAY` this degrades to `rate_now = rate`, so ship it unconditionally. Re-evaluate per block or on a timer; a repay of "the full debt" should be quoted at the **next block's** virtualized rate plus a small buffer, since debt keeps growing until the tx lands (the excess `dart` simply isn't needed — compute `dart = art` for a full close instead of converting from USDR).
+Governance has filed a duty on RAIN-A. Any integrator who read the old line and skipped virtualization is understating every debt figure on screen and rendering liquidation prices that are too low.
 
-### 0.2 Renames & ABI changes (old → current, all ABI-visible)
+Mechanics:
 
-Carried over from the previous doc:
-- `Art` → **`globalArt`**; `Line` → **`globalLine`**; `Hole/Dirt` → **`globalHole`/`globalDirt`**; `gem(...)` → **`collateral(ilkId, user)`**; `sellGem`/`buyGem` → **`sellStable`/`buyStable`**; `rely`/`deny` → OZ AccessControl (`RoleGranted`/`RoleRevoked`); `reserve()` → **`totalReserve()`**; custom errors everywhere (decode 4-byte selectors, not strings).
+- **`rate`** [ray] is live-growing; `rho` is the last accrual timestamp.
+- `VaultEngine.drip(ilkId)` is permissionless. `frob` auto-drips when `dart != 0`; `bark` drips before liquidating; filing a new `duty` drips at the old duty first.
+- Accrued fees mint internal USDR to `feeRecipient()` as surplus, with `debt()` up equally.
+- Interest accrues on the **debt side only**. Collateral (`ink`) is untouched — repaying the full grown debt always frees exactly the RAIN that was locked.
 
-Carried over from the previous revision (multi-vault):
-- **`VaultEngine.frob(uint256 vaultId, address v, address w, int256 dink, int256 dart)`** — was `frob(ilkId, u, v, w, dink, dart)`. The ilk is implied by the vault; `u` is gone.
-- **`VaultEngine.grab(uint256 vaultId, address v, address w, int256 dink, int256 dart)`** — same reshape (ward-only, listed for indexers).
-- **`VaultEngine.urns(uint256 vaultId)`** — was `urns(ilkId, owner)`. Single-key lookup.
-- **`VaultEngine.open(bytes32 ilkId, address usr) returns (uint256 vaultId)`** + event **`Open(ilkId, owner, vaultId)`** + getters `ownerOf`/`ilkOf`/`vaultCount`.
-- **`LiquidationTrigger.bark(uint256 vaultId, address kpr)`** — was `bark(ilkId, urn, kpr)`.
-- **`Frob`/`Grab` events** now `(ilkId indexed, vaultId indexed, v, w, dink, dart)`; **`Bark`** now `(ilkId indexed, vaultId indexed, urn indexed, ink, art, due, clip, id)` where `urn` is the **owner address** (leftover-collateral recipient).
-- **PSM fees removed**: `tin`/`tout` no longer exist anywhere in the ABI. `PSM.ilks(ilkId)` now returns `(token, to18ConversionFactor, vaultId)` — the third field is the PSM's own dedicated vault for that stable ilk (useful, see §2).
-- Errors to decode: `VaultNotFound()` (frob/grab/bark on an unopened id), `SolvencyGateActive()` (see §5.1), `SystemPaused()` (governance emergency pause), `InvalidBarkFactor()`, `NoPartialPurchase()`, `NeedsReset()`, `InsufficientFreeSlack()`, `DustAmount()`, `CeilingExceeded()`.
+**Debt must be virtualized between drips:**
 
-New in this revision (stability fees):
-- **`VaultEngine.ilks(ilkId)` now returns an 8-tuple:** `(uint256 globalArt, uint256 globalInk, uint256 rate, uint256 spot, uint256 line, uint256 dust, uint256 duty, uint256 rho)` — **the two new fields are appended at the end.** Every existing 6-tuple destructure breaks. This is the single most breaking change in this revision; grep every `ilks(` call site.
-- **New: `VaultEngine.drip(bytes32 ilkId) returns (uint256 newRate)`** — permissionless, plus event **`Drip(bytes32 indexed ilkId, uint256 rate, uint256 rad)`**.
-- **New: `VaultEngine.feeRecipient()`** address getter; new address File key `"feeRecipient"`.
-- **New per-ilk File key `"duty"`** (`File(ilkId, "duty", data)`): must be ≥ RAY, and the contract drips at the *old* duty before applying — parameter-history UIs should render `Drip` and `File("duty")` in the same timeline.
-- New errors to decode: **`InvalidDuty()`** (duty < RAY filed), **`FeeRecipientNotSet()`** (fees would accrue with no recipient wired — deploy-wiring bug, should never surface in production).
-- `init` now also sets `duty = RAY` and `rho = now` (indexers deriving ilk state from `Init` should initialize the new fields).
+```
+rate_now = rpow(duty, now - rho, RAY) * rate / RAY      // ray
+debt_wad = art * rate_now / 1e27
+```
 
-**Ilks at launch:** `"RAIN-A"`, `"USDT-A"`, `"USDC-A"` (bytes32). Never hardcode the picker — drive it from adapter `Init` events (see §7). All launch duties are `RAY` (zero fee) until governance files otherwise.
+**As built.** `src/utils/rateAccrual.ts` exports `virtualizeRate`, used by **seven** hooks: `useBorrowMarket`, `useMintCapacity`, `usePositionLimits`, `useOpenPosition`, `useManagePosition`, `useSolvencyOnChain`, and via them every position card and borrow form. No screen displays a debt figure computed from the stored `rate`.
 
-**⚠️ Gated reads (unchanged):** `OracleSecurityModule.peek/peep/read` are `onlyRole(_READER_ROLE)` — an arbitrary frontend `eth_call` will revert. Prefer: (a) derive the delayed price from public state: `price_wad = ilks(ilkId).spot × mat / 1e27 / 1e9` (`spot` from `VaultEngine.ilks`, `mat` from `PriceConverter.ilks`); (b) index `Poke(ilkId, current, next)` events (wad, uint128); (c) governance `kiss` on a dedicated read-proxy. Do **not** design around calling `peek` from user wallets.
+The frontend **never calls `drip()`** — it is a write, and `frob` drips implicitly on every borrow/repay. Accrual is therefore driven by user activity, not by the UI.
 
-**Carried over from the previous revision (End + rev-4):**
-- **`DutchAuction.kick(tab, lot, vaultId, usr, kpr)`** and **`Kick(id, top, tab, lot, vaultId indexed, usr, kpr, coin)`** — `usr` is no longer indexed; `vaultId` is. `sales(id)` now returns `(pos, tab, lot, vaultId, usr, tic, top)` — anything destructuring the old 6-tuple breaks.
-- **`DutchAuction.yank`** sends leftover collateral to the **caller** (governance/End), no longer to the vault owner. `take`-path refunds to the owner are unchanged.
-- **On DutchAuction:** `stopped()` (0–3 breaker), `governor()`, `cage()`, error `Stopped()`. File keys `"stopped"`, `"governor"`.
-- **Governor:** `file` removed entirely; `delay()` is immutable. `paused()` now auto-expires — after 72h it returns false with no unpause tx (poll it, don't cache the Pause event).
-- **SolvencyEngine:** `priceConverter()` getter is gone → `osm()`. Error `ParameterOutOfBounds()`.
-- **Contract: `End`** (address in `.env` as `END_ADDRESS`) — see §9.
-- Adapter error: `FeeOnTransferToken()`. Zero-amount `join`/`exit`/`burn` now revert `InvalidAmount` — disable buttons at 0 instead of letting a no-op tx through.
+### 0.3 This is a smart-account app — read before any tx flow below
+
+The single largest difference from a conventional wagmi integration, and the reason every "tx flow" in this document is shaped the way it is.
+
+1. The user connects an **EOA** (injected / WalletConnect / Coinbase, via RainbowKit).
+2. `src/utils/getAlchemySmartAccount.ts` derives a **counterfactual Alchemy Account Kit smart account** from that EOA. The address is deterministic, so it is memoised per owner.
+3. `SmartAccountInitializer` writes the client into a module-level store (`src/utils/smartClientStore.ts`).
+4. **Every balance read and every write uses the smart-account address, not the EOA.** `balanceOf`, `urns`, `collateral`, `usdr`, `can` — all keyed on the smart account.
+5. Writes go out as **EIP-5792 `sendCalls` batches** via `src/utils/sendGaslessCall.ts`, through the connector — **not** through the wagmi HTTP transport.
+
+Consequences that contradict the older tx-flow descriptions:
+
+- **`hope` is one-time per smart account, not per EOA.** Wiring it to the connected wallet address is a silent bug: `can(smartAccount, adapter)` stays 0 and `frob` reverts `NotAllowed()`.
+- Sequences described as "three txs, strictly sequential" are **one batch** here, except where a later call depends on a value only knowable after an earlier one lands (see §3 and `FRONTEND-AUCTION.md` §9.1).
+- **Gas is sponsored** via an Alchemy gas policy, and the app then charges the user the equivalent **in USDT**, appended as an extra transfer call in the same batch (`src/utils/gasFee.ts`, `FEE_BUFFER_MULTIPLIER = 1.2`). `estimateGasFeeUsd` dry-runs the batch through `prepareCalls` to read real gas limits, then prices them with `useEthPrice`. A user with no USDT sees *"Insufficient USDT to cover the network fee."*
+- A **session key** signs batches silently after a one-time grant (`grantGaslessPermission`, `sessionSigner.ts`). On expiry the code re-grants, then falls back to the owner signer, which prompts the wallet.
+- `sendGaslessCall` waits for `waitForCallsStatus` and throws on `status === "failure"`, so callers never show a false-positive success.
+
+The one exception: `useTransfer` (sending tokens out of the connected EOA) uses plain wagmi `writeContract`. Everything else — mint, redeem, borrow, manage, withdraw, auction buy — goes through the gasless batch path.
+
+### 0.4 ABI shapes in use
+
+- **`VaultEngine.ilks(ilkId)` returns an 8-tuple:** `(globalArt, globalInk, rate, spot, line, dust, duty, rho)`. Every destructure in this repo expects 8.
+- `VaultEngine.frob(vaultId, v, w, dink, dart)`; `urns(vaultId)`; `open(ilkId, usr)`.
+- `PSM.ilks(ilkId) -> (token, to18ConversionFactor, vaultId)` — the third field is the PSM's own dedicated vault for that ilk.
+- `LiquidationTrigger.ilks(ilkId) -> (clip, chop, hole, dirt, barkFactor)`.
+- `PriceConverter.ilks(ilkId) -> (pip, mat, fixedPrice)`.
+- `DutchAuction.sales(id) -> (pos, tab, lot, vaultId, usr, tic, top)`.
+- No PSM fees: `tin`/`tout` do not exist.
+
+Errors are decoded from 4-byte selectors, never string-matched — `src/utils/txError.ts` (`describeTxError`) builds a selector map from six ABIs and is wired into 16 call sites across 9 files. Nothing surfaces a raw RPC error object to the user.
+
+**Gated reads.** `OracleSecurityModule.peek/peep/read` are `onlyRole(_READER_ROLE)` and revert for any browser wallet. The frontend never calls them. Mark price is derived from public state instead — §3.
 
 ---
 
 ## 1. Mint USDR (PSM sell side)
 
-**Tx flow (per mint):**
-1. `USDT.approve(PSM, stableAmt)` — approve the **PSM**, not the adapter. (USDT quirk: approve-to-zero-first when a nonzero allowance exists.)
-2. `PegStabilityModule.sellStable(ilkId, user, stableAmt)` — `ilkId` = `"USDT-A"` or `"USDC-A"`; `stableAmt` in **6 decimals**; `user` = recipient of USDR.
+**As built** — `src/hooks/useMint.ts`, one gasless batch:
 
-Output: **`usdrAmt = stableAmt × 1e12`, exactly. There is no fee** — do not render a fee line, do not read `tin`/`tout` (they no longer exist). The stability fee is a CDP-side concept; the PSM remains fee-less 1:1.
+1. `USDT.approve(PSM, stableAmt)` — approve the **PSM**, not the adapter. Included only when the current allowance is short. USDT's approve-to-zero-first quirk is handled.
+2. `PegStabilityModule.sellStable(ilkId, user, stableAmt)` — `ilkId` = `"USDT-A"` / `"USDC-A"`, `stableAmt` in **6 decimals**, `user` = the smart account.
+3. USDT gas-fee transfer appended by `submitWithFee`.
 
-**Reads:**
-- *Wallet balance:* `ERC20.balanceOf(user)` (6-dec).
-- *"Mint capacity left":* min of two constraints, both enforced in `frob`:
- 1. Per-ilk: `VaultEngine.ilks(ilkId)` → `(globalArt [wad], globalInk [wad], rate [ray], spot [ray], line [rad], dust [rad], duty [ray], rho)` — **note the tuple is now an 8-tuple, see §0.2**; ilk capacity `= line − globalArt × rate` [rad]. **Use the live (virtualized) rate for volatile ilks with nonzero duty** (§0.15); for the PSM stable ilks duty will realistically stay RAY, but compute uniformly. Sum over `USDT-A` + `USDC-A`.
- 2. Global: `VaultEngine.globalLine()` − `VaultEngine.debt()` [rad]. Note `debt()` now also grows on every drip (fee surplus is real debt).
- Header `= min(sum_of_ilk_capacities, global_capacity) / 1e45` dollars; per-toggle uses that ilk's capacity.
-- *Rate line:* "1 USDT = 1 USDR" is exact by construction. *Peg $1.00:* constant by design; a "live" number is a DEX quote — label it market data.
+Output: **`usdrAmt = stableAmt x 1e12`, exactly. There is no fee** — no fee line is rendered, and `tin`/`tout` are not read.
 
-**Availability:** `sellStable` is **never** blocked by the solvency gate (it increases the reserve — it's the operation that heals a breach). It IS blocked by the governance emergency pause (`SystemPaused`). Preflight: `stableAmt > 0` (`InvalidAmount`), capacity ≥ amount (`CeilingExceeded`), ilk registered (`InvalidAddress`). PSM ilks have `dust = 0`, no dust concern.
+**Reads** — `src/hooks/useMintCapacity.ts`:
+
+- Wallet balance: `balanceOf(smartAccount)` (6-dec).
+- Mint capacity = min of:
+  1. per-ilk `line - globalArt * rate_now`, summed over `USDT-A` + `USDC-A`;
+  2. global `globalLine() - debt()`.
+
+The rate is virtualized uniformly even though PSM ilks realistically stay at `duty == RAY`.
+
+**Availability.** `sellStable` is never blocked by the solvency gate — it increases the reserve and is the operation that heals a breach. It *is* blocked by `Governor.paused()`. Preflight: `stableAmt > 0`, capacity >= amount, ilk registered. PSM ilks have `dust = 0`.
+
+---
 
 ## 2. Redeem (PSM buy side)
 
-**Tx flow:**
-1. `USDR.approve(PSM, stableAmt × 1e12)` — **face amount exactly; there is no fee.**
-2. `PegStabilityModule.buyStable(ilkId, user, stableAmt)` — `stableAmt` in **6 decimals** (what the user receives).
+Two routes, both in `src/hooks/useRedeem.ts`, selected in the UI.
 
-**Reads:**
-- *"Redemption slack":* `ReserveAccounting.freeSlack()` → wad dollars, display `/1e18`.
-- *Per-token PSM inventory:* the PSM can only release what it holds for that ilk. Read `PSM.ilks(ilkId)` → third field `vaultId`, then `VaultEngine.urns(vaultId)` → `ink` [wad]. Effective per-token redeemable `= min(freeSlack, psmInk)`. **Do not** try `urns(ilkId, PSM_address)` — that signature is gone.
-- *Swap route / price impact card:* DEX/aggregator data — label as such.
+**Route A — PSM redeem**, one gasless batch:
 
-**⚠️ Behavior — two hard gates, distinct copy for each:**
-- **No queue.** `stableAmt18 > freeSlack()` → revert `InsufficientFreeSlack`. Offer "redeem what's available" (clamp to slack) + "use market route". Any "your redemption will wait" copy is wrong.
-- **Solvency breach = redemptions closed.** When `SolvencyEngine.isBreached()` is true, `buyStable` reverts `SolvencyGateActive` regardless of slack. Surface this distinctly ("redemptions paused while the reserve invariant is restored — minting remains open"), and check `isBreached()` (public view) before enabling the redeem button.
+1. `USDR.approve(PSM, stableAmt x 1e12)` — face amount exactly, no fee.
+2. `PegStabilityModule.buyStable(ilkId, user, stableAmt)` — `stableAmt` in **6 decimals**.
 
-**Carried over from the previous revision:**
-The stale-flag caveat is gone: **`buyStable` recomputes the solvency invariant itself on every call.** You can still read `isBreached()` to pre-disable the button, but do not treat a stale healthy flag as a guarantee — simulate the tx (you should be simulating anyway) and map `SolvencyGateActive` to the "redemptions paused" copy. Gas for `buyStable` is meaningfully higher than before (invariant recompute inside); reflect it in gas estimates.
+**Route B — Uniswap V3 swap**, one gasless batch:
 
-## 3. Borrow / positions (CDP — RAIN-A only)
+1. `USDR.approve(SwapRouter02, amount)`
+2. `exactInputSingle` through this deploy's own USDR/token pool (`ENV.uniswap.usdrUsdtPool` / `usdrUsdcPool`, fee tier 3000).
 
-**Open a new position:**
-1. `RAIN.approve(CollateralAdapter, amount)` — CDP flow approves the adapter directly (contrast §1).
-2. `CollateralAdapter.join("RAIN-A", user, amount)` — credits free collateral (18-dec).
-3. `VaultEngine.hope(CollateralAdapter)` — **one-time per wallet** (not per vault), required before step 6.
-4. **`VaultEngine.open("RAIN-A", user)` → `vaultId`** — read the id from the tx receipt's `Open` event (or `vaultCount()` in the same multicall). **Persist it: it is the position's identity everywhere.**
-5. `VaultEngine.frob(vaultId, user, user, +dink, +dart)` — `dink` [wad] collateral to lock, `dart` [wad] normalized debt. To draw X USDR: **`dart = X × 1e27 / rate_now`** where `rate_now` is the *virtualized* rate (§0.15). The old note "rate is 1e27 today, so `dart = X`" is dead — at nonzero duty, `dart` is strictly less than X and shrinks as fees accrue. Round `dart` **down** (the safety check will pass; the user just draws a hair less).
-6. `CollateralAdapter.exit("USDR", user, usdrWad)` — converts internal USDR to ERC-20.
+`src/hooks/useSwapQuote.ts` prices route B live via canonical QuoterV2 (`0x61fFE014bA17989E743c5F6cB21bF9697530B21e`) — `quoteExactInputSingle`, real price plus fee plus slippage. The router and quoter are chain-wide infra and hardcoded; the pools are deployment-specific and live in `ENV`.
 
-**Deposit into an EXISTING position:** steps 1–2, then `frob(existingVaultId, user, user, +dink, 0)`. **Same `vaultId` ⇒ update the same card.** Never call `open` for a deposit/borrow/repay/withdraw on an existing position.
+**Capacity** — `src/hooks/useRedeemCapacity.ts`, two independent limits:
 
-**Manage:** withdraw = `frob(vaultId, user, user, −dink, 0)` then `CollateralAdapter.exit("RAIN-A", user, amount)`; repay = `CollateralAdapter.join("USDR", user, usdrWad)` then `frob(vaultId, user, user, 0, −dart)`. Repay needs **no** USDR approval (adapter burns via `_BURNER_ROLE`).
-**Manage:** all four actions are the same `frob(vaultId, user, user, dink, dart)` with different signs:
+- `ReserveAccounting.freeSlack()` — the protocol-wide buffer, a single shared pool.
+- Per-token PSM inventory: `PSM.ilks(ilkId).vaultId` → `VaultEngine.urns(vaultId).ink`.
+
+Effective per-token redeemable = `min(freeSlack, psmInk)`.
+
+**Two hard gates, distinct copy for each:**
+
+- **No queue.** `stableAmt18 > freeSlack()` reverts `InsufficientFreeSlack`. The UI clamps to slack and offers the market route. Any "your redemption will wait" copy is wrong.
+- **Solvency breach closes redemptions.** `buyStable` reverts `SolvencyGateActive` regardless of slack. `isBreached()` pre-disables the button (`src/components/dashboard/Redeem/RedeemView.tsx:96`) and is **re-checked against a fresh read immediately before submitting** (`:149`), because the flag can go stale (§5.1). Copy: *"Redemptions are paused while the reserve invariant is restored."*
+
+`buyStable` recomputes the invariant in-tx, so a stale-healthy flag is a UX hint, never a guarantee.
+
+---
+
+## 3. Borrow / positions (RAIN-A only)
+
+**Open a new position** — `src/hooks/useOpenPosition.ts`. **Two sequential batches**, and this one genuinely cannot be collapsed: the `vaultId` is only knowable from the first receipt.
+
+```
+batch 1:  VaultEngine.open("RAIN-A", smartAccount)
+          -> read vaultId from the Open event in the receipt
+
+batch 2:  RAIN.approve(CollateralAdapter, amount)      // only if allowance short
+          CollateralAdapter.join("RAIN-A", user, amount)
+          VaultEngine.hope(CollateralAdapter)          // only if can(...) == 0
+          VaultEngine.frob(vaultId, user, user, +dink, +dart)
+          CollateralAdapter.exit("USDR", user, usdrWad)
+          + USDT gas-fee transfer
+```
+
+To draw X USDR: **`dart = X * 1e27 / rate_now`** with the virtualized rate, rounded **down**.
+
+**Manage** — `src/hooks/useManagePosition.ts`, one batch per action:
+
 - deposit = `join("RAIN-A")` then `frob(+dink, 0)`
-- withdraw = `frob(−dink, 0)` then `exit("RAIN-A", user, amount)` — the only path that returns RAIN,
-  and only passes if the remaining debt stays safe at spot.
+- withdraw = `frob(-dink, 0)` then `exit("RAIN-A")`
 - borrow = `frob(0, +dart)` then `exit("USDR")`
-- repay = `join("USDR", user, usdrWad)` then `frob(0, −dart)` — no USDR approval needed (adapter
-  burns via `_BURNER_ROLE`). ⚠️ Repaying does NOT move collateral: `ink` stays locked in the vault.
-- close = `join("USDR", user, debt)` → `frob(−ink, −art)` (one frob: wipe + unlock together) →
-  `exit("RAIN-A", user, ink)`. Three txs, strictly sequential.
+- repay = `join("USDR", user, usdrWad)` then `frob(0, -dart)` — no USDR approval needed (the adapter burns via `_BURNER_ROLE`). Repaying does **not** move collateral.
+- close = `join("USDR", user, debt + buffer)` → `frob(-ink, -art)` → `exit("RAIN-A")`
 
-Two fee-aware adjustments to the above:
-- **repay-all:** compute the wipe as `dart = −art` (read `art` from `urns`), and quote the USDR cost as `art × rate_now / 1e27` **plus a small buffer** (debt grows every second; the `join` amount must cover the rate at inclusion time — excess internal USDR stays in `VaultEngine.usdr(user)` and is reusable/exitable, not lost).
-- **close:** `join("USDR", user, debt+buffer)` → `frob(−ink, −art)` → `exit("RAIN-A", user, ink)` — same three txs.
+Repay-all computes the wipe as `dart = -art` read from `urns`, and quotes the USDR cost as `art * rate_now / 1e27` plus a buffer, since debt grows until the tx lands. Excess internal USDR stays in `VaultEngine.usdr(user)` and is reusable, not lost.
 
-No multicall/router exists in the repo — 1-click UX still needs a periphery contract (open item; `open(ilkId, usr)` was designed so a router can open vaults for users).
+**Reads per card:**
 
-**Reads (per position card, all keyed by `vaultId`):**
-- *Position:* `VaultEngine.urns(vaultId)` → `(ink [wad], art [wad])`. **Debt = `art × rate_now / 1e27`** (18-dec) — virtualized (§0.15), NOT the stored rate, or the number visibly freezes between drips and jumps on each one. Filter out `ink == 0 && art == 0` (closed).
-- *New reads for the fee UI:* `ilks(ilkId).duty` → APR line: `apr = duty^31536000 − 1` (compute in bigint/log space: `APY = exp(31536000 × ln(duty/1e27)) − 1`). Show "Stability fee: X% APY" on the borrow form and each card; hide the line when `duty == RAY`.
-- *Owner / ilk:* `ownerOf(vaultId)`, `ilkOf(vaultId)` — sanity-check ownership before rendering.
-- *Mark price (delayed):* `price_wad = spot × mat / 1e27 / 1e9` (§0 gated-reads note).
-- *Liquidation price — ⚠️ formula changed with `barkFactor`, and now uses the live rate:* liquidation no longer triggers at mat. It triggers when `ink × spot < (art × rate_now / 1e18) × barkFactor` (the trigger drips before checking, so on-chain always sees the accrued rate — your display must too). So:
- `liqPrice_wad = art × rate_now × mat × barkFactor / (ink × 1e27 × 1e9 × 1e18)`
- with `barkFactor` [wad] from `LiquidationTrigger.ilks(ilkId)` (struct field after `dirt`; launch value `0.65e18`). At launch: mint gate 400%, **liquidation at 260%** (65% of 400%). The previous doc's formula (without `barkFactor`) overstates liquidation prices by ~1.54× — fix it or every position shows "at risk" prematurely. Health slider: anchor "min" at mat (400%, can't mint below) and "liquidation" at `mat × barkFactor` (260%). **The liquidation price now creeps upward over time** at nonzero duty even if the user does nothing — the health bar must tick down with accrual, and "at risk" alerts must be computed against `rate_now`, not the last-drip rate.
-- *Positions list / discovery:* squid — query **`Open` entities filtered by `owner`**, hydrate each `vaultId` live from `urns(vaultId)`. This replaces Frob-scan discovery and is exact. (On-chain alone can't enumerate an owner's vaults; there is deliberately no `ownerVaults[]` array.)
-- *Available to borrow:* min(per-ilk `line − globalArt × rate_now`, `globalLine − debt`) plus the vault's own `ink × spot − art × rate_now` headroom [rad] — **all terms at the live rate**.
+- `urns(vaultId) -> (ink, art)`; **debt = `art * rate_now / 1e27`**, virtualized.
+- APR line from `duty` — hidden when `duty == RAY`, shown as 10.00% today.
+- **Mark price:** `markPrice_wad = spot * mat / 1e27 / 1e9` (`src/hooks/useBorrowMarket.ts:125`). `spot` is index 3 of `VaultEngine.ilks`, `mat` is index 1 of `PriceConverter.ilks`. This inverts `PriceConverter.poke`; it is the delayed OSM value, not a live quote.
+> The auction path uses the fuller `(spot * mat * par) / RAY^2`. `par` is `1 ray` today so the two agree exactly; if `par` moves they diverge.
+- **Liquidation ratio uses `barkFactor`:** liquidation fires when `ink * spot < (art * rate_now / 1e18) * barkFactor`, so the effective ratio is `mat * barkFactor` — **260%** at a 400% `mat` and `barkFactor = 0.65e18`. The frontend renders `liqPrice = markPrice * liquidationRatio / ratio`. Using `mat` alone overstates liquidation prices by ~1.54x and shows every position as "at risk" prematurely.
+- **Liquidation price creeps upward over time** at nonzero duty even if the user does nothing. Since `duty` is live at 10% APY, health bars tick down on their own and at-risk alerts are computed against `rate_now`.
+- **Position discovery: REST, not squid** **[corrected]**. `GET /api/v1/positions?owner=<smartAccount>&includeClosed=false` (`src/hooks/useMyPositions.ts`), and `GET /api/v1/positions/{id}` for detail. No squid query is issued anywhere in this app.
 
 **Caveats:**
-- dust = **100 USDR (rad) on RAIN-A, per vault** — each vault must independently carry 0 or ≥ 100 USDR debt. Splitting across many vaults multiplies the minimum. Enforce "repay all or leave ≥ 100" per card, and require ≥ 100 USDR initial draw on open. The comparison is `art × rate ≥ dust` **in rad**, unchanged in kind; but since debt grows, a position repaid to exactly 100 USDR today drifts above dust naturally (fine) — the dust check only binds on the repay tx itself. The displayed threshold in USDR terms is still `dust / 1e45`.
-- **⚠️ UPDATED @ `017b36a` — the frob gate is now self-checking.** `frob` with `dart > 0 || dink < 0` on volatile ilks **recomputes `checkInvariant()` on-chain** and reverts `SolvencyGateActive` if the recomputed state is breached — exactly like `buyStable`. Consequences for the UI: (a) a stale-healthy `isBreached()` no longer means the tx will pass — a price crash one block ago gates the very next borrow, keeperless; **always simulate** and map `SolvencyGateActive` to the "borrowing paused" copy. (b) Borrow/Withdraw gas is meaningfully higher (invariant recompute inside: one OSM read per volatile ilk + escrow update) — reflect it in estimates. (c) Repay/top-up (`dart ≤ 0 && dink ≥ 0`) skip the recompute entirely — no gate, no extra gas, always available. Keep pre-disabling Borrow/Withdraw off `isBreached()` for UX, but treat simulation as the truth.
-- Collateral picker driven by `Init` events — today only RAIN-A is borrowable.
 
-## 4. Liquidation auctions (RAIN-A)
+- `dust` = **100 USDR (rad) on RAIN-A, per vault**. Each vault independently carries 0 or
+> = 100 USDR of debt. The UI enforces "repay all or leave >= 100" per card.
+- **`frob` self-checks solvency.** With `dart > 0 || dink < 0` on a volatile ilk, `VaultEngine.frob` calls `checkInvariant()` and reverts `SolvencyGateActive` on breach (`VaultEngine.sol` lines 463-471). A healthy `isBreached()` read is not a promise — simulate. Repay/top-up skip the recompute entirely and are always available.
+- `PositionCard` uses the **API's** `markPrice` field for its at-risk trigger, not `useBorrowMarket`'s on-chain figure, because the trigger compares against a stable snapshot. Two mark prices therefore exist in the borrow UI, from two sources.
 
-**Reads:**
-- Grid: `DutchAuction.list()` → active ids; per id `getStatus(id)` → `(needsRedo, price [ray], lot [wad], tab [rad])`; poll per block (linear decay to zero over `tau` = 3600s).
-- Discount badge: `getStatus.price / 1e9` vs derived mark price (§3), client-side.
-- **"You're being liquidated" banner:** index `Bark` — it now carries **both** `vaultId` and `urn` (owner address), both indexed. Match on `urn == connectedWallet` for the wallet-level banner and use `vaultId` to badge the **specific position card** ("Position #7 is being liquidated") while the owner's other cards stay clean — liquidation is per-vault. Countdown from `sales(id).tic` + `tail` (1800s) / `cusp` (40%).
-- Leftover collateral from an auction (`take` closing with `tab == 0`, or `yank`) is `flux`ed to the **owner address** captured at bark time — it lands in `VaultEngine.collateral("RAIN-A", owner)` as free collateral, and needs `CollateralAdapter.exit` to withdraw. Worth a "claimable collateral" indicator.
-- History: index `Kick`/`Take`/`Redo`/`Yank`.
-- Keepers calling `bark` directly: signature is now `bark(vaultId, kpr)`.
+---
 
-**Buy flow (unchanged, still the most integrator-hostile path):**
-1. `CollateralAdapter.join("USDR", buyer, usdrWad)` → internal USDR at `VaultEngine.usdr(buyer)` [rad].
-2. `VaultEngine.hope(DutchAuction)` — one-time.
-3. `DutchAuction.take(id, amt, max, who, data)` — `amt` [wad], `max` [ray], `data` empty unless flash-callback.
-4. `CollateralAdapter.exit("RAIN-A", buyer, amount)`.
-- Partial buys: a partial that would leave `tab − owe < chost` is **adjusted down to leave exactly chost** (no revert) — only when the whole `tab ≤ chost` does it revert `NoPartialPurchase`. Show the adjusted quantity in the confirm dialog (`chost` is a public getter).
-- `needsRedo == true` → hide Buy (`NeedsReset`); keepers call `redo(id, kpr)` for `chip` (2% of tab) — reward pays only when `tab ≥ chost` and `lot × price ≥ chost`.
+## 4. Liquidation auctions
 
-**Carried over from the previous revision:**
-- Auction grid: also read **`stopped()`** and **`governor().paused()`**. `stopped >= 2` or a live pause ⇒ hide/disable Buy (`take` reverts `Stopped()`/`SystemPaused()`); `stopped >= 3` ⇒ hide Reset too. Show a "market halted by governance" banner — prices keep decaying on the clock during a halt, so most auctions will need a `redo` right after it lifts (keeper opportunity, user-visible price refresh).
-- `Kick.vaultId` is now indexed: the auction grid can badge the exact position card without joining through Bark.
+Covered in full by **`FRONTEND-AUCTION.md`**. Summary of the integration points:
 
-**Update (stability fees):**
-- `tab` is snapshotted at bark time **post-drip** and fixed for the auction's life — auction cards never virtualize.
-- "You're being liquidated" risk *warnings* (pre-bark) must use the virtualized rate (§3) — a vault can become barkable purely through fee accrual with no price move.
+- **Listing** from `GET /api/v1/auctions?status=active`. `DutchAuction.list()` is wired up in `useAuctionIds()` but unused.
+- **Buy screen** is fully on-chain (`useAuctionLiveStatus`, 6 s poll): `getStatus`, `sales`, `chost`, `tail`, `cusp`, `buf`, `live`, `stopped`, `calc`, `governor`, plus `PriceCurve.tau` and `Governor.paused` as a dependent second stage.
+- **Buy flow is two batches** and cannot be one: `join` + `hope` + `take`, then read the collateral delta, then `exit`. The exit amount is not knowable until `take` executes.
+- Partial buys that would leave `tab - owe < chost` are **silently resized** to leave exactly `chost`; only `tab <= chost` reverts `NoPartialPurchase`. The UI blocks the clamped band and shows the true delivered figures.
+- `needsRedo` replaces the form with a Reset button and states that a reset moves the price **up**.
+- `stopped >= 2` or a live pause disables Buy; `stopped >= 3` also disables Reset.
+- `tab` is snapshotted at bark time post-drip and fixed for the auction's life — **auction cards never virtualize**. Pre-bark risk warnings *do*, since a vault can become barkable through fee accrual alone.
+
+**Not implemented:** the "you're being liquidated" per-vault banner keyed on `Bark.vaultId`, and any claimable-leftover-collateral indicator. `LiquidationBanner` exists but is driven off the REST position list, not `Bark` events.
+
+---
 
 ## 5. Solvency dashboard
 
-- *Stressed max loss:* `SolvencyEngine.worstCaseLoss()` → wad, view, callable by anyone. Priced from **collateral** (`globalInk × spot × mat` with stress params `stressMarkdown = 0.5e18`, `stressDepth = 0.35e18`, public getters). One scalar; derive any "unstressed" figure client-side and label it.
-- *Reserve:* `ReserveAccounting.totalReserve()`; *Escrow:* `committedEscrow()`; *Free slack:* `freeSlack()` (all wad).
-- *Solvent badge:* `!SolvencyEngine.breached()` — public flag, now refreshed **by the protocol itself**: every successful OSM poke (≈30 min), every fee-bearing drip, every gated frob/redemption/distribution recomputes it. It is near-real-time without any keeper; still never prompt users to call `checkInvariant()` (a write). The threshold is `reserveFactor` (launch 0.9e18): breach when `worstCaseLoss > totalReserve × reserveFactor`.
-- *30-day chart:* index `InvariantChecked(reserve, worstCaseLoss, passed)`; cadence is now ≥ poke cadence (≈30 min) plus a burst per gated user tx — expect many more data points than the old keeper-only cadence; downsample for the chart.
-- The Circuit Breaker is about **oracle deviation**, not solvency — `CircuitBreaker.active()` belongs on the liquidation page if anywhere.
+`src/hooks/useSolvencyOnChain.ts` (chain, 4 s poll) and `src/hooks/useSolvency.ts` (REST, 60 s poll). **Every live figure on the page comes from the chain hook**; the REST payload supplies only reserve composition, USDR backing, the collateral table and the page title.
 
-**Carried over from the previous revision:**
-- The mark price the engine uses is now **the OSM price directly** (same value §3 derives) — the `spot × mat` reconstruction warning is obsolete; the numbers you display and the numbers the engine uses can no longer disagree after a `mat` refile.
-- If the OSM has no valid price for a volatile ilk, `worstCaseLoss()` counts that collateral at **zero** (fail closed) — expect the dashboard to jump to breach during an oracle outage; label it "oracle unavailable — conservative mode", not a bug.
-- Parameter displays: `stressMarkdown`/`stressDepth`/`reserveFactor` are guaranteed in (0, 1]. There is no cap on external exposure — `reportedExposure()` enters `worstCaseLoss()` at face value, so never display a clamped or capped figure alongside it.
+Read on-chain in one multicall:
 
-**Update (stability fees):** `worstCaseLoss()` computes ilk debt as `globalArt × rate` with the **stored** rate — between drips this marginally understates accrued debt. The protocol keeper drips hourly, so the skew is bounded and conservative-adjacent; do not "correct" the on-chain figure in the UI, but a tooltip may note the accrual lag.
+```
+SolvencyEngine.worstCaseLoss()     [wad]
+SolvencyEngine.breached()          [bool]
+SolvencyEngine.reserveFactor()     [wad]  -- 0.9
+SolvencyEngine.externalExposure()  [address]
+SolvencyEngine.exposureCap()       [wad]
+ReserveAccounting.totalReserve()   [wad]
+RainExposureReporter.reportedExposure() [wad]
+```
 
-### 5.1 Breach-mode matrix (drive ALL button-disabling from this)
+plus a per-volatile-ilk second stage (`VaultEngine.ilks`, `PriceConverter.ilks`) used to derive a live "current shortfall" separate from the stressed figure.
 
-When `SolvencyEngine.isBreached()`:
+### Displayed figures and their formulas
 
-| Operation | State | Error if attempted |
+| Card | Formula |
+| --- | --- |
+| Worst-case payout | `worstCaseLoss()` |
+| Cash reserve | `totalReserve()` |
+| **Safety buffer** | `max(0, (breachThreshold - worstCaseLoss) / totalReserve) * 100`, where `breachThreshold = totalReserve * reserveFactor` |
+| Gauge "of reserve used" | `worstCaseLoss / totalReserve * 100`, capped at `reserveFactor * 100` |
+| **Spare cushion** | `totalReserve - min(worstCaseLoss, totalReserve)` |
+| Reserved for traders | `RainExposureReporter.reportedExposure()` |
+
+Two properties of the Safety buffer worth stating, because both surprise readers:
+
+- **It caps at `reserveFactor`, not 100%.** The breach condition is `worstCaseLoss > totalReserve * reserveFactor`, so the buffer is measured against 90% of the reserve. A perfectly healthy protocol reads 90.0%, never 100%.
+- **It is clamped at zero.** Once breached the true value is negative; the card shows 0.0% whether the protocol is $1 or $20,000 past the floor. Consequently "used %" plus "buffer %" sums to 90%, not 100%.
+
+**Spare cushion reproduces `ReserveAccounting.freeSlack()` exactly** — verified to the cent (`freeSlack() = totalReserve - committedEscrow`, and `committedEscrow` is set to `min(worstCaseLoss, totalReserve)` inside `checkInvariant`). The frontend derives it rather than calling `freeSlack()`, which makes it *more* current than the contract value whenever a keeper is behind. While breached, the card greys out and states that the slack cannot be availed, because redemptions are gated (§2).
+
+### The breach threshold — 90% of the cash reserve
+
+```solidity
+// constructor, line 87
+reserveFactor = (_WAD * 9) / 10;                              // 0.9
+
+// line 240
+function breachThreshold() external view returns (uint256) {
+    return (RESERVE_ACCOUNTING.totalReserve() * reserveFactor) / _WAD;
+}
+```
+
+So the threshold is **`totalReserve x reserveFactor`, i.e. 90% of the cash reserve** at the filed `reserveFactor` of `0.9`. `reserveFactor` is governable (`file`, lines 110-117), so read it rather than hardcoding 0.9 — but 90% is the value live today.
+
+Verified 2026-09-09: `totalReserve` `75,836.71` x `0.9` = `68,253.04`, byte-identical to `breachThreshold()`.
+
+**As built.** The frontend computes `(totalReserve * reserveFactor) / WAD` from reads it already makes, rather than calling `breachThreshold()`. Same value to the wei, and it costs no extra call. The one thing calling `breachThreshold()` would buy is atomicity if governance refiled `reserveFactor` between two reads inside the same multicall — a race we judged not worth an eighth call.
+
+### 5.1 The `breached` flag goes stale **[corrected]**
+
+Previous revisions stated: *"refreshed by the protocol itself: every successful OSM poke (~30 min), every fee-bearing drip, every gated frob/redemption/distribution … near-real-time without any keeper."*
+
+Measured 2026-09-08, live:
+
+```
+worstCaseLoss()    64,282.60
+breachThreshold()  63,864.50    <- worst case is 418.10 ABOVE the threshold
+breached()         false
+isBreached()       false
+```
+
+The invariant was violated and both flags read healthy; the dashboard rendered a green "Solvent" badge over numbers that read `64.3 > 63.9`.
+
+Cause: one of the three claimed refresh paths does not exist on the deployed contracts.
+
+| Claimed refresh source | Deployed reality |
+| --- | --- |
+| every successful OSM poke (~30 min) | **Does not happen.** The verified `PriceConverter` contains no reference to `checkInvariant` and no `solvencyEngine` address at all. `poke` cannot refresh the flag. |
+| every fee-bearing drip | Works — `VaultEngine.drip` calls `checkInvariant()` when `rad != 0`, and `duty` is nonzero. But `drip` is triggered only by user activity, never on a timer. |
+| every gated frob/redemption/distribution | Works, and is likewise user-activity-driven. |
+
+Every surviving path needs someone to transact. On a quiet protocol the flag drifts. `SolvencyEngine.sol` line 22 is the accurate description: *"A keeper bot is expected to call `{checkInvariant}` regularly to keep the flag fresh."*
+
+**As built — the frontend no longer reads the flag for any decision.** Solvency is derived from the two figures the dashboard already displays:
+
+```ts
+const breachThreshold = (totalReserve * reserveFactor) / WAD;   // 90% of cash reserve
+const breached = totalReserve > 0n
+  ? worstCaseLoss > breachThreshold
+  : breachedFlag;                                               // first-render fallback only
+```
+
+This is the same comparison `checkInvariant()` makes (`SolvencyEngine.sol:221`) against two live `view` calls, so the badge is accurate at every block, agrees with the numbers printed beside it, and matches what a gated `frob` or `buyStable` will decide in-tx.
+
+Applied in three places, sharing one derivation so they cannot diverge:
+
+| Hook | Drives |
+| --- | --- |
+| `useSolvencyOnChain` | the Solvent/Breached banner and the Spare Cushion card |
+| `useSystemBreach` | Borrow / Withdraw / ManagePosition button gating |
+| `useRedeemCapacity` | the Redeem button **and** its pre-submit re-check |
+
+The third matters as much as the first: `RedeemView` re-checks breach state immediately before submitting, so leaving that path on the stored flag would have disabled the button live while still waving through a redemption that `buyStable` reverts.
+
+`isBreached()` is still read, used only when `totalReserve` is zero — the window before the reads land, where comparing two zeroes would report a healthy protocol regardless.
+
+### 5.2 External exposure is capped on the deployed contract **[corrected]**
+
+Previous revisions stated: *"There is no cap on external exposure — `reportedExposure()` enters `worstCaseLoss()` at face value, so never display a clamped or capped figure"*, and that `ExposureClamped` was replaced by `ExposureReportFailed`.
+
+The verified source at `0x2484d495258C3e281217995D30Bda16BeF6192dF` says otherwise:
+
+| Symbol | Deployed source |
+| --- | --- |
+| `exposureCap` | present (lines 49, 118, 126, 141, 210, 211) |
+| `ExposureClamped` | present, emitted at lines 211 and 214 |
+| `ExposureReportFailed` | **not present** |
+
+The frontend therefore clamps: `exposure = min(reportedExposure, exposureCap)`. The doc describes a build newer than what is deployed.
+
+### 5.3 Chart and history
+
+The 30-day chart is **not** indexed from `InvariantChecked`. It comes from `GET /api/v1/solvency/history/daily?from=&to=` (`useSolvencyHistory`, fetched once on mount, no polling).
+
+The snapshot payload comes from **`GET /api/v1/solvency/implied`**, not `/api/v1/solvency`. The plain endpoint reported RAIN at `$0.017517` where the chain implies `$0.959066` via `spot * mat`; `/implied` returns the chain-consistent value and self-describes as `markMode: "vaultEngine.spot"`. Any other consumer still on the plain endpoint has the same bug.
+
+### 5.4 Breach-mode matrix
+
+| Operation | State when breached | Error |
 | --- | --- | --- |
-| PSM mint (`sellStable`) | ✅ open (heals the breach) | — |
-| PSM redeem (`buyStable`) | ❌ blocked | `SolvencyGateActive` |
-| Borrow / withdraw collateral (volatile ilks) | ❌ blocked | `SolvencyGateActive` |
-| Repay / deposit collateral | ✅ open | — |
-| Liquidations (`bark`/`take`/`redo`) | ✅ open | — |
-| `open` (new vault, no debt) | ✅ open (drawing into it is what's gated) | — |
-| `drip` (fee accrual) | ✅ open (never gated by breach or pause; refreshes the flag softly) | — |
-| Surplus buyback (`distributeSurplus`, NEW @ `017b36a`) | ❌ blocked (keeper-facing, listed for completeness) | `SolvencyGateActive` |
-| OSM `poke` (price updates) | ✅ open (never gated; refreshes the flag softly) | — |
+| PSM mint (`sellStable`) | open — heals the breach | — |
+| PSM redeem (`buyStable`) | blocked | `SolvencyGateActive` |
+| Borrow / withdraw collateral (volatile ilks) | blocked | `SolvencyGateActive` |
+| Repay / deposit collateral | open | — |
+| Liquidations (`bark`/`take`/`redo`) | open | — |
+| `open` (new vault, no debt) | open | — |
+| `drip` | open | — |
+| OSM `poke` | open | — |
 
-**All three hard gates (`frob`, `buyStable`, `distributeSurplus`) recompute the invariant in-tx** — the matrix is enforced against live state, not the stored flag. Drive button-disabling from `isBreached()` as a hint, but the revert is the authority.
+All three hard gates (`frob`, `buyStable`, `distributeSurplus`) recompute the invariant in-tx, so the matrix is enforced against live state, not the stored flag. Button-disabling is driven from the **derived** comparison in §5.1 — which is the same test those gates apply — so the hint and the outcome now agree. The revert remains the authority; callers still simulate.
 
-The governance emergency pause (`Governor.paused()`) is a separate, stricter stop: it blocks frob, PSM both directions, and bark, with `SystemPaused`.
+`Governor.paused()` is a separate, stricter stop: it blocks `frob`, PSM both directions and `bark`, with `SystemPaused`. It auto-expires after 72h — poll it, do not cache the event.
 
-## 6. Reserve composition & ceilings table
+**Not implemented:** `CircuitBreaker.active()` is not read anywhere in the app.
 
-- Per-ilk rows from `VaultEngine.ilks(ilkId)` (**8-tuple, §0.2**) + `PriceConverter.ilks(ilkId)`: ratio → `mat` [ray] (`/1e25` = %); mark → derived price (§3) or "$1.00 fixed" when `fixedPrice`; minted → `globalArt × rate_now` [rad] `/1e45` (virtualized, §0.15); ceiling → `line`; **total locked collateral → `globalInk`** [wad] (tuple field, index 1); **NEW column: stability fee** → `duty` rendered as APY (§3), "—" when RAY.
-- Global ceiling → `globalLine()`; global minted → `debt()`.
-- "Shared ARB/RAIN ceiling": still **no shared-ceiling primitive** — governance convention only; flag to product.
-- Protocol-held stables: per stable ilk, `PSM.ilks(ilkId).vaultId` → `VaultEngine.urns(vaultId).ink`; ERC-20s custody at the **CollateralAdapter** address.
-- Ceiling change history → `File` events (`"globalLine"` global, `"line"` per-ilk). Liquidation-parameter history: `File` on LiquidationTrigger includes `"barkFactor"`. Parameter change history now also tracks **`"duty"`** (per-ilk) and **`"feeRecipient"`** (address). Fee accrual history → `Drip` entities (`rad` = fees minted per accrual; summable into a "protocol fee revenue" chart).
+---
 
-## 7. Indexer (squid) checklist — deltas for the multi-vault revision
+## 6. Reserve composition & ceilings
 
-- **New entity: `Open`** `(ilkId, owner, vaultId)` — the position-discovery primitive. Strongly recommended: a derived **`Position`** entity (`id = vaultId`, fields `ilkId`, `owner`, `ink`, `art`, `liquidated`, `lastUpdated`) upserted from `Open`/`Frob`/`Grab`, flagged by `Bark`. Then position lists are one query; only debt pricing (`rate`) and prices need RPC.
-- **`Frob`/`Grab` schema change:** `u: address` is replaced by `vaultId: BigInt` (indexed). `v`/`w` unchanged. **Sum `dink`/`dart` from BOTH Frob and Grab** when deriving balances, or liquidated vaults will show stale collateral.
-- **`Bark` schema change:** gains `vaultId` (indexed); `urn` remains and is now the owner address.
-- **`Kick`'s `usr`** is now the vault owner (was the urn address — same value only in the old model).
-- PSM entities (`SellStable`/`BuyStable`): unchanged shape; fee fields never existed in events. `File` on PSM no longer has `tin`/`tout` keys.
-- **`ExposureClamped(reported, cap)` is removed** and replaced by **`ExposureReportFailed(substituted)`** on SolvencyEngine. Drop the old handler; the new one fires only when the exposure reporter is unreachable, and `substituted` is the total USDR outstanding charged in its place. There is no cap and honest reports are never clamped, so absence of this event now means the exposure term is exactly `reportedExposure()`.
-- Unchanged: `RoleGranted`/`RoleRevoked`, `File` keys (`"globalLine"`, `"globalHole"`), adapter `Init`/`Join`/`Exit`, OSM `Poke`/`PokeFailed`, `Take`/`Redo`/`Yank`/`Digs`, `Fess`/`Flog`, `Heal`/`Suck`, `DistributeSurplus`, `InvariantChecked`, `Upchost`, breaker + governor events, `Cage`.
+Per-ilk rows come from `VaultEngine.ilks(ilkId)` (8-tuple) plus `PriceConverter.ilks(ilkId)`: ratio = `mat` (`/1e25` = %), mark = the derived price above, minted = `globalArt * rate_now`, ceiling = `line`, locked collateral = `globalInk`, stability fee = `duty` as APY.
 
-**Carried over from the previous revision:**
-- `Open`/`Frob`/`Grab`/`Bark` deltas as in the previous doc, live since `rain-usdr-sqd@ac36106`, plus: `Kick.vaultId`, the 8 End entities, and `END_ADDRESS` in the env block. Governor `File` no longer exists on the ABI (delay immutable).
-- The multi-vault migration is **not** backward-compatible with pre-multi-vault data: clean DB + re-backfill.
+Global ceiling = `globalLine()`; global minted = `debt()`.
 
-**New in this revision — stability-fee deltas, live in `rain-usdr-sqd@9bda126`:**
-- **New entity: `Drip`** `(ilkId, rate, rad, blockNumber, blockTimestamp, …)` — indexed from `VaultEngine.Drip`. Use it to (a) update a derived `Ilk.rate` field so hydration doesn't need an RPC call for the stored rate, and (b) chart fee revenue (`sum(rad)` per period).
-- **VaultEngine ABI refreshed** (Drip event, drip function, feeRecipient, 8-field ilks getter). `File` entities need no schema change — the new `"duty"`/`"feeRecipient"` keys flow through the existing generic File decoding.
-- If you maintain a derived `Position` entity: its debt field must either store `art` only (price at query time with the virtualized rate) or be updated on every `Drip` — storing a pre-multiplied debt number without a rate version will go stale silently. Recommendation: store `art`, virtualize in the API/frontend layer.
-- Migration for the fee delta is additive (new entity + ABI) — no re-backfill required for existing data, but a re-backfill is needed if you want `Drip` history from before the processor update was deployed (there is none before contracts ship, so in practice: none).
+The composition and backing tables on the solvency page are **served by the REST API** (`/api/v1/solvency/implied`), not assembled client-side from these reads.
 
-## 8. Standing caveats
+> Known cosmetic mismatch: the Cash Reserve card's headline is on-chain `totalReserve()` while its sub-line breakdown ("held in USDT $X · USDC $Y") comes from the REST payload. The two can disagree by a small amount.
 
-- USDT approve-to-zero-first; always simulate before send; decode custom-error selectors for UX messages (add **`InvalidDuty`, `FeeRecipientNotSet`** to the map alongside `VaultNotFound`, `SolvencyGateActive`, `SystemPaused`).
-- **`rate` is live now** (was: "fixed at 1e27 today") — never display raw `art`; always `art × rate_now` with the virtualized rate (§0.15). Anything that cached "rate = 1" — sliders, max-borrow math, repay quotes, liquidation prices — must be found and fixed; this is the doc's single biggest action item.
-- **Simulate every gated tx (`frob` borrow/withdraw, `buyStable`)** — @ `017b36a` these self-check the solvency invariant in-tx; a healthy `isBreached()` read is a UX hint, not a promise. Map `SolvencyGateActive` to action-specific copy: "borrowing/withdrawals paused while the reserve invariant is restored" vs "redemptions paused — minting remains open".
-- One DutchAuction instance per collateral type — resolve the clip per ilk from `LiquidationTrigger.ilks(ilkId).clip`, not a constant.
-- **Persist `vaultId`s client-side but treat the squid (`Open` by owner) as the source of truth** — the user may have opened vaults from another device or via a future router.
-- `hope` is per-wallet and covers all the wallet's vaults, current and future — the one-time setup tx does not repeat per position.
-- Vaults are not transferable and ids are never reused; `vaultId` is safe as a permanent React key / DB primary key.
+---
 
-## 9. Emergency settlement (End)
+## 7. Indexer
 
-If governance ever triggers `End.cage()`, the protocol enters a terminal state and the frontend should switch to a dedicated settlement mode:
+**The frontend does not use a squid.** All list data — positions, auctions, solvency history, platform stats — comes from the REST API at `usdr-api.rain.one`. No GraphQL query is issued anywhere in this app, and no event is indexed client-side.
 
-**Detection:** index the free `Cage()` event from `END_ADDRESS`, or poll `End.live() == 0`. Also: `VaultEngine.live() == 0` with `End.when() != 0`.
+The indexer requirements from previous revisions still apply to whoever runs the backend; they are simply not this frontend's concern. The one thing worth carrying forward is that the API is the frontend's only view of historical data, so anything the indexer stops writing disappears from the UI silently — see §8.
 
-**Vault-holder flow (per position card):**
-1. Wait for `CageIlk(ilkId, tag, art)` — the ilk's settlement price is fixed (`tag` = collateral per USDR of debt, ray).
-2. Anyone may call `skim(vaultId)` — debt is cancelled, owed collateral confiscated. Card shows "settled at $X".
-3. Owner calls `End.free(vaultId)` (owner-only, must have zero debt) — leftover collateral lands as free collateral → `CollateralAdapter.exit` to withdraw. This is the only vault action that remains.
+---
 
-**USDR-holder flow (redemption):**
-1. After `Thaw(debt)`: redemption opens. Per ilk, `Flow(ilkId, fix)` fixes collateral-per-USDR (ray).
-2. `CollateralAdapter.join("USDR", user, wad)` (ERC-20 → internal), `VaultEngine.hope(END_ADDRESS)` (one-time), `End.pack(wad)` → bag.
-3. Per ilk: `End.cash(ilkId, wad)` → pro-rata collateral → `CollateralAdapter.exit`. Show expected amounts as `wad × fix / 1e27`.
+## 8. Data sources, polling and rate limits
 
-**Squid entities for all of this:** `CageIlk`, `Skip`, `Skim`, `Free`, `Thaw`, `Flow`, `Pack`, `Cash` (all live in the schema as of `ac36106`; `vaultId`/`usr`/`owner` indexed where relevant).
+Two independent sources, and they can disagree.
 
-**In-flight auctions at settlement:** `Skip(ilkId, auctionId, vaultId, ...)` means the auction was reclaimed into the vault — close the auction card, restore the position card (debt includes the liquidation penalty), let it follow the normal skim/free flow.
+| Surface | Source | Cadence |
+| --- | --- | --- |
+| Auctions listing | REST `/api/v1/auctions?status=active` | on demand |
+| Auction buy screen | **chain** | 6 s |
+| Positions list | REST `/api/v1/positions?owner=` | 60 s |
+| Position limits / borrow market | **chain** | 6 s |
+| Solvency figures | **chain** | 4 s |
+| Solvency composition / backing | REST `/api/v1/solvency/implied` | 60 s |
+| Solvency history | REST `/api/v1/solvency/history/daily` | once on mount |
+| Platform stats | REST `/platform-stats` | 60 s |
 
-**Update (stability fees):** after `End.cage()`, **rates freeze** — `drip` becomes a no-op returning the frozen rate, and all settlement math (`tab / rate`, `art × rate × tag`) uses the cage-time rates. Settlement-mode UIs should stop virtualizing debt: from cage onward, `art × rate` with the stored rate is exact and final.
+**Never gate a transaction on API data.** Prices, lots and debts move every block. Every write path re-reads the values it depends on from the chain immediately before building the batch.
+
+**The REST API rate-limits at 120 requests per 60 seconds** (`RateLimit-Policy: 120;w=60`). The REST hooks are plain `useState` + `setInterval`, **not** react-query, so multiple mounted instances do not dedupe and each spends its own budget. All three were moved to 60 s after a QA session hit 429s; at 6 s a single open solvency tab cost ~21 req/min and five tabs exhausted the limit.
+
+A 429 currently surfaces as *"Failed to load solvency data"*, indistinguishable from a real outage, and discards the last good payload. **Open improvement:** back off and retain.
+
+**RPC batching** (`src/lib/wagmi/config.ts`):
+
+```ts
+batch: { multicall: { wait: 250 } },
+transports: { [arbitrum.id]: http(rpcUrl, { batch: { wait: 250, batchSize: 20 } }) },
+```
+
+`batch.multicall` is read-only — it lives inside viem's `call` action and folds separate `eth_call`s into multicall3 `aggregate3`. The transport `batch` is not read-scoped, but in this app only reads travel that path because writes go through the connector (§0.3). `batchSize` is capped at 20, far below viem's default of 1000: a batch is one HTTP response, so a 429 fails every call inside it together. `wait: 250` rather than ~16 ms because each hook's interval starts at its own mount time and the cadences differ, so fires spread across the cycle.
+
+`QueryClient` sets `staleTime: 5_000`. `refetchOnWindowFocus` is deliberately left **on**: react-query pauses `refetchInterval` while the tab is hidden, so disabling it would show stale numbers for up to a full poll interval on return.
+
+---
+
+## 9. Standing caveats
+
+- USDT approve-to-zero-first; simulate before send; decode custom-error selectors (`describeTxError`).
+- **`rate` is live** — never display raw `art`; always `art * rate_now`. `duty` on RAIN-A is 10.00% APY today (§0.2).
+- **`hope` is per smart account**, not per EOA, and covers all that account's vaults.
+- Vaults are not transferable and ids are never reused; `vaultId` is a safe permanent key.
+- One `DutchAuction` per collateral type — resolve the clip per ilk from `LiquidationTrigger.ilks(ilkId).clip`, not a constant.
+- SCSS is global and page-scoped: a class nested under one page's parent selector does not apply in another component tree. This has caused the same bug three times.
+
+---
+
+## 10. Not implemented
+
+Present in the contracts and in previous revisions of this document, absent from the frontend:
+
+| Feature | Status |
+| --- | --- |
+| **Emergency settlement (`End`)** | ABI present, `END_ADDRESS` in `ENV`; **no hook or component uses it.** There is no settlement mode. If `End.cage()` ever fires, the app has no UI for `skim`/`free`/`pack`/`cash`. |
+| `CircuitBreaker.active()` | not read anywhere |
+| `Bark`-driven per-vault liquidation banner | `LiquidationBanner` is driven off the REST position list instead |
+| Claimable leftover collateral indicator | not built |
+| `chip` / `tip` keeper reward display | not read (see `FRONTEND-AUCTION.md` §2) |
+| `drip()` call | never called — `frob` drips implicitly |
+| Squid / GraphQL | not used; REST only (§7) |
+| Dust labelling in the auctions listing | needs the live `lot`, which the API-only listing does not carry |

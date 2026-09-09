@@ -1,8 +1,14 @@
 # Solvency flag freshness — keeper specification
 
+> This is the canonical policy for **Job 7** in the keeper catalog
+> ([`BACKEND.md`]. Jobs 0–6 and 8 (drip, OSM, spot, breaker,
+> liquidations, auctions, treasury, End stand-down) live there.
+
 ## Policy
 
 `SolvencyEngine.breached` is a cached value. It is written only by `checkInvariant()`, and it is not guaranteed to describe the current state of the protocol. The keeper's job is to keep it accurate.
+
+The hard solvency gates (`frob` / `buyStable` / `distributeSurplus`) recompute on-chain before acting and do **not** depend on this cached flag. The flag still matters for monitors, `InvariantChecked` dashboards, and any off-chain logic that reads `isBreached()` without recomputing — and it **does go stale** (see below). Soft `poke`/`drip` refreshes are not enough by themselves.
 
 The check is three free `eth_call`s and needs no role or whitelisting — `worstCaseLoss()` and `breachThreshold()` are both `public view`, and the `_READER_ROLE` requirement on OSM price reads applies to the engine, not to you:
 
@@ -12,6 +18,8 @@ if (verdict != isBreached()) sendTx(checkInvariant())
 ```
 
 **Run this edge-triggered on disagreement, not on any particular event.** `checkInvariant()` is permissionless and idempotent; send it only when the computed verdict and the stored flag differ. Because the comparison is bidirectional, one job covers both the solvent-to-breached and breached-to-solvent transitions, and the event list below needs no direction filtering.
+
+Do **not** call `checkInvariant()` on a blind timer every N minutes — that contradicts edge-triggering, wastes gas near the threshold, and is the wording that previously conflicted with older BACKEND Job 7 text (now corrected to point here).
 
 The events are a **latency optimization only** — they tell you when to run the comparison sooner than the next poll, not what to react to. Keep a per-block or short-interval poll as the baseline so the job stays correct for any mover not enumerated here.
 
@@ -27,14 +35,17 @@ Separately, several state changes that move the invariant perform no recompute a
 
 | Event | Contract | Filter |
 |---|---|---|
-| `Frob(ilkId, vaultId, v, w, dink, dart)` | VaultEngine | `ilkId` in `volatileIlks()`, and `dink != 0 \|\| dart != 0` |
+| `Frob(ilkId, vaultId, v, w, dink, dart)` | VaultEngine | `isVolatile(ilkId)` (or configured volatile set), and `dink != 0 \|\| dart != 0` |
 | `RecordIncrease(wad, totalReserve)` / `RecordDecrease(wad, totalReserve)` | ReserveAccounting | none |
-| `Grab(ilkId, vaultId, v, w, dink, dart)` | VaultEngine | `ilkId` in `volatileIlks()` |
+| `Grab(ilkId, vaultId, v, w, dink, dart)` | VaultEngine | `isVolatile(ilkId)` (or configured volatile set) |
 | `Void(ilkId)` | OracleSecurityModule | none |
+| `Stop(ilkId)` / `Start(ilkId)` | OracleSecurityModule | none — degraded-mode / recover poll cadence |
 | `File(what, data)` | SolvencyEngine | none — covers both overloads |
 | `AddVolatileIlk(ilkId)` / `RemoveVolatileIlk(ilkId)` | SolvencyEngine | none |
 
-Notes on three of these:
+Notes on filters and three of these:
+
+**Volatile set.** Prefer `SolvencyEngine.isVolatile(bytes32 ilkId)` per known ilk (Open / config registry). There is no reliable requirement for a bulk `volatileIlks()` list getter on all deploys; cache the set and refresh on `AddVolatileIlk` / `RemoveVolatileIlk` (and periodically).
 
 `RecordIncrease`/`RecordDecrease` fire on both PSM legs and are the input-level hook — `totalReserve` is the denominator of the breach threshold, so any reserve movement shifts the verdict. Prefer these over `SellStable`/`BuyStable`; they are equivalent today and remain correct if another recorder is ever wired.
 
@@ -44,9 +55,9 @@ Notes on three of these:
 
 ## Deliberately not on this list
 
-**Self-publishing.** `OracleSecurityModule.poke` and `VaultEngine.drip` both place a soft `checkInvariant()` call *after* their own state writes, so the flag is already correct when `Poke` or `Drip` is observed. `PokeFailed` needs no action either — it means the price source refused to report and `cur` was left unchanged, so the verdict has not moved. `Drip` with `rad == 0` skips its refresh, but a zero fee means the rate did not change, so again nothing moved.
+**Self-publishing.** `OracleSecurityModule.poke` and `VaultEngine.drip` both place a soft `checkInvariant()` call *after* their own state writes, so the flag is already correct when `Poke` or `Drip` is observed. `PokeFailed` needs no action either — it means the price source refused to report and `cur` was left unchanged, so the verdict has not moved. `Drip` with `rad == 0` skips its refresh, but a zero fee means the rate did not change, so again nothing moved. (Matches BACKEND Jobs 0–1 solvency side-effects.)
 
-**Not invariant inputs.** These look relevant and are not. `worstCaseLoss()` reads only per-ilk `globalArt`, `rate`, `globalInk`, the OSM price, the two stress parameters, the volatile-ilk set, and the external exposure term:
+**Not invariant inputs.** These look relevant and are not. `worstCaseLoss()` reads only per-ilk `globalArt`, `rate`, `globalInk`, the OSM price, the two stress parameters, the volatile-ilk set, and the clamped external exposure term:
 
 - `BalanceSheet.distributeSurplus` — solvency-gated, but it moves internal USDR only and changes no input. It cannot cause the breach it checks for.
 - `PriceConverter.poke` — writes `spot`, which the engine deliberately does not read. Collateral is priced directly from the OSM.
@@ -61,7 +72,7 @@ The prediction-market exposure reporter calls `checkInvariant()` itself when its
 
 Keep a low-frequency poll of the comparison as a backstop — it is the only thing that detects the reporter being paused, upgraded, or calling out of order.
 
-Alert on `ExposureReportFailed(substituted)`. It means the reporter reverted and the loss term has silently fallen back to `substituted` — total USDR outstanding, the structural ceiling on what the layer could be exposed to. That substitution is large enough to force a breach on its own, so treat the event as a reporter outage first and a solvency signal second. Honest reports are never clamped: whatever the reporter returns is charged in full.
+Alert on `ExposureClamped(reported, cap)`. A `reported` value of `type(uint256).max` means the reporter reverted and the loss term has silently fallen back to the full `exposureCap`, which is the conservative maximum. A `reported` above `cap` means an honest report is being clamped.
 
 ## Submission policy
 
@@ -69,4 +80,6 @@ Alert on `ExposureReportFailed(substituted)`. It means the reporter reverted and
 
 **Watch for degraded mode.** While an ilk is stopped (`Stop(ilkId)`, or after a `Void`), that ilk's automatic post-state publisher is off and `pass(ilkId)` cannot open, so the polling baseline carries the whole job until `Start(ilkId)` is observed and the next `poke` lands. Alert on `Stop` and `Void`, and raise poll frequency while either is in effect.
 
-**Alert on `InvariantChecked(reserve, worstCaseLoss, passed)`** with `passed == false`, from any source. This gives push-based breach detection independently of your own comparison, since the gated functions and the self-publishing sites all emit it.
+**Alert on `InvariantChecked(reserve, worstCaseLoss, passed)`** with `passed == false`, from any source. This gives push-based breach detection independently of your own comparison, since the gated functions and the self-publishing sites all emit it. Also page if `loss/reserve > 0.9` (BACKEND Job 7 alert band), classifying OSM-zero spikes as oracle-degraded when appropriate.
+
+**Stand down with Job 8.** When `VaultEngine.live() == 0` / End cage is detected, stop this job with the rest of the keeper loop (BACKEND Job 8).

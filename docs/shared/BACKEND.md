@@ -11,9 +11,12 @@
 > **(e) NEW @ `017b36a` — solvency gate hooks**: `frob` (risk-increasing, volatile ilks)
 > and `BalanceSheet.distributeSurplus` now RECOMPUTE `checkInvariant()` on-chain and
 > revert `SolvencyGateActive` on breach (same lazy gate `buyStable` already had);
-> `OSM.poke` and `drip` refresh the breach flag SOFTLY (never revert). The
-> keeper-maintained flag is no longer load-bearing anywhere — it is a freshness/alerting
-> aid only. Expect additional gas on all five paths.
+> `OSM.poke` and `drip` refresh the breach flag SOFTLY (never revert). The cached
+> `breached` flag is **not load-bearing for the hard gates** (those recompute on-chain),
+> but it **does go stale** after gated txs and on movers that never recompute — Job 7
+> must still edge-trigger `checkInvariant()` to keep it accurate for monitors and any
+> off-chain `isBreached()` reads (see [`BACKEND-SOLVENCY.md`]). Expect additional
+> gas on all five paths.
 > Carried over from the previous revision: multi-vault `vaultId` model, DutchAuction
 > `stopped()` breaker + Governor pause, H-1 (solvency reads OSM), End settlement.
 
@@ -156,16 +159,22 @@ checks off `Drip` events too, not just `Take`/`Kick`/`Redo`.
 | *Trigger type* | *Periodic* (e.g. hourly, after 6a) |
 | *Proceed if (all)* | `vaultEngine.sin(balanceSheet) == 0` ∧ `vaultEngine.usdr(balanceSheet) > hump()` ∧ `buybackReceiver() != address(0)` ∧ **`!solvencyEngine.isBreached()` after a fresh recompute** — the contract itself recomputes `checkInvariant()` and reverts `SolvencyGateActive` while breached (surplus must not ship out toward buyback against an uncovered stressed loss). Simulate first; on `SolvencyGateActive`, back off and retry after the reserve recovers rather than burning gas per hour |
 
-## Job 7 (monitoring only) — Solvency watchdog
+## Job 7 — Solvency flag freshness + watchdog
+
+> **Canonical write policy:** [`BACKEND-SOLVENCY.md`] (edge-triggered `checkInvariant`,
+> event list, asymmetric hysteresis, degraded mode). This section summarizes Job 7 in the
+> Jobs 0–8 catalog and adds alerting. Do **not** follow the older “monitoring only / never
+> call `checkInvariant`” wording — that understated stale-after-gate behaviour.
 
 | | |
 |---|---|
 | *Contract* | SolvencyEngine |
-| *Method* | *Read-only*: `worstCaseLoss()` vs `reserveAccounting.totalReserve()` |
-| *Prices* | **`worstCaseLoss()` now reads collateral marks directly from the OSM** (H-1), not `spot × mat`. If an ilk's OSM price is missing/zero, that collateral is marked at **zero** (fail-closed) — expect `worstCaseLoss` to spike during an oracle outage; classify that as "oracle degraded", not insolvency |
+| *Method (writes)* | **`checkInvariant()`** — permissionless; send **only** when `worstCaseLoss() > breachThreshold()` disagrees with `isBreached()` (see BACKEND-SOLVENCY.md). Toward-breach: immediate. Clearing: debounce / dead-band |
+| *Method (reads / alert)* | `worstCaseLoss()` vs `breachThreshold()` (or `reserveAccounting.totalReserve()` × gate); page if `loss/reserve > 0.9` |
+| *Prices* | **`worstCaseLoss()` reads collateral marks directly from the OSM** (H-1), not `spot × mat`. If an ilk's OSM price is missing/zero, that collateral is marked at **zero** (fail-closed) — expect `worstCaseLoss` to spike during an oracle outage; classify that as "oracle degraded", not insolvency |
 | *Rates* | The engine computes ilk debt as `globalArt × rate` with the **stored** rate — between drips this slightly understates true accrued debt. Job 0's hourly drip bounds the staleness; if you reimplement the check off-chain, virtualize the rate as in Job 4 |
-| *Do NOT* | call `checkInvariant()` on a schedule. The 90% gate is now enforced **on-chain, keeperless, at every load-bearing site**: `buyStable` (M-3), and NEW @ `017b36a` — risk-increasing `frob` on volatile ilks and `distributeSurplus` all recompute before acting, while `OSM.poke` and `drip` refresh the flag softly after acting. The stored `breached` flag is therefore near-fresh in normal operation (every 30-min poke refreshes it) without any keeper writes — your watchdog is purely for alerting |
-| *Trigger type* | Time-based (every ~5 min) → *alerting*. Page a human if `loss/reserve > 0.9`. Also alert on any `InvariantChecked(passed=false)` event — with the new hooks these fire from user txs and pokes, giving you push-based breach detection for free |
+| *Do NOT* | call `checkInvariant()` **blindly on a timer**. The 90% gate is enforced **on-chain** at load-bearing sites (`buyStable`, risk-increasing volatile `frob`, `distributeSurplus`), and `OSM.poke` / fee-bearing `drip` soft-refresh after acting — but gated txs leave a **pre-tx** flag, and several movers never recompute. Blind scheduled writes waste gas and thrash near the threshold; **edge-triggered** writes (BACKEND-SOLVENCY.md) are required for flag freshness |
+| *Trigger type* | Short-interval / per-block **compare** poll as baseline + event-driven early compares (BACKEND-SOLVENCY.md). Separately: alert on `InvariantChecked(passed=false)` and on `loss/reserve > 0.9` |
 
 ---
 
@@ -177,7 +186,7 @@ and halt the normal loop**, because most flows revert once the system is caged.
 | | |
 |---|---|
 | *Detect* | `VaultEngine.live() == 0`, or index `End`'s `Cage()` event / poll `End.live() == 0` |
-| *On detection* | Stop Jobs 0–6. After cage: `drip` no-ops (rates are **frozen at their cage-time values** — settlement math uses them as-is), `frob` risk-increasing paths revert, `bark` reverts (`live()==0`), auctions are `yank`ed by End, `distributeSurplus` reverts. Poking the OSM is harmless but pointless |
+| *On detection* | Stop Jobs 0–7 (including solvency flag freshness). After cage: `drip` no-ops (rates are **frozen at their cage-time values** — settlement math uses them as-is), `frob` risk-increasing paths revert, `bark` reverts (`live()==0`), auctions are `yank`ed by End, `distributeSurplus` reverts. Poking the OSM is harmless but pointless |
 | *Optional assist* | The End lifecycle (`cage(ilk)` → `skim(vaultId)` → `thaw()` → `flow(ilk)`) is permissionless and can be driven by anyone; a keeper MAY batch `skim` over all open `vaultId`s to speed settlement, but this is unrewarded — coordinate with governance before automating |
 | *Alert* | Cage is a page-everyone event |
 
@@ -189,9 +198,8 @@ A broken role silently disables a whole job — `verify-roles.js` now asserts al
 
 1. Keeper read address `kiss`ed on OSM (if reading `peek` directly); CircuitBreaker `kiss`ed on OSM.
 2. **SolvencyEngine has READER_ROLE on the OSM** (H-1 — it reads prices there now).
-3. **Exposure reporter wired** (`file("externalExposure", …)`) — no companion parameter and no ordering
-   requirement: reports are consumed at face value, and an unreachable reporter falls back to total USDR
-   outstanding on its own.
+3. **`exposureCap` filed (`$250k`) BEFORE any exposure reporter is wired** — the contract enforces
+   ordering (`ExposureCapNotSet`).
 4. Liquidation wiring: trigger→auction `kick`, auction→trigger `digs`, auction/balanceSheet→
    vaultEngine `suck`; **Governor pause wired into DutchAuction** (M-6).
 5. **End wiring:** WARD on VaultEngine / LiquidationTrigger / PriceConverter / DutchAuction, plus
@@ -235,4 +243,5 @@ and **@ `017b36a` the solvency gate is self-enforcing** — risk-increasing `fro
 `SolvencyGateActive` on breach, add that selector to every simulation decoder), `poke`/`drip`
 refresh the flag as a side effect, and gas went up accordingly on all five paths (one OSM
 `peek` per volatile ilk + escrow SSTORE per recompute). Liquidations (`bark`/`take`/`redo`)
-remain deliberately ungated.
+remain deliberately ungated. **Job 7 flag freshness** remains a keeper duty — see
+[`BACKEND-SOLVENCY.md`].
