@@ -36,8 +36,9 @@ interface IVaultEngine {
     }
 
     /**
-     * @notice A single collateralized position. Users may hold any number of vaults per collateral type; each vault is
-     *         identified by a sequential id and is collateralized, drawn against and liquidated independently.
+     * @notice A single collateralized position. Users may hold any number of vaults per collateral type; each
+     *         vault is identified by a sequential id and is collateralized, drawn against and liquidated
+     *         independently.
      * @param ink Amount of collateral locked in the vault [wad].
      * @param art Normalized debt of the vault [wad].
      */
@@ -209,8 +210,8 @@ interface IVaultEngine {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Registers a new collateral type with its debt multiplier set to 1.0, a zero stability fee (`duty = RAY`)
-     *         and its fee accrual clock started at the current timestamp.
+     * @notice Registers a new collateral type with its debt multiplier set to 1.0, a zero stability fee
+     *         (`duty = RAY`) and its fee accrual clock started at the current timestamp.
      * @dev Only governance can call this. Reverts if the collateral type already exists.
      * @param ilkId Identifier of the collateral type.
      */
@@ -244,16 +245,18 @@ interface IVaultEngine {
     function file(bytes32 what, address data) external;
 
     /**
-     * @notice Updates a per-collateral parameter {spot}, {line}, {dust}, {noFee}, {duty}, {fSafety} or {liquidity}.
-     * @dev Only governance, or the Price Converter for {spot}, can call this. Filing {duty} first accrues the pending
-     *      fee at the old duty ({drip}), so a new duty is never applied retroactively. {duty} must be at least RAY.
-     *      {fSafety} is the dynamic ceiling's safety factor [wad] (zero disables the dynamic ceiling). {liquidity} is
-     *      the available market liquidity [wad] used by {effectiveLine}. Filing {noFee} with 1 permanently marks the
-     *      ilk fee-exempt: filing any `duty` other than RAY on it reverts from then on. Required for every PSM
-     *      (stable) ilk, the PSM's 1:1 accounting is only sound at `rate == RAY`, and any accrued fee would strand
-     *      the stable reserve and mint unbacked surplus. One-way: there is deliberately no un-exempt path, so any
-     *      value other than 1 reverts. Reverts if the ilk is uninitialized or if its rate or duty has already left
-     *      RAY (the invariant it pins is already broken).
+     * @notice Updates a per-collateral parameter {spot}, {line}, {dust}, {noFee}, {duty}, {fSafety} or
+     *         {liquidity}.
+     * @dev Only governance, or the Price Converter for {spot}, can call this. Filing {duty} first accrues the
+     *      pending fee at the old duty ({drip}), so a new duty is never applied retroactively. {duty} must be
+     *      at least RAY. {fSafety} is the dynamic ceiling's safety factor [wad] (zero disables the dynamic
+     *      ceiling). {liquidity} is the available market liquidity [wad] used by {effectiveLine}. Filing
+     *      {noFee} with 1 permanently marks the ilk fee-exempt: filing any `duty` other than RAY on it
+     *      reverts from then on. Required for every PSM (stable) ilk, the PSM's 1:1 accounting is only sound
+     *      at `rate == RAY`, and any accrued fee would strand the stable reserve and mint unbacked surplus.
+     *      One-way: there is deliberately no un-exempt path, so any value other than 1 reverts. Reverts if
+     *      the ilk is uninitialized or if its rate or duty has already left RAY (the invariant it pins is
+     *      already broken).
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
      * @param data New value.
@@ -262,8 +265,9 @@ interface IVaultEngine {
 
     /**
      * @notice Opens a new vault bound to a collateral type and returns its id.
-     * @dev Permissionless. Vault ids are sequential and never reused; ownership is fixed at open time. `usr` lets
-     *      periphery contracts open vaults on behalf of users (the vault belongs to `usr`, not the caller).
+     * @dev Permissionless. Vault ids are sequential and never reused; ownership is fixed at open time. `usr`
+     *      lets periphery contracts open vaults on behalf of users (the vault belongs to `usr`, not the
+     *      caller).
      * @param ilkId Identifier of the collateral type the vault is bound to.
      * @param usr Owner of the new vault.
      * @return vaultId Identifier of the new vault.
@@ -272,9 +276,10 @@ interface IVaultEngine {
 
     /**
      * @notice The core vault operation: lock or free collateral and mint or repay USDR.
-     * @dev Enforces the over-collateralization rule, debt ceilings, the minimum vault size and caller permissions.
-     *      Uses the delayed oracle price factor already stored in the system.
-     * @param vaultId Identifier of the vault being modified. The collateral type is the one fixed at open time.
+     * @dev Enforces the over-collateralization rule, debt ceilings, the minimum vault size and caller
+     *      permissions. Uses the delayed oracle price factor already stored in the system.
+     * @param vaultId Identifier of the vault being modified. The collateral type is the one fixed at open
+     *        time.
      * @param v Source or destination of collateral.
      * @param w Source or destination of internal USDR.
      * @param dink Signed change in locked collateral [wad].
@@ -294,8 +299,8 @@ interface IVaultEngine {
     function grab(uint256 vaultId, address v, address w, int256 dink, int256 dart) external;
 
     /**
-     * @notice Refreshes the lagged liquidity snapshot used by {effectiveLine}, advancing a pending decrease once the
-     *         lag window has elapsed.
+     * @notice Refreshes the lagged liquidity snapshot used by {effectiveLine}, advancing a pending decrease
+     *         once the lag window has elapsed.
      * @dev Permissionless.
      * @param ilkId Identifier of the collateral type.
      */
@@ -353,21 +358,23 @@ interface IVaultEngine {
     function ilkIdsLength() external view returns (uint256);
 
     /**
-     * @notice Accrues the stability fee for a collateral type: compounds `duty` over the time elapsed since the last
-     *         accrual (`rho`), folds the resulting delta into the ilk's `rate`, and credits the accrued fees to the
-     *         {feeRecipient} as internal USDR surplus (with total {debt} increased equally).
-     * @dev Permissionless and lazy: anyone may call at any time; `frob` (when changing debt), `bark` and duty changes
-     *      drip automatically. Idempotent within a block. After `cage`, drip is a no-op that returns the frozen rate
-     *      so settlement math is unaffected. Reverts if the ilk is uninitialized, or if fees would accrue while no fee
-     *      recipient is set.
+     * @notice Accrues the stability fee for a collateral type: compounds `duty` over the time elapsed since
+     *         the last accrual (`rho`), folds the resulting delta into the ilk's `rate`, and credits the
+     *         accrued fees to the {feeRecipient} as internal USDR surplus (with total {debt} increased
+     *         equally).
+     * @dev Permissionless and lazy: anyone may call at any time; `frob` (when changing debt), `bark` and duty
+     *      changes drip automatically. Idempotent within a block. After `cage`, drip is a no-op that returns
+     *      the frozen rate so settlement math is unaffected. Reverts if the ilk is uninitialized, or if fees
+     *      would accrue while no fee recipient is set.
      * @param ilkId Identifier of the collateral type.
      * @return newRate The debt multiplier after accrual [ray].
      */
     function drip(bytes32 ilkId) external returns (uint256 newRate);
 
     /**
-     * @notice Returns the effective debt ceiling for an ilk [rad]: the static {line} when {fSafety} is zero, otherwise
-     *         `min(line, laggedLiquidity * fSafety)` with growth applied immediately and shrinkage lagged by a day.
+     * @notice Returns the effective debt ceiling for an ilk [rad]: the static {line} when {fSafety} is zero,
+     *         otherwise `min(line, laggedLiquidity * fSafety)` with growth applied immediately and shrinkage
+     *         lagged by a day.
      * @param ilkId Identifier of the collateral type.
      */
     function effectiveLine(bytes32 ilkId) external view returns (uint256);
@@ -413,8 +420,8 @@ interface IVaultEngine {
     function feeRecipient() external view returns (address);
 
     /**
-     * @notice Returns the registered collateral type identifier at `index`. Ilks are appended at {init} and never
-     *         removed; the array lets {cage} (and off-chain consumers) enumerate every ilk.
+     * @notice Returns the registered collateral type identifier at `index`. Ilks are appended at {init} and
+     *         never removed; the array lets {cage} (and off-chain consumers) enumerate every ilk.
      * @param index Position in the registration order.
      */
     function ilkIds(uint256 index) external view returns (bytes32);

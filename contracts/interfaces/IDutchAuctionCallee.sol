@@ -10,7 +10,7 @@ pragma solidity ^0.8.0;
  */
 interface IDutchAuctionCallee {
     /**
-     * @notice Called by the Dutch auction after transferring collateral to the callee.
+     * @notice Called by the Dutch Auction after transferring collateral to the callee.
      * @param sender The keeper that initiated the purchase.
      * @param owe The USDR payment due [rad].
      * @param slice The collateral received [wad].

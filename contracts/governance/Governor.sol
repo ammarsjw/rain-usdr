@@ -12,15 +12,15 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title Governor
  * @author Rain Team
- * @notice The controlled way to change the protocol's adjustable settings. Every change waits out a mandatory delay
- *         before it can take effect, giving the community time to review. Also holds the emergency pause. It can never
- *         touch the immutable core, only the risk parameters.
- * @dev The timelock delay is immutable: it is fixed at construction and can never be changed, so the timelock can
- *      never be shortened or removed by a compromised governance key. The pause auto-expires after 72 hours, that is
- *      {paused} returns false once the window elapses even without an {unpause} call. Pauses are SCOPED: consumers
- *      check {paused(scope)} against the bitmask recorded at pause time, so a PSM-only incident can leave liquidations
- *      running. A cooldown equal to {PAUSE_MAX} after each pause ends prevents a ward from chaining windows into an
- *      unbounded halt.
+ * @notice The controlled way to change the protocol's adjustable settings. Every change waits out a mandatory
+ *         delay before it can take effect, giving the community time to review. Also holds the emergency
+ *         pause. It can never touch the immutable core, only the risk parameters.
+ * @dev The timelock delay is immutable: it is fixed at construction and can never be changed, so the timelock
+ *      can never be shortened or removed by a compromised governance key. The pause auto-expires after 72
+ *      hours, that is {paused} returns false once the window elapses even without an {unpause} call. Pauses
+ *      are SCOPED: consumers check {paused(scope)} against the bitmask recorded at pause time, so a PSM-only
+ *      incident can leave liquidations running. A cooldown equal to {PAUSE_MAX} after each pause ends
+ *      prevents a ward from chaining windows into an unbounded halt.
  */
 contract Governor is IGovernor, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -136,8 +136,8 @@ contract Governor is IGovernor, AccessControl {
 
     /**
      * @inheritdoc IGovernor
-     * @dev A scheduled change can be cancelled at any moment up to its execution, including after its delay has
-     *      elapsed. Watchers should treat a queued change as final only once executed.
+     * @dev A scheduled change can be cancelled at any moment up to its execution, including after its delay
+     *      has elapsed. Watchers should treat a queued change as final only once executed.
      */
     function cancel(uint256 id) external onlyRole(_WARD_ROLE) {
         Change storage change = changes[id];
@@ -168,7 +168,8 @@ contract Governor is IGovernor, AccessControl {
             _revert(AlreadyPaused.selector);
         }
 
-        // An expired raw flag still needs clearing so cooldown accounting sees the true end of the prior window.
+        // An expired raw flag still needs clearing so cooldown accounting sees the true end of the prior
+        // window.
         if (_paused) {
             lastPauseEnd = pausedAt + PAUSE_MAX;
             _paused = false;
@@ -190,16 +191,16 @@ contract Governor is IGovernor, AccessControl {
      * @inheritdoc IGovernor
      */
     function unpause() external {
-        // Checked against the RAW flag, not the auto-expiring view: after the window expires the system already reads
-        // unpaused everywhere, but the stale storage must still be clearable.
+        // Checked against the RAW flag, not the auto-expiring view: after the window expires the system
+        // already reads unpaused everywhere, but the stale storage must still be clearable.
         if (!_paused) {
             _revert(NotPaused.selector);
         }
 
         uint256 endedAt;
 
-        // Once 72 hours have passed since the pause began, anyone can lift it with no governance action required.
-        // Before that, only governance can lift it early.
+        // Once 72 hours have passed since the pause began, anyone can lift it with no governance action
+        // required. Before that, only governance can lift it early.
         if (block.timestamp < pausedAt + PAUSE_MAX) {
             if (!hasRole(_WARD_ROLE, msg.sender)) {
                 _revert(NotAuthorized.selector);
@@ -228,9 +229,9 @@ contract Governor is IGovernor, AccessControl {
      * @inheritdoc IGovernor
      */
     function paused() public view returns (bool) {
-        // The pause auto-expires after PAUSE_MAX: once the window elapses the system is unpaused for every consumer
-        // even if nobody has called {unpause} to clear the storage. This makes the "72h auto-expiry" real rather than
-        // a relabelling of who may call unpause.
+        // The pause auto-expires after PAUSE_MAX: once the window elapses the system is unpaused for every
+        // consumer even if nobody has called {unpause} to clear the storage. This makes the "72h auto-expiry"
+        // real rather than a relabelling of who may call unpause.
         return _paused && block.timestamp < pausedAt + PAUSE_MAX;
     }
 }

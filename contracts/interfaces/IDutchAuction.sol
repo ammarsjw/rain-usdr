@@ -232,8 +232,8 @@ interface IDutchAuction {
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets an address dependency {oracleSecurityModule}, {liquidationTrigger}, {balanceSheet}, {priceCurve} or
-     *         {governor}.
+     * @notice Sets an address dependency {oracleSecurityModule}, {liquidationTrigger}, {balanceSheet},
+     *         {priceCurve} or {governor}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -241,13 +241,13 @@ interface IDutchAuction {
 
     /**
      * @notice Opens a new auction for a seized vault's collateral.
-     * @dev Only the Liquidation Trigger can call this. The starting price is set to the current market price plus the
-     *      ilk's markup.
+     * @dev Only the Liquidation Trigger can call this. The starting price is set to the current market price
+     *      plus the ilk's markup.
      * @param ilkId Identifier of the collateral type being sold.
      * @param tab USDR debt to recover, including the penalty [rad].
      * @param lot Collateral for sale [wad].
-     * @param vaultId Identifier of the vault the collateral was seized from (used by emergency settlement to reclaim
-     *        in-flight auctions).
+     * @param vaultId Identifier of the vault the collateral was seized from (used by emergency settlement to
+     *        reclaim in-flight auctions).
      * @param usr Vault owner who receives any leftover collateral.
      * @param kpr Keeper eligible for the kick reward.
      * @return id Identifier of the new auction.
@@ -271,8 +271,8 @@ interface IDutchAuction {
 
     /**
      * @notice Lets a keeper buy some or all of the collateral at the current descending price.
-     * @dev Supports flash-loan-style buying via the callback. Reverts if the auction needs a reset or if the current
-     *      price exceeds the keeper's maximum.
+     * @dev Supports flash-loan-style buying via the callback. Reverts if the auction needs a reset or if the
+     *      current price exceeds the keeper's maximum.
      * @param id Identifier of the auction.
      * @param amt Maximum collateral amount to buy [wad].
      * @param max Highest acceptable price [ray].
@@ -282,24 +282,24 @@ interface IDutchAuction {
     function take(uint256 id, uint256 amt, uint256 max, address who, bytes calldata data) external;
 
     /**
-     * @notice Forcibly ends an auction, used during emergency shutdown. The remaining collateral moves to the caller
-     *         so the settlement module can reclaim it into the seized vault.
+     * @notice Forcibly ends an auction, used during emergency shutdown. The remaining collateral moves to the
+     *         caller so the settlement module can reclaim it into the seized vault.
      * @dev Only governance or the settlement module may call this via authorization.
      * @param id Identifier of the auction.
      */
     function yank(uint256 id) external;
 
     /**
-     * @notice Refreshes a collateral type's cached dust-times-chop threshold from the Vault Engine and the Liquidation
-     *         Trigger.
+     * @notice Refreshes a collateral type's cached dust-times-chop threshold from the Vault Engine and the
+     *         Liquidation Trigger.
      * @dev Permissionless. Must be called after the ilk's `dust` or `chop` changes.
      * @param ilkId Identifier of the collateral type.
      */
     function upchost(bytes32 ilkId) external;
 
     /**
-     * @notice Shuts the auction house down. Blocks kick, take and redo; yank remains available so settlement can
-     *         reclaim in-flight auctions.
+     * @notice Shuts the auction house down. Blocks kick, take and redo; yank remains available so settlement
+     *         can reclaim in-flight auctions.
      */
     function cage() external;
 
@@ -363,8 +363,8 @@ interface IDutchAuction {
     function ilks(bytes32 ilkId) external view returns (uint256 buf, uint256 tail, uint256 cusp, uint256 chost);
 
     /**
-     * @notice Returns the breaker level: 0 = normal, 1 = no new kicks, 2 = no kicks or takes, 3 = no kicks, takes or
-     *         redos. Yank is never gated.
+     * @notice Returns the breaker level: 0 = normal, 1 = no new kicks, 2 = no kicks or takes, 3 = no kicks,
+     *         takes or redos. Yank is never gated.
      */
     function stopped() external view returns (uint256);
 

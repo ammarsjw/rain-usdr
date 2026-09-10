@@ -124,9 +124,9 @@ interface IGovernor {
 
     /**
      * @notice Halts the modules selected by `scope` during an emergency.
-     * @dev Auto-expires after 72 hours. A new pause cannot start until {PAUSE_COOLDOWN} has elapsed since the previous
-     *      pause ended. `scope` is a bitmask of module bits (`_PAUSE_FROB`, `_PAUSE_PSM`, `_PAUSE_BARK`,
-     *      `_PAUSE_AUCTION`, or `_PAUSE_ALL`).
+     * @dev Auto-expires after 72 hours. A new pause cannot start until {PAUSE_COOLDOWN} has elapsed since the
+     *      previous pause ended. `scope` is a bitmask of module bits (`_PAUSE_FROB`, `_PAUSE_PSM`,
+     *      `_PAUSE_BARK`, `_PAUSE_AUCTION`, or `_PAUSE_ALL`).
      * @param scope Bitmask of modules to pause.
      */
     function pause(uint256 scope) external;
@@ -173,7 +173,8 @@ interface IGovernor {
     function pauseScope() external view returns (uint256);
 
     /**
-     * @notice Returns when the previous pause window ended (early unpause or auto-expiry). Zero before any pause.
+     * @notice Returns when the previous pause window ended (early unpause or auto-expiry). Zero before any
+     *         pause.
      */
     function lastPauseEnd() external view returns (uint256);
 

@@ -8,9 +8,9 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title Math
  * @author Rain Team
- * @notice Library containing generic math helpers for mixed signed and unsigned arithmetic. Helpers that already exist
- *         in OpenZeppelin's `Math` library, for example `min` and `max` for unsigned integers, are intentionally not
- *         duplicated here. Consumers should import them from OpenZeppelin directly.
+ * @notice Library containing generic math helpers for mixed signed and unsigned arithmetic. Helpers that
+ *         already exist in OpenZeppelin's `Math` library, for example `min` and `max` for unsigned integers,
+ *         are intentionally not duplicated here. Consumers should import them from OpenZeppelin directly.
  */
 library Math {
     /* ========================== ERRORS ========================== */
@@ -89,8 +89,8 @@ library Math {
      * @return z The product `x * y` as a signed integer.
      */
     function mul(uint256 x, int256 y) internal pure returns (int256 z) {
-        // The unsigned operand must fit the signed range BEFORE the cast is used in arithmetic: validating after
-        // multiplying would compute with an already-corrupted (negative) operand.
+        // The unsigned operand must fit the signed range BEFORE the cast is used in arithmetic: validating
+        // after multiplying would compute with an already-corrupted (negative) operand.
         if (x > uint256(type(int256).max)) {
             _revert(MulOverflow.selector);
         }
@@ -105,8 +105,8 @@ library Math {
     }
 
     /**
-     * @dev Multiplies two unsigned integers, reverting with a decodable error (rather than an arithmetic panic) on
-     *      overflow. Used in ledger hot paths where reachable products may exceed 256 bits.
+     * @dev Multiplies two unsigned integers, reverting with a decodable error (rather than an arithmetic
+     *      panic) on overflow. Used in ledger hot paths where reachable products may exceed 256 bits.
      * @param x First operand.
      * @param y Second operand.
      * @return z The product `x * y`.
@@ -122,8 +122,8 @@ library Math {
     }
 
     /**
-     * @dev Multiplies two ray fixed-point numbers, truncating: `(x * y) / RAY`. Reverts with a decodable error on
-     *      overflow of the intermediate product.
+     * @dev Multiplies two ray fixed-point numbers, truncating: `(x * y) / RAY`. Reverts with a decodable
+     *      error on overflow of the intermediate product.
      * @param x First operand [ray].
      * @param y Second operand [ray].
      * @return z The ray product `x * y / RAY` [ray].
@@ -133,9 +133,9 @@ library Math {
     }
 
     /**
-     * @dev Fixed-point exponentiation by squaring: computes `x ** n` where `x` is a fixed-point number scaled by
-     *      `base`. Used to compound a per-second `duty` factor over the elapsed time in {VaultEngine.drip}. Reverts
-     *      (via the invalid opcode inside the assembly block) on overflow.
+     * @dev Fixed-point exponentiation by squaring: computes `x ** n` where `x` is a fixed-point number scaled
+     *      by `base`. Used to compound a per-second `duty` factor over the elapsed time in
+     *      {VaultEngine.drip}. Reverts (via the invalid opcode inside the assembly block) on overflow.
      * @param x Fixed-point base scaled by `base` (e.g. a per-second rate factor in ray).
      * @param n Exponent (e.g. elapsed seconds).
      * @param base Fixed-point scalar (e.g. RAY).

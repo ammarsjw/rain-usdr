@@ -29,13 +29,14 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title PegStabilityModule
  * @author Rain Team
- * @notice The on-ramp and off-ramp for stablecoins. Deposit USDT or USDC, get USDR one-for-one. Return USDR, get
- *         stablecoins back, but redemption is best-effort, served only from the protocol's free reserves after
- *         guaranteed obligations are covered. A single deployed instance serves every stablecoin, and ilks are
- *         registered dynamically. Conversions are exactly 1:1 in both directions: the protocol charges no fee.
- * @dev Uses a shared-reserve model with a single ilk-keyed module riding the equally singular Collateral Adapter.
- *      USDR's reserve is shared, so guaranteed obligations always take priority and redemption reverts when free slack
- *      is too low. This keeps the protocol from promising the same dollar twice.
+ * @notice The on-ramp and off-ramp for stablecoins. Deposit USDT or USDC, get USDR one-for-one. Return USDR,
+ *         get stablecoins back, but redemption is best-effort, served only from the protocol's free reserves
+ *         after guaranteed obligations are covered. A single deployed instance serves every stablecoin, and
+ *         ilks are registered dynamically. Conversions are exactly 1:1 in both directions: the protocol
+ *         charges no fee.
+ * @dev Uses a shared-reserve model with a single ilk-keyed module riding the equally singular Collateral
+ *      Adapter. USDR's reserve is shared, so guaranteed obligations always take priority and redemption
+ *      reverts when free slack is too low. This keeps the protocol from promising the same dollar twice.
  */
 contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -113,17 +114,18 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
         }
 
         // The ilk must be permanently fee-exempt with a clean rate: the PSM's 1:1 accounting is only sound at
-        // `rate == RAY`. Any accrued fee makes redemptions underflow the module's zero internal balance and deposits
-        // fail the safety check, stranding the entire stable reserve, while the accrual itself mints unbacked surplus.
-        // Requiring the exemption AT REGISTRATION means no later governance action can arm a fee on a PSM ilk.
+        // `rate == RAY`. Any accrued fee makes redemptions underflow the module's zero internal balance and
+        // deposits fail the safety check, stranding the entire stable reserve, while the accrual itself mints
+        // unbacked surplus. Requiring the exemption AT REGISTRATION means no later governance action can arm
+        // a fee on a PSM ilk.
         (, , uint256 rate, , , , uint256 duty, ) = VAULT_ENGINE.ilks(ilkId);
 
         if (!VAULT_ENGINE.noFee(ilkId) || rate != _RAY || duty != _RAY) {
             _revert(StableIlkNotFeeExempt.selector);
         }
 
-        // The PSM holds its entire stable inventory for this ilk in a single dedicated vault, opened here. The ilk
-        // must therefore already be initialized in the Vault Engine.
+        // The PSM holds its entire stable inventory for this ilk in a single dedicated vault, opened here.
+        // The ilk must therefore already be initialized in the Vault Engine.
         uint256 vaultId = VAULT_ENGINE.open(ilkId, address(this));
 
         ilks[ilkId] = Ilk({ token: token, to18ConversionFactor: 10 ** (18 - dec), vaultId: vaultId });
@@ -161,22 +163,23 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
         }
 
         // Emergency pause check (PSM scope).
-        // Note: This is never gated by the solvency engine: selling stables INCREASES the reserve, so it remains
-        // available during a solvency breach.
+        //
+        // NOTE: This is never gated by the solvency engine: selling stables INCREASES the reserve, so it
+        // remains available during a solvency breach.
         if (address(governor) != address(0) && governor.paused(_PAUSE_PSM)) {
             _revert(SystemPaused.selector);
         }
 
-        // Defense-in-depth: the 1:1 frob below is only correct at `rate == RAY`. The fee exemption enforced at init
-        // makes this unreachable; if it is ever observed the module mis-accounts on every leg, so failing loudly beats
-        // corrupting the reserve accounting.
+        // Defense-in-depth: the 1:1 frob below is only correct at `rate == RAY`. The fee exemption enforced
+        // at init makes this unreachable; if it is ever observed the module mis-accounts on every leg, so
+        // failing loudly beats corrupting the reserve accounting.
         _requireRatePar(ilkId);
 
         // Exactly 1:1: the user receives stableAmt18 USDR for stableAmt stablecoins. No fee.
         uint256 stableAmt18 = stableAmt * ilk.to18ConversionFactor;
 
-        // Moving the stablecoins into the protocol's stable reserve. The ceiling check happens inside the Vault
-        // Engine's frob.
+        // Moving the stablecoins into the protocol's stable reserve. The ceiling check happens inside the
+        // Vault Engine's frob.
         ilk.token.safeTransferFrom(msg.sender, address(this), stableAmt);
         ilk.token.forceApprove(address(COLLATERAL_ADAPTER), stableAmt);
 
@@ -209,10 +212,11 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
             _revert(SystemPaused.selector);
         }
 
-        // Solvency gate (HARD breach): redemption DECREASES the reserve, so it is blocked while the invariant is
-        // breached. The invariant is recomputed HERE, at redemption time, rather than trusting the keeper-maintained
-        // flag: a stable flag (keeper down during a price collapse) would otherwise hand early redeemers a bank-run
-        // ordering advantage, letting them exit whole at par against a stale escrow while a live loss stands.
+        // Solvency gate (HARD breach): redemption DECREASES the reserve, so it is blocked while the invariant
+        // is breached. The invariant is recomputed HERE, at redemption time, rather than trusting the
+        // keeper-maintained flag: a stable flag (keeper down during a price collapse) would otherwise hand
+        // early redeemers a bank-run ordering advantage, letting them exit whole at par against a stale
+        // escrow while a live loss stands.
         if (address(solvencyEngine) != address(0)) {
             solvencyEngine.checkInvariant();
 
@@ -227,8 +231,9 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
         // Exactly 1:1: the user pays stableAmt18 USDR for stableAmt stablecoins. No fee.
         uint256 stableAmt18 = stableAmt * ilk.to18ConversionFactor;
 
-        // Free-slack check: redemption is best-effort, served only from the reserve minus the amount committed to
-        // guaranteed obligations. If free slack is too low, revert so the user must use the open market instead.
+        // Free-slack check: redemption is best-effort, served only from the reserve minus the amount
+        // committed to guaranteed obligations. If free slack is too low, revert so the user must use the open
+        // market instead.
         if (stableAmt18 > RESERVE_ACCOUNTING.freeSlack()) {
             _revert(InsufficientFreeSlack.selector);
         }
@@ -245,8 +250,8 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
     }
 
     /**
-     * @dev Reverts unless the ilk's debt multiplier is exactly RAY. The module's 1:1 vault accounting is only sound at
-     *      par; see the guards in {init} and {VaultEngine.file}(ilkId, "noFee", 1).
+     * @dev Reverts unless the ilk's debt multiplier is exactly RAY. The module's 1:1 vault accounting is only
+     *      sound at par; see the guards in {init} and {VaultEngine.file}(ilkId, "noFee", 1).
      * @param ilkId Identifier of the stable collateral type.
      */
     function _requireRatePar(bytes32 ilkId) private view {

@@ -8,8 +8,8 @@ import { IVaultEngine } from "./IVaultEngine.sol";
 /**
  * @title ICircuitBreaker
  * @author Rain Team
- * @notice Interface for the contract that slows liquidations when any watched collateral's price moves suspiciously
- *         fast.
+ * @notice Interface for the contract that slows liquidations when any watched collateral's price moves
+ *         suspiciously fast.
  */
 interface ICircuitBreaker {
     /* ========================== EVENTS ========================== */
@@ -47,8 +47,8 @@ interface ICircuitBreaker {
 
     /**
      * @dev Emitted on every check, for the dashboard.
-     * @param worstIlk Identifier of the collateral type with the largest deviation this check. Zero when no watched
-     *        ilk produced a readable price.
+     * @param worstIlk Identifier of the collateral type with the largest deviation this check. Zero when no
+     *        watched ilk produced a readable price.
      * @param maxDeviation The largest relative price deviation observed across the watched set [wad].
      * @param active Whether the breaker is active after the check.
      */
@@ -57,8 +57,8 @@ interface ICircuitBreaker {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Adjusts the deviation threshold {threshold}, the calm period in seconds {calmPeriod}, or the minimum
-     *         spacing between trend observations {obsInterval}.
+     * @notice Adjusts the deviation threshold {threshold}, the calm period in seconds {calmPeriod}, or the
+     *         minimum spacing between trend observations {obsInterval}.
      * @param what Name of the parameter.
      * @param data New value.
      */
@@ -78,11 +78,13 @@ interface ICircuitBreaker {
     function removeIlk(bytes32 ilkId) external;
 
     /**
-     * @notice Determines whether any watched collateral's price is moving abnormally and sets the breaker on or off.
-     * @dev Public, anyone can call. Iterates the watched set, takes the maximum deviation from each ilk's own trend,
-     *      and activates above the threshold. Deactivates only once a full calm period has elapsed since the last
-     *      above-threshold reading and every deviation is back under the threshold. Ilks with unavailable prices are
-     *      skipped (fail-open): a dark feed is not manipulation and must not freeze liquidations.
+     * @notice Determines whether any watched collateral's price is moving abnormally and sets the breaker on
+     *         or off.
+     * @dev Public, anyone can call. Iterates the watched set, takes the maximum deviation from each ilk's own
+     *      trend, and activates above the threshold. Deactivates only once a full calm period has elapsed
+     *      since the last above-threshold reading and every deviation is back under the threshold. Ilks with
+     *      unavailable prices are skipped (fail-open): a dark feed is not manipulation and must not freeze
+     *      liquidations.
      */
     function check() external;
 
@@ -92,7 +94,8 @@ interface ICircuitBreaker {
     function ilkCount() external view returns (uint256);
 
     /**
-     * @notice Returns a collateral type's trailing-average trend anchor price [wad]. Zero until its first observation.
+     * @notice Returns a collateral type's trailing-average trend anchor price [wad]. Zero until its first
+     *         observation.
      * @param ilkId Identifier of the collateral type.
      */
     function trendPrice(bytes32 ilkId) external view returns (uint256);
@@ -118,8 +121,8 @@ interface ICircuitBreaker {
     function threshold() external view returns (uint256);
 
     /**
-     * @notice Returns the calm period in seconds that must elapse after the last above-threshold reading before the
-     *         breaker may deactivate.
+     * @notice Returns the calm period in seconds that must elapse after the last above-threshold reading
+     *         before the breaker may deactivate.
      */
     function calmPeriod() external view returns (uint256);
 
@@ -139,7 +142,8 @@ interface ICircuitBreaker {
     function lastObsTimestamp() external view returns (uint256);
 
     /**
-     * @notice Reports whether the breaker is currently active, meaning liquidations are being throttled globally.
+     * @notice Reports whether the breaker is currently active, meaning liquidations are being throttled
+     *         globally.
      */
     function active() external view returns (bool);
 

@@ -21,8 +21,8 @@ interface ILiquidationTrigger {
      * @param chop The liquidation penalty [wad]. 13% = 1.13 * WAD.
      * @param hole The maximum active liquidation size for this collateral [rad].
      * @param dirt The amount currently being auctioned for this collateral [rad].
-     * @param barkFactor Fraction of the required collateral ratio at which a vault becomes liquidatable [wad].
-     *        65% = 0.65 * WAD.
+     * @param barkFactor Fraction of the required collateral ratio at which a vault becomes liquidatable
+     *        [wad]. 65% = 0.65 * WAD.
      */
     struct IlkLiquidation {
         uint256 chop;
@@ -141,7 +141,8 @@ interface ILiquidationTrigger {
     function file(bytes32 what, uint256 data) external;
 
     /**
-     * @notice Sets a global address dependency {balanceSheet}, {circuitBreaker}, {dutchAuction} or {governor}.
+     * @notice Sets a global address dependency {balanceSheet}, {circuitBreaker}, {dutchAuction} or
+     *         {governor}.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -157,8 +158,9 @@ interface ILiquidationTrigger {
 
     /**
      * @notice Seizes an under-collateralized vault and starts an auction for its collateral.
-     * @dev Reverts if the vault is safe, if the liquidation caps are hit, or when the circuit breaker throttle leaves
-     *      no room this period. Each vault id is assessed independently against the bark threshold.
+     * @dev Reverts if the vault is safe, if the liquidation caps are hit, or when the circuit breaker
+     *      throttle leaves no room this period. Each vault id is assessed independently against the bark
+     *      threshold.
      * @param vaultId Identifier of the vault to liquidate.
      * @param kpr Keeper eligible for the liquidation reward.
      * @return id Identifier of the started auction.
@@ -235,7 +237,8 @@ interface ILiquidationTrigger {
      * @return chop The liquidation penalty [wad].
      * @return hole The maximum active liquidation size for this collateral [rad].
      * @return dirt The amount currently being auctioned for this collateral [rad].
-     * @return barkFactor Fraction of the required collateral ratio at which a vault becomes liquidatable [wad].
+     * @return barkFactor Fraction of the required collateral ratio at which a vault becomes liquidatable
+     *         [wad].
      */
     function ilks(bytes32 ilkId) external view returns (uint256 chop, uint256 hole, uint256 dirt, uint256 barkFactor);
 }

@@ -14,27 +14,29 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title CircuitBreaker
  * @author Rain Team
- * @notice A defense against price manipulation during liquidation. Watches how far each watched collateral's delayed
- *         price has moved from its recent trend. If any move is too large too fast, it throttles liquidations, slowing
- *         them but never freezing them, so a manipulated price cannot trigger a wave of unfair liquidations. It never
- *         touches ordinary vault operations.
- * @dev A single instance watches every registered ilk and aggregates to ONE global verdict: {check} iterates the
- *      watched set, computes each ilk's deviation from its own trailing-average trend, and takes the maximum. The
- *      breaker activates when the maximum deviation exceeds the threshold (25%) and deactivates only after a full calm
- *      period (in seconds) has elapsed since activation AND every ilk's deviation is back under the threshold at that
- *      moment. Trend anchors are per-ilk (deviation is relative, so ilks at different price scales can never share a
- *      buffer), each anchored to the average of a small ring buffer of observations recorded at most once per
- *      `obsInterval`, so a single manipulated observation moves an anchor by at most 1/N.
+ * @notice A defense against price manipulation during liquidation. Watches how far each watched collateral's
+ *         delayed price has moved from its recent trend. If any move is too large too fast, it throttles
+ *         liquidations, slowing them but never freezing them, so a manipulated price cannot trigger a wave of
+ *         unfair liquidations. It never touches ordinary vault operations.
+ * @dev A single instance watches every registered ilk and aggregates to ONE global verdict: {check} iterates
+ *      the watched set, computes each ilk's deviation from its own trailing-average trend, and takes the
+ *      maximum. The breaker activates when the maximum deviation exceeds the threshold (25%) and deactivates
+ *      only after a full calm period (in seconds) has elapsed since activation AND every ilk's deviation is
+ *      back under the threshold at that moment. Trend anchors are per-ilk (deviation is relative, so ilks at
+ *      different price scales can never share a buffer), each anchored to the average of a small ring buffer
+ *      of observations recorded at most once per `obsInterval`, so a single manipulated observation moves an
+ *      anchor by at most 1/N.
  *
- *      The global verdict is deliberate policy: a dislocation in ANY watched ilk throttles liquidations of ALL ilks,
- *      mirroring the solvency gate's global posture. The cost is a cross-ilk griefing surface (manipulating one ilk's
- *      market throttles another ilk's liquidations); the OSM delay, the 1/N anchor movement and the fact that the
- *      breaker throttles rather than halts bound that surface. An unavailable price for an ilk skips it rather than
- *      activating: a dark feed is not price manipulation, and liquidations must not freeze because a feed hiccuped
- *      (fail-open, the OPPOSITE polarity from the Solvency Engine, whose unavailable price is a solvency question).
+ *      The global verdict is deliberate policy: a dislocation in ANY watched ilk throttles liquidations of
+ *      ALL ilks, mirroring the solvency gate's global posture. The cost is a cross-ilk griefing surface
+ *      (manipulating one ilk's market throttles another ilk's liquidations); the OSM delay, the 1/N anchor
+ *      movement and the fact that the breaker throttles rather than halts bound that surface. An unavailable
+ *      price for an ilk skips it rather than activating: a dark feed is not price manipulation, and
+ *      liquidations must not freeze because a feed hiccuped (fail-open, the OPPOSITE polarity from the
+ *      Solvency Engine, whose unavailable price is a solvency question).
  *
- *      Residual assumption: a keeper calls {check} regularly (at least once per observation interval); if checks stop
- *      entirely, the trends go stale until calls resume.
+ *      Residual assumption: a keeper calls {check} regularly (at least once per observation interval); if
+ *      checks stop entirely, the trends go stale until calls resume.
  */
 contract CircuitBreaker is ICircuitBreaker, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -132,8 +134,8 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
             _revert(IlkAlreadyInitialized.selector);
         }
 
-        // The ilk must exist in the Vault Engine: an unknown ilk would silently contribute a zero deviation forever,
-        // polluting the watched set without ever being noticed.
+        // The ilk must exist in the Vault Engine: an unknown ilk would silently contribute a zero deviation
+        // forever, polluting the watched set without ever being noticed.
         (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
         if (rate == 0) {
@@ -159,7 +161,8 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
                 watchedIlks.pop();
                 isWatched[ilkId] = false;
 
-                // Clearing the trend state so a later re-add starts fresh instead of anchoring to a stale trend.
+                // Clearing the trend state so a later re-add starts fresh instead of anchoring to a stale
+                // trend.
                 delete _observations[ilkId];
                 delete _obsIndex[ilkId];
                 delete _obsFilled[ilkId];
@@ -180,9 +183,10 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
         uint256 maxDeviation;
         bytes32 worstIlk;
 
-        // A single global observation clock: one call samples every watched ilk simultaneously, so per-ilk timestamps
-        // would all carry the same value anyway. The clock only advances when at least one observation actually lands,
-        // so a round where every feed is dark does not silently consume an observation slot.
+        // A single global observation clock: one call samples every watched ilk simultaneously, so per-ilk
+        // timestamps would all carry the same value anyway. The clock only advances when at least one
+        // observation actually lands, so a round where every feed is dark does not silently consume an
+        // observation slot.
         bool record = lastObsTimestamp == 0 || block.timestamp - lastObsTimestamp >= obsInterval;
         bool recorded;
 
@@ -193,16 +197,16 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
 
             (bytes32 val, bool has) = ORACLE_SECURITY_MODULE.peek(ilkId);
 
-            // Fail-open per ilk: a dark feed is not price manipulation, and the breaker must never freeze liquidations
-            // because an oracle hiccuped. The ilk simply contributes no deviation this round.
+            // Fail-open per ilk: a dark feed is not price manipulation, and the breaker must never freeze
+            // liquidations because an oracle hiccuped. The ilk simply contributes no deviation this round.
             if (!has) {
                 continue;
             }
 
             uint256 currentPrice = uint256(val);
 
-            // Recording an observation at most once per interval. A single manipulated observation moves an ilk's
-            // trailing average by at most 1/OBS_COUNT, so no anchor can be poisoned in one block.
+            // Recording an observation at most once per interval. A single manipulated observation moves an
+            // ilk's trailing average by at most 1/OBS_COUNT, so no anchor can be poisoned in one block.
             if (record) {
                 _observations[ilkId][_obsIndex[ilkId]] = currentPrice;
                 _obsIndex[ilkId] = (_obsIndex[ilkId] + 1) % OBS_COUNT;
@@ -214,8 +218,8 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
                 recorded = true;
             }
 
-            // Comparing the current delayed price to this ilk's trailing-average trend and aggregating the maximum:
-            // the global verdict is driven by the single worst dislocation across the watched set.
+            // Comparing the current delayed price to this ilk's trailing-average trend and aggregating the
+            // maximum: the global verdict is driven by the single worst dislocation across the watched set.
             uint256 deviation = _deviation(currentPrice, trendPrice(ilkId));
 
             if (deviation > maxDeviation) {
@@ -238,8 +242,9 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
 
             activatedAt = block.timestamp;
         } else if (active && block.timestamp >= activatedAt + calmPeriod) {
-            // Time-based deactivation: a full calm period has elapsed since the last above-threshold reading AND every
-            // watched ilk's deviation is back under the threshold right now (the maximum is under it).
+            // Time-based deactivation: a full calm period has elapsed since the last above-threshold reading
+            // AND every watched ilk's deviation is back under the threshold right now (the maximum is under
+            // it).
             active = false;
             activatedAt = 0;
 
