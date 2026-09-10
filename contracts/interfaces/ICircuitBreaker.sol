@@ -87,6 +87,11 @@ interface ICircuitBreaker {
     function check() external;
 
     /**
+     * @notice Returns the number of watched collateral types.
+     */
+    function ilkCount() external view returns (uint256);
+
+    /**
      * @notice Returns a collateral type's trailing-average trend anchor price [wad]. Zero until its first observation.
      * @param ilkId Identifier of the collateral type.
      */
@@ -150,9 +155,4 @@ interface ICircuitBreaker {
      * @param ilkId Identifier of the collateral type.
      */
     function isWatched(bytes32 ilkId) external view returns (bool);
-
-    /**
-     * @notice Returns the number of watched collateral types.
-     */
-    function ilkCount() external view returns (uint256);
 }

@@ -29,8 +29,8 @@ import { _revert } from "../shared/Globals.sol";
  *      bad debt instead. The strict "fill before burn" rule is enforced in `distributeSurplus`. Bad debt entering via
  *      `fess` sits in a time-indexed queue for `wait` seconds before it can be healed so surplus cannot be netted
  *      against debt whose auction is still running. After surplus is exhausted, {backstop} sells treasury RAIN to a
- *      caller at a haircuted oracle price for USDR that is then healed against unqueued sin — capped, never an
- *      unlimited mint.
+ *      caller at a haircuted oracle price for USDR that is then healed against unqueued sin ({backstop} is capped, and
+ *      never an unlimited mint).
  */
 contract BalanceSheet is IBalanceSheet, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -104,7 +104,7 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
 
         VAULT_ENGINE = vaultEngine_;
 
-        // Default sale price is 90% of the delayed oracle — buyers get a measured discount, the protocol never mints.
+        // Default sale price is 90% of the delayed oracle. Buyers get a measured discount, the protocol never mints.
         backstopHaircut = (_WAD * 90) / 100;
     }
 

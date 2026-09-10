@@ -220,17 +220,17 @@ contract Governor is IGovernor, AccessControl {
     /**
      * @inheritdoc IGovernor
      */
-    function paused() public view returns (bool) {
-        // The pause auto-expires after PAUSE_MAX: once the window elapses the system is unpaused for every consumer
-        // even if nobody has called {unpause} to clear the storage. This makes the "72h auto-expiry" real rather than
-        // a relabelling of who may call unpause.
-        return _paused && block.timestamp < pausedAt + PAUSE_MAX;
+    function paused(uint256 scope) external view returns (bool) {
+        return paused() && (pauseScope & scope) != 0;
     }
 
     /**
      * @inheritdoc IGovernor
      */
-    function paused(uint256 scope) public view returns (bool) {
-        return paused() && (pauseScope & scope) != 0;
+    function paused() public view returns (bool) {
+        // The pause auto-expires after PAUSE_MAX: once the window elapses the system is unpaused for every consumer
+        // even if nobody has called {unpause} to clear the storage. This makes the "72h auto-expiry" real rather than
+        // a relabelling of who may call unpause.
+        return _paused && block.timestamp < pausedAt + PAUSE_MAX;
     }
 }

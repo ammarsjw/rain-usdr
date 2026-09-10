@@ -252,6 +252,13 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
     /**
      * @inheritdoc ICircuitBreaker
      */
+    function ilkCount() external view returns (uint256) {
+        return watchedIlks.length;
+    }
+
+    /**
+     * @inheritdoc ICircuitBreaker
+     */
     function trendPrice(bytes32 ilkId) public view returns (uint256 trend) {
         uint256 filled = _obsFilled[ilkId];
 
@@ -266,13 +273,6 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
         }
 
         trend = sum / filled;
-    }
-
-    /**
-     * @inheritdoc ICircuitBreaker
-     */
-    function ilkCount() external view returns (uint256) {
-        return watchedIlks.length;
     }
 
     /**
