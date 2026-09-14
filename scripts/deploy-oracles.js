@@ -42,20 +42,21 @@ const deployOracles = async () => {
     const priceConverterInstance = await hardhat.ethers.getContractAt(priceConverterName, priceConverterAddress);
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
 
-    // Registering RAIN's price source (Uniswap TWAP wrapper, any IPriceSource adapter works, e.g. a Chainlink wrapper
-    // for future volatile collaterals like ETH or WBTC). Supported stablecoins are never registered on the OSM: they
-    // are marked fixed on the Price Converter and always convert at $1.
+    // Registering RAIN's price source (Uniswap TWAP wrapper, any IPriceSource adapter works, e.g. a Chainlink
+    // wrapper for future volatile collaterals like ETH or WBTC). Supported stablecoins are never registered
+    // on the OSM: they are marked fixed on the Price Converter and always convert at $1.
     await (await osmInstance.change(rainIlk, rainPriceSourceAddress)).wait();
 
     // Whitelisting the Price Converter to read the OSM.
     await (await osmInstance.grantRole(READER_ROLE, priceConverterAddress)).wait();
 
-    // Staleness bound: peek/read (and therefore spot updates) fail closed once the last poke is older than maxAge.
+    // Staleness bound: peek/read (and therefore spot updates) fail closed once the last poke is older than
+    // maxAge.
     const maxAge = process.env.OSM_MAX_AGE ? BigInt(process.env.OSM_MAX_AGE) : 21600n; // 6 hours default.
     await (await osmInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("maxAge"), maxAge)).wait();
 
-    // Wiring the single system-wide OSM, then configuring RAIN as oracle-backed (400%) and the stablecoins as fixed
-    // $1 (100%).
+    // Wiring the single system-wide OSM, then configuring RAIN as oracle-backed (400%) and the stablecoins as
+    // fixed $1 (100%).
     const RAY = 10n ** 27n;
     await (
         await priceConverterInstance["file(bytes32,address)"](
@@ -102,7 +103,8 @@ const deployOracles = async () => {
     // Authorizing the Price Converter to push price factors into the ledger.
     await (await vaultEngineInstance.grantRole(WARD_ROLE, priceConverterAddress)).wait();
 
-    // Setting the stablecoins' price factors once; fixed ilks never need another poke unless par or mat changes.
+    // Setting the stablecoins' price factors once; fixed ilks never need another poke unless par or mat
+    // changes.
     await (await priceConverterInstance.poke(usdtIlk)).wait();
     await (await priceConverterInstance.poke(usdcIlk)).wait();
 

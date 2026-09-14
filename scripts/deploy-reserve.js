@@ -68,8 +68,8 @@ const deployReserve = async () => {
     await (await psmInstance.init(usdcIlk)).wait();
     await (await reserveAccountingInstance.grantRole(RECORDER_ROLE, psmAddress)).wait();
 
-    // Registering RAIN as a volatile collateral in the solvency stress calculation and wiring the direct OSM price
-    // source (worst-case loss reads prices straight from the OSM, never spot * mat).
+    // Registering RAIN as a volatile collateral in the solvency stress calculation and wiring the direct OSM
+    // price source (worst-case loss reads prices straight from the OSM, never spot * mat).
     await (await solvencyEngineInstance.addVolatileIlk(rainIlk)).wait();
     await (
         await solvencyEngineInstance["file(bytes32,address)"](
@@ -82,8 +82,8 @@ const deployReserve = async () => {
     const osmInstance = await hardhat.ethers.getContractAt("OracleSecurityModule", osmAddress);
     await (await osmInstance.grantRole(READER_ROLE, solvencyEngineAddress)).wait();
 
-    // Wiring the solvency gate: risk-increasing frobs, PSM redemptions and surplus distributions consult the Solvency
-    // Engine (hard gates); OSM pokes and drip refresh the breach flag softly.
+    // Wiring the solvency gate: risk-increasing frobs, PSM redemptions and surplus distributions consult the
+    // Solvency Engine (hard gates); OSM pokes and drip refresh the breach flag softly.
     await (
         await vaultEngineInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("solvencyEngine"),
@@ -103,7 +103,8 @@ const deployReserve = async () => {
         )
     ).wait();
 
-    // Balance Sheet: bad debt queue delay, surplus buffer floor ($500k) and dynamic rate (10% of the reserve).
+    // Balance Sheet: bad debt queue delay, surplus buffer floor ($500k) and dynamic rate (10% of the
+    // reserve).
     const balanceSheetInstance = await hardhat.ethers.getContractAt(balanceSheetName, balanceSheetAddress);
     await (
         await balanceSheetInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("wait"), 561600n)
@@ -159,9 +160,9 @@ const deployReserve = async () => {
     // Authorizing the Balance Sheet to heal and suck on the ledger.
     await (await vaultEngineInstance.grantRole(WARD_ROLE, balanceSheetAddress)).wait();
 
-    // Stability fee wiring: accrued fees (drip) are credited to the Balance Sheet as surplus. Only VOLATILE ilk's duty
-    // needs to be filed, in our case RAIN-A will have ~2% APY = 1000000000627937192491029810n (ray, per-second factor
-    // 1.02^(1/31536000)).
+    // Stability fee wiring: accrued fees (drip) are credited to the Balance Sheet as surplus. Only VOLATILE
+    // ilk's duty needs to be filed, in our case RAIN-A will have ~2% APY = 1000000000627937192491029810n
+    // (ray, per-second factor 1.02^(1/31536000)).
     const rainDuty = process.env.RAIN_DUTY
         ? BigInt(process.env.RAIN_DUTY)
         : // ~2% APY default.

@@ -40,8 +40,8 @@ import { MockPriceSource } from "../mocks/MockPriceSource.sol";
 /**
  * @title BaseTest
  * @author Rain Team
- * @notice Shared test harness that deploys and wires the full USDR system. Concrete test contracts inherit from this
- *         and add their own scenarios.
+ * @notice Shared test harness that deploys and wires the full USDR system. Concrete test contracts inherit
+ *         from this and add their own scenarios.
  */
 abstract contract BaseTest is Test {
     /* ========================== STATE VARIABLES ========================== */
@@ -108,8 +108,8 @@ abstract contract BaseTest is Test {
         dutchAuction = new DutchAuction(vaultEngine);
         circuitBreaker = new CircuitBreaker(vaultEngine, osm);
 
-        // Wiring the core. Vault Engine ilks must exist before the PSM registers its ilks: PSM registration opens the
-        // module's dedicated vault in the Vault Engine.
+        // Wiring the core. Vault Engine ilks must exist before the PSM registers its ilks: PSM registration
+        // opens the module's dedicated vault in the Vault Engine.
         vaultEngine.init(RAIN_ILK);
         vaultEngine.init(USDT_ILK);
         vaultEngine.init(USDC_ILK);
@@ -139,7 +139,8 @@ abstract contract BaseTest is Test {
         osm.grantRole(_READER_ROLE, address(priceConverter));
         osm.grantRole(_READER_ROLE, address(dutchAuction));
         osm.grantRole(_READER_ROLE, address(circuitBreaker));
-        // Staleness: a current price older than six hours fails closed on peek/read (and therefore on poke → spot=0).
+        // Staleness: a current price older than six hours fails closed on peek/read (and therefore on poke →
+        // spot=0).
         osm.file("maxAge", 6 hours);
         priceConverter.file("oracleSecurityModule", address(osm));
         priceConverter.file(RAIN_ILK, "mat", 4 * _RAY);
@@ -157,8 +158,8 @@ abstract contract BaseTest is Test {
         solvencyEngine.file("oracleSecurityModule", address(osm));
         osm.grantRole(_READER_ROLE, address(solvencyEngine));
 
-        // Wiring the solvency gate: hard gates (frob, PSM redemption, surplus distribution) and soft refresh hooks
-        // (OSM poke, drip inside the Vault Engine).
+        // Wiring the solvency gate: hard gates (frob, PSM redemption, surplus distribution) and soft refresh
+        // hooks (OSM poke, drip inside the Vault Engine).
         vaultEngine.file("solvencyEngine", address(solvencyEngine));
         psm.file("solvencyEngine", address(solvencyEngine));
         balanceSheet.file("solvencyEngine", address(solvencyEngine));
@@ -215,8 +216,8 @@ abstract contract BaseTest is Test {
         vaultEngine.file(USDT_ILK, "line", 500_000 * _RAD);
         vaultEngine.file(USDC_ILK, "line", 500_000 * _RAD);
         vaultEngine.file(RAIN_ILK, "dust", 100 * _RAD);
-        // Spec defaults: f_safety 0.05 RAIN / 0.50 stables. Liquidity set at the hard cap so effectiveLine == line
-        // until governance files a tighter market figure.
+        // Spec defaults: f_safety 0.05 RAIN / 0.50 stables. Liquidity set at the hard cap so effectiveLine ==
+        // line until governance files a tighter market figure.
         vaultEngine.file(RAIN_ILK, "fSafety", (_WAD * 5) / 100);
         vaultEngine.file(USDT_ILK, "fSafety", (_WAD * 50) / 100);
         vaultEngine.file(USDC_ILK, "fSafety", (_WAD * 50) / 100);

@@ -114,8 +114,8 @@ const deployLiquidation = async () => {
         )
     ).wait();
 
-    // Dutch auction: per-ilk curve for RAIN (5% start markup, 30 minute reset time, 40% reset threshold) and the
-    // global 2% keeper reward.
+    // Dutch auction: per-ilk curve for RAIN (5% start markup, 30 minute reset time, 40% reset threshold) and
+    // the global 2% keeper reward.
     await (
         await dutchAuctionInstance["file(bytes32,bytes32,uint256)"](
             rainIlk,
@@ -179,8 +179,8 @@ const deployLiquidation = async () => {
     await (await dutchAuctionInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
     await (await balanceSheetInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
 
-    // Circuit breaker: 30 minute calm period, 5 minute observation interval (constructor defaults; set explicitly),
-    // and watching RAIN (the volatile ilk).
+    // Circuit breaker: 30 minute calm period, 5 minute observation interval (constructor defaults; set
+    // explicitly), and watching RAIN (the volatile ilk).
     await (
         await circuitBreakerInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("calmPeriod"), 1800n)
     ).wait();

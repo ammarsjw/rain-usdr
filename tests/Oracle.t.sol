@@ -46,8 +46,8 @@ contract OracleTest is BaseTest {
 
     function test_osmDelayIsHardBoundEvenAtBoundary() public {
         // Regression: the poke timestamp is stored UNSNAPPED, so a poke landing at the very end of a window
-        // (boundary + 1799) does NOT permit another poke one second later. The minimum nxt->cur residency is a hard
-        // {HOP}, and SLAs may be sized to the full 30 minutes.
+        // (boundary + 1799) does NOT permit another poke one second later. The minimum nxt->cur residency is
+        // a hard {HOP}, and SLAs may be sized to the full 30 minutes.
         _warpToBoundary(1799);
         rainPriceSource.setPrice(1e18);
         osm.poke(RAIN_ILK);
@@ -198,7 +198,8 @@ contract OracleTest is BaseTest {
         (, , , uint256 spotBefore, , , , ) = vaultEngine.ilks(RAIN_ILK);
         assertGt(spotBefore, 0, "live spot");
 
-        // Void the OSM feed: the converter must zero the spot (freezing mints) rather than keep the stale value.
+        // Void the OSM feed: the converter must zero the spot (freezing mints) rather than keep the stale
+        // value.
         osm.void(RAIN_ILK);
         priceConverter.poke(RAIN_ILK);
 
@@ -228,8 +229,9 @@ contract OracleTest is BaseTest {
     }
 
     function test_parZeroRejected() public {
-        // Regression: par == 0 would brick poke for every ilk (division by par), freezing all spots at their last
-        // values — the dangerous direction — and file's live-gate means it could never be repaired after a cage.
+        // Regression: par == 0 would brick poke for every ilk (division by par), freezing all spots at their
+        // last values — the dangerous direction — and file's live-gate means it could never be repaired after
+        // a cage.
         vm.expectRevert(InvalidAmount.selector);
         priceConverter.file("par", 0);
 
