@@ -2,12 +2,23 @@
 #
 # wrap_comments.sh - Hard-wrap `//` and /* */ comments in Solidity/JS/TS files.
 #
-# cli - bash ./docs/bash/wrap_comments.sh contracts/**/*.sol
+# cli - bash ./scripts/bash/wrap_comments.sh contracts/**/*.sol
 #
 # Usage:
 #   ./wrap_comments.sh FILE [FILE ...]
 #   ./wrap_comments.sh -w 115 contracts/*.sol scripts/*.js
 #   ./wrap_comments.sh contracts            # directories are searched recursively
+#   ./wrap_comments.sh 'tests/**/*.sol'     # QUOTED globs are expanded here with globstar:
+#                                           # '**' spans any depth incl. zero, so this matches
+#                                           # tests/*.sol AND tests/**/*.t.sol in one pattern
+#
+# NOTE on unquoted `tests/**/*.sol`: the INVOKING shell expands it before this script runs.
+# In bash without `shopt -s globstar` (and in sh), `**` degrades to `*`, so it expands to
+# tests/*/*.sol only — subdirectories, NOT the top-level tests/*.t.sol files. Either quote the
+# pattern (preferred), or pass the extra pattern explicitly:
+#   bash scripts/bash/wrap_comments.sh tests/**/*.sol tests/**/*.t.sol
+# The second pattern matches nothing in a non-globstar shell, arrives here literally, and is
+# expanded below with globstar — so the pair covers everything in either kind of shell.
 #
 #   -w WIDTH   Column width to wrap to (default: 120, matching repo convention)
 #   -p         Print result to stdout instead of editing the file in place
@@ -45,6 +56,10 @@
 #   - Code lines and inline trailing comments (code; // comment) are untouched.
 
 set -euo pipefail
+
+# Expand '**' across any depth (including zero directories) in patterns that reach this script
+# unexpanded — i.e. quoted globs, or globs the invoking shell failed to match and passed through.
+shopt -s globstar
 
 WIDTH=110
 PRINT_STDOUT=0
