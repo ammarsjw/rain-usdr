@@ -192,7 +192,7 @@ Repay-all computes the wipe as `dart = -art` read from `urns`, and quotes the US
 - **Mark price:** `markPrice_wad = spot * mat / 1e27 / 1e9` (`src/hooks/useBorrowMarket.ts:125`). `spot` is index 3 of `VaultEngine.ilks`, `mat` is index 0 of the 2-tuple `PriceConverter.ilks` `(mat, fixedPrice)`. This inverts `PriceConverter.poke`; it is the delayed OSM value, not a live quote.
 > The auction path uses the fuller `(spot * mat * par) / RAY^2`. `par` is `1 ray` today so the two agree exactly; if `par` moves they diverge.
 - **Liquidation ratio uses `barkFactor`:** liquidation fires when `ink * spot < (art * rate_now / 1e18) * barkFactor`, so the effective ratio is `mat * barkFactor` — **260%** at a 400% `mat` and `barkFactor = 0.65e18`. The frontend renders `liqPrice = markPrice * liquidationRatio / ratio`. Using `mat` alone overstates liquidation prices by ~1.54x and shows every position as "at risk" prematurely.
-- **Liquidation price creeps upward over time** at nonzero duty even if the user does nothing. Since `duty` is live at 10% APY, health bars tick down on their own and at-risk alerts are computed against `rate_now`.
+- **Liquidation price creeps upward over time** whenever `duty > RAY`, even if the user does nothing. RAIN-A launches with a nonzero `duty` (read the live value from `VaultEngine.ilks(ilk).duty`), so health bars tick down on their own and at-risk alerts must be computed against `rate_now`, never the stored rate.
 - **Position discovery: REST, not squid** **[corrected]**. `GET /api/v1/positions?owner=<smartAccount>&includeClosed=false` (`src/hooks/useMyPositions.ts`), and `GET /api/v1/positions/{id}` for detail. No squid query is issued anywhere in this app.
 
 **Caveats:**
