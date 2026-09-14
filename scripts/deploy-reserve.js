@@ -164,8 +164,8 @@ const deployReserve = async () => {
     // 1.02^(1/31536000)).
     const rainDuty = process.env.RAIN_DUTY
         ? BigInt(process.env.RAIN_DUTY)
-        : // ~10% APY default.
-          1000000003022265980097387650n;
+        : // ~2% APY default.
+          1000000000627937192491029810n;
     await (
         await vaultEngineInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("feeRecipient"),

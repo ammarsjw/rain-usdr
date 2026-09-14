@@ -73,15 +73,20 @@ const verifyConfig = async () => {
     assertNonZero("VaultEngine.governor", await vaultEngine.governor());
     assertNonZero("VaultEngine.feeRecipient", await vaultEngine.feeRecipient());
 
-    for (const [name, id, line] of [
-        ["RAIN-A", rainIlk, 100000n * RAD],
-        ["USDT-A", usdtIlk, 500000n * RAD],
-        ["USDC-A", usdcIlk, 500000n * RAD]
+    const expectedRainDuty = process.env.RAIN_DUTY
+        ? BigInt(process.env.RAIN_DUTY)
+        : // ~2% APY, must match deploy-reserve.js default
+          1000000000627937192491029810n;
+
+    for (const [name, id, line, duty] of [
+        ["RAIN-A", rainIlk, 100000n * RAD, expectedRainDuty],
+        ["USDT-A", usdtIlk, 500000n * RAD, RAY],
+        ["USDC-A", usdcIlk, 500000n * RAD, RAY]
     ]) {
         const ilkData = await vaultEngine.ilks(id);
         assertEq(`VaultEngine.ilks(${name}).line`, ilkData.line, line);
-        // duty defaults to RAY (zero fee) and RAY is the intended launch value for every ilk: asserted, not assumed.
-        assertEq(`VaultEngine.ilks(${name}).duty`, ilkData.duty, RAY);
+        // Stables stay at RAY (zero fee); RAIN-A carries the duty filed by deploy-reserve.js.
+        assertEq(`VaultEngine.ilks(${name}).duty`, ilkData.duty, duty);
         assertEq(`VaultEngine.ilks(${name}).rate`, ilkData.rate, RAY);
     }
 
