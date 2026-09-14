@@ -117,7 +117,7 @@ Positions are identified by a sequential `uint256 vaultId` from `VaultEngine.ope
 
 ### 0.2 Stability fees — `duty` is live **[corrected]**
 
-Previous revisions stated: *"All launch duties are `RAY` (zero fee) until governance files otherwise."* **This is no longer true.** RAIN-A launches with a nonzero duty filed by the deploy script — read the live value from `VaultEngine.ilks("RAIN-A")`. The deploy default is ~2% APY (`1000000000627937192491029810` ray, per-second factor `1.02^(1/31536000)`), overridable via the `RAIN_DUTY` env at deploy time — so never hardcode the number; display what the chain returns.
+Previous revisions stated: *"All launch duties are `RAY` (zero fee) until governance files otherwise."* **This is no longer true.** RAIN-A launches with a nonzero duty filed by the deploy script — read the live value from `VaultEngine.ilks("RAIN-A")`. Never hardcode the number; display what the chain returns.
 
 Any integrator who read the old zero-fee line and skipped virtualization is understating every debt figure on screen and rendering liquidation prices that are too low.
 

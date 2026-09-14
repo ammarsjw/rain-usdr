@@ -97,7 +97,7 @@ Read them on-chain rather than hardcoding — they are governable. Values below 
 | `tau` | 3600 s | `PriceCurve.tau()` | Time for the price to decay linearly to **zero** |
 | `tail` | 1800 s | `DutchAuction.ilks(ilk).tail` | After this, `take` stops working and `redo` opens |
 | `cusp` | 0.40 ray | `DutchAuction.ilks(ilk).cusp` | Price-ratio reset trigger |
-| `chip` | 0.02 wad | `DutchAuction.chip()` | Keeper reward as a fraction of `tab`, 2% |
+| `chip` | 0.02 wad | `DutchAuction.chip()` | Keeper reward as a fraction of `tab` |
 | `tip` | **0 rad** | `DutchAuction.tip()` | Flat keeper reward. Deploy never files it, so it stays zero |
 
 Keeper reward on `kick` / `redo` is `tip + (tab * chip) / WAD`.

@@ -393,8 +393,7 @@ A broken role silently disables a whole job — `scripts/verify/verify-roles.js`
    with the wiring order in `deploy-reserve.js` (feeRecipient filed right after BalanceSheet
    deploy, duties defaulting to RAY) this cannot bite, but never file a nonzero `duty` before
    `feeRecipient` is set. New File keys: per-ilk `"duty"` (≥ RAY, auto-drips at the old duty
-   first — never retroactive), address `"feeRecipient"`. Example duty: 2% APY ≈
-   `1.000000000627937192491029810e27`.
+   first — never retroactive), address `"feeRecipient"`.
 8. **Solvency gate wiring on four contracts:** file `"solvencyEngine"` on the
    **OracleSecurityModule** (soft poke refresh) and on the **BalanceSheet** (hard distributeSurplus
    gate), in addition to the existing VaultEngine + PSM wiring. All are zero-address-tolerant
