@@ -117,13 +117,9 @@ Positions are identified by a sequential `uint256 vaultId` from `VaultEngine.ope
 
 ### 0.2 Stability fees — `duty` is live **[corrected]**
 
-Previous revisions stated: *"All launch duties are `RAY` (zero fee) until governance files otherwise."* **This is no longer true.** Read live from `VaultEngine.ilks("RAIN-A")`:
+Previous revisions stated: *"All launch duties are `RAY` (zero fee) until governance files otherwise."* **This is no longer true.** RAIN-A launches with a nonzero duty filed by the deploy script — read the live value from `VaultEngine.ilks("RAIN-A")`. The deploy default is ~2% APY (`1000000000627937192491029810` ray, per-second factor `1.02^(1/31536000)`), overridable via the `RAIN_DUTY` env at deploy time — so never hardcode the number; display what the chain returns.
 
-```
-duty = 1000000003022265980097387650   ->  10.00% APY
-```
-
-Governance has filed a duty on RAIN-A. Any integrator who read the old line and skipped virtualization is understating every debt figure on screen and rendering liquidation prices that are too low.
+Any integrator who read the old zero-fee line and skipped virtualization is understating every debt figure on screen and rendering liquidation prices that are too low.
 
 Mechanics:
 
@@ -265,7 +261,7 @@ Repay-all computes the wipe as `dart = -art` read from `urns`, and quotes the US
 **Reads per card:**
 
 - `urns(vaultId) -> (ink, art)`; **debt = `art * rate_now / 1e27`**, virtualized.
-- APR line from `duty` — hidden when `duty == RAY`, shown as 10.00% today.
+- APR line from `duty` — hidden when `duty == RAY`; otherwise `duty` converted to APY (per-second ray factor compounded over 31536000 s). Display the on-chain value, never a hardcoded rate.
 - **Mark price:** `markPrice_wad = spot * mat / 1e27 / 1e9` (`src/hooks/useBorrowMarket.ts:125`). `spot` is index 3 of `VaultEngine.ilks`, `mat` is index 0 of the 2-tuple `PriceConverter.ilks` `(mat, fixedPrice)`. This inverts `PriceConverter.poke`; it is the delayed OSM value, not a live quote.
 > The auction path uses the fuller `(spot * mat * par) / RAY^2`. `par` is `1 ray` today so the two agree exactly; if `par` moves they diverge.
 - **Liquidation ratio uses `barkFactor`:** liquidation fires when `ink * spot < (art * rate_now / 1e18) * barkFactor`, so the effective ratio is `mat * barkFactor` — **260%** at a 400% `mat` and `barkFactor = 0.65e18`. The frontend renders `liqPrice = markPrice * liquidationRatio / ratio`. Using `mat` alone overstates liquidation prices by ~1.54x and shows every position as "at risk" prematurely.
@@ -477,7 +473,7 @@ transports: { [arbitrum.id]: http(rpcUrl, { batch: { wait: 250, batchSize: 20 } 
 ## 9. Standing caveats
 
 - USDT approve-to-zero-first; simulate before send; decode custom-error selectors (`describeTxError`).
-- **`rate` is live** — never display raw `art`; always `art * rate_now`. `duty` on RAIN-A is 10.00% APY today (§0.2).
+- **`rate` is live** — never display raw `art`; always `art * rate_now`. RAIN-A carries a nonzero `duty` from deploy (§0.2) — read it, never hardcode it.
 - **`hope` is per smart account**, not per EOA, and covers all that account's vaults.
 - Vaults are not transferable and ids are never reused; `vaultId` is a safe permanent key.
 - ONE `DutchAuction` serves all ilks — resolve it once from `liquidationTrigger.dutchAuction()`, never per-ilk and never from a constant; each sale carries its `ilkId`.
