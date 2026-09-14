@@ -1,13 +1,90 @@
 # USDR Frontend/Integrator Requirements Doc
 
-> Contract set documented: the **current repo head**. This document is kept matched to HEAD at all times — it assumes the head can be deployed at any moment and must be ready to share as-is, so it never describes superseded builds. Where the shipped frontend code has not yet caught up to a contract-side change, the gap is flagged inline with a **[frontend-pending]** note.
-> Supersedes the `f881aff`/`9a9c81a` doc. Changes in this revision: **(1) stability fees exist** — `rate` is no longer fixed at RAY; debt = `art × rate` with `rate` live-growing per ilk; **(2) `ilks()` tuple gained `duty` and `rho`** — every decoder of the old 6-tuple breaks; **(3) new permissionless `VaultEngine.drip(ilkId)`** + `Drip` event + `feeRecipient` wiring; **(4) position cards must VIRTUALIZE debt between drips; (5) the solvency gate is self-enforcing at every risk-increasing entry point:** borrow/withdraw `frob`s recompute the invariant on-chain (like `buyStable` already did) and revert `SolvencyGateActive` on breach — `isBreached()` reads are for pre-disabling buttons only, never a guarantee; simulate every gated tx. Everything from the prior revision (multi-vault, auction breaker, self-checking redemption gate, End, immutable timelock delay) carries over.
+> **Contract set: the current repo head.** The body of this document describes HEAD as the single
+> authoritative surface — HEAD is assumed deployable at any moment, so this doc must be ready to
+> hand over as-is and never describes superseded builds.
+>
+> **How the delta is communicated.** Because each revision of this doc mirrors the contracts of
+> its time, diffing revisions tells the frontend team exactly what changed for them — and we
+> spell that out rather than making them derive it. The section **§Changes since
+> `v1.0.0-alpha.4`** below is produced from `git diff v1.0.0-alpha.4..HEAD -- contracts/` (the
+> last tagged baseline, which is what the shipped frontend was built against) and enumerates
+> every read, decode and flow that must change, as old shape → new shape → required action.
+> Where a listed item is also flagged **[frontend-pending]** in the body, the shipped code has
+> not yet been re-pointed.
+>
+> **Maintenance rule:** when a new tag is cut (e.g. at a deployment), re-baseline the migration
+> section to that tag and drop absorbed items. The body always tracks HEAD.
 
 > **What this document is.** The previous revisions of this file were a requirements doc written from the contract side. This revision rewrites it to describe **how the `rain-usdr` frontend is actually integrated** against the contracts, with file references so code and doc can be checked against each other. Statements from earlier revisions that turned out to be wrong are corrected inline and marked **[corrected]**.
 >
 > Auctions have their own document: see `FRONTEND-AUCTION.md`. This file covers units, the account model, mint, redeem, borrow, solvency, data sources and polling.
 >
 > Reference environment: **Arbitrum One (42161)**, `NEXT_PUBLIC_ENV=development`. Concrete parameter values quoted below are the development-environment values current when this revision was written — always re-read them on-chain rather than trusting the snapshot.
+
+---
+
+## Changes since `v1.0.0-alpha.4` — what the frontend must change
+
+Everything the shipped frontend reads or decodes that changed between the last tagged baseline and
+HEAD. Items are also flagged **[frontend-pending]** at their point of use in the body.
+
+### F1. `PriceConverter.ilks(ilkId)` — 3-tuple → 2-tuple
+
+- **Was:** `(pip, mat, fixedPrice)` — `mat` at index 1.
+- **Now:** `(mat, fixedPrice)` — `mat` at index 0. The per-ilk `pip` is gone; the OSM is the
+  single global `priceConverter.oracleSecurityModule()`.
+- **Action:** update every decoder (`useBorrowMarket`, the auction feed-price derivation, the
+  reserve-composition table). Reading index 1 as `mat` now yields `fixedPrice` — a silent
+  wrong-number bug, not a revert.
+
+### F2. `LiquidationTrigger.ilks(ilkId)` — 5-tuple → 4-tuple, auction address hoisted
+
+- **Was:** `(clip, chop, hole, dirt, barkFactor)`; one auction house per ilk resolved from
+  `.clip`.
+- **Now:** `(chop, hole, dirt, barkFactor)`; ONE auction house for all ilks, resolved once from
+  `liquidationTrigger.dutchAuction()`.
+- **Action:** update the tuple decoder (`barkFactor` moved from index 4 to 3); resolve the
+  auction address once, globally.
+
+### F3. DutchAuction — multi-ilk surface (full detail in `FRONTEND-AUCTION.md`)
+
+- **Was:** `sales(id)` 7-tuple `(pos, tab, lot, vaultId, usr, tic, top)`; global
+  `buf()`/`tail()`/`cusp()`/`chost()`; `upchost()`; price-curve getter `calc()`.
+- **Now:** `sales(id)` 8-tuple led by `ilkId`; per-ilk `ilks(ilkId) -> (buf, tail, cusp, chost)`
+  (global getters gone — those calls now revert); `upchost(ilkId)`; getter renamed
+  `priceCurve()`; new per-ilk `list(ilkId)` view.
+- **Action:** re-point `useAuctionLiveStatus` and every `sales` decoder; see the migration list
+  in `FRONTEND-AUCTION.md` §Changes.
+
+### F4. SolvencyEngine — exposure cap removed
+
+- **Was:** `exposureCap()` read + `exposure = min(reportedExposure, exposureCap)` clamp;
+  `ExposureClamped` event.
+- **Now:** no cap — `reportedExposure()` enters `worstCaseLoss()` at face value; a reverting
+  reporter is substituted with total outstanding debt and `ExposureReportFailed(substituted)` is
+  emitted.
+- **Action:** remove the `exposureCap()` read from the §5 multicall (**it now reverts and takes
+  the whole batched call down with it**) and drop the clamp; display the reported figure as-is.
+
+### F5. Governor — scoped pause
+
+- **Was:** `paused()` — one global stop; `Pause(pausedAt)`.
+- **Now:** pauses carry a bit-flag scope (`frob`/`PSM`/`bark`/`auction`); `paused()` still
+  answers "is any pause live" and `paused(scope)` answers per-scope; `Pause(pausedAt, scope)`.
+- **Action:** optional but recommended — gate each button on its own scope (`paused(_PAUSE_PSM)`
+  for mint/redeem, `paused(_PAUSE_AUCTION)` for auction buys) instead of disabling everything on
+  any pause. Reading only `paused()` stays safe, just over-conservative.
+
+### F6. Additive (no decoder breaks)
+
+- `VaultEngine.effectiveLine(ilkId)` = `min(line, liquidity × fSafety)` — the real mint
+  ceiling once governance files a nonzero `fSafety` (dormant at launch). Mint-capacity math
+  should switch from `line` to `effectiveLine` to stay correct forever (§1).
+- `BalanceSheet.backstop(rad)` + `Backstop(buyer, rad, rainWad)` — treasury RAIN backstop; no
+  UI exists for it and none is required.
+- OSM `maxAge` staleness cutoff — prices fail closed once stale; a frozen `spot` plus gated
+  minting is now a reachable protocol state the UI may want to explain.
 
 ---
 
@@ -356,6 +433,8 @@ The composition and backing tables on the solvency page are **served by the REST
 ## 7. Indexer
 
 **The frontend does not use a squid.** All list data — positions, auctions, solvency history, platform stats — comes from the REST API at `usdr-api.rain.one`. No GraphQL query is issued anywhere in this app, and no event is indexed client-side.
+
+The indexer (rain-usdr-sqd) writes to a Postgres database consumed by the backend/API team — its schema and the event-driven migration deltas are documented in `BACKEND.md` §Indexer, not here. A contract event change reaches this frontend only if the API team changes a REST payload, which is their contract to communicate.
 
 The indexer requirements from previous revisions still apply to whoever runs the backend; they are simply not this frontend's concern. The one thing worth carrying forward is that the API is the frontend's only view of historical data, so anything the indexer stops writing disappears from the UI silently — see §8.
 

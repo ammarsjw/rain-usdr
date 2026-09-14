@@ -8,21 +8,53 @@ Everything in §1–§6 is derived from the contract. Everything in §7–§12 d
 (`rain-usdr`, branch `dev`), with file references so the code and this document can be checked
 against each other.
 
-> **Status:** implemented. This document is kept matched to the **current repo head** at all times
-> — it assumes the head can be deployed at any moment and must be ready to share as-is, so it never
-> describes superseded builds. Parameter values quoted below are development-environment snapshots;
-> always re-read them on-chain.
+> **Status:** implemented. **Contract set: the current repo head** — kept matched to HEAD at all
+> times; HEAD is assumed deployable at any moment, so this doc must be ready to hand over as-is
+> and never describes superseded builds. Parameter values quoted below are
+> development-environment snapshots; always re-read them on-chain.
 >
-> **Multi-ilk auction surface (the shapes this doc uses throughout).** The DutchAuction is ONE
+> **How the delta is communicated.** Diffing revisions of this doc tells the frontend team
+> exactly what changed for them — and we spell that out rather than making them derive it:
+> **§Changes since `v1.0.0-alpha.4`** below enumerates every auction read, decode and event the
+> shipped frontend must re-point, as old shape → new shape → required action. Items are also
+> flagged **[frontend-pending]** at their point of use. **Maintenance rule:** when a new tag is
+> cut, re-baseline the migration section to that tag and drop absorbed items.
+
+---
+
+## Changes since `v1.0.0-alpha.4` — what the auction frontend must change
+
+The DutchAuction went from one-contract-per-ilk to ONE contract for all ilks. Every item below is
+breaking; the shipped frontend was integrated against the old shapes.
+
+| # | Was (tag) | Now (HEAD) | Action |
+|---|---|---|---|
+| A1 | `sales(id)` 7-tuple `(pos, tab, lot, vaultId, usr, tic, top)` | **8-tuple led by `ilkId`**: `(ilkId, pos, tab, lot, vaultId, usr, tic, top)` | Update every destructure — all indices shift by one |
+| A2 | Global `buf()`, `tail()`, `cusp()`, `chost()` | Per-ilk `ilks(ilkId) -> (buf, tail, cusp, chost)`; global getters GONE (calls revert) | Read the sale's `ilkId` first, then one `ilks(ilkId)` call replaces four |
+| A3 | `upchost()` | `upchost(bytes32 ilkId)` | Anywhere the doc says re-read `chost` after a `dust`/`chop` change |
+| A4 | `calc()` → PriceCurve address | renamed `priceCurve()` | Rename the read; `PriceCurve.tau()` itself is unchanged |
+| A5 | — | new per-ilk `list(bytes32 ilkId)` view (global `list()` remains) | Optional: per-collateral listing without client-side filtering |
+| A6 | `Kick(id idx, top, tab, lot, vaultId idx, usr, kpr idx, coin)` | `Kick(id idx, ilkId idx, top, tab, lot, vaultId, usr, kpr idx, coin)` — `vaultId` no longer indexed | New topic0; any `vaultId`-topic filter breaks — filter client-side or by `ilkId` |
+| A7 | `Take(id idx, max, price, owe, tab, lot, usr idx)` | `Take(id idx, ilkId idx, max, price, owe, tab, lot, usr idx)` | New topic0; decoder gains `ilkId` |
+| A8 | `Redo(id idx, top, tab, lot, usr idx, kpr idx, coin)` | `Redo(id idx, ilkId idx, top, tab, lot, usr, kpr idx, coin)` — `usr` no longer indexed | New topic0; `usr`-topic filters break |
+| A9 | `Upchost(chost)` | `Upchost(ilkId idx, chost)` | New topic0 |
+| A10 | One auction house per ilk via `LiquidationTrigger.ilks(ilkId).clip` | ONE house for all ilks via global `liquidationTrigger.dutchAuction()` | Resolve once; every sale carries its `ilkId` |
+
+All four event topic0 hashes changed — every log filter and decoder must be re-derived, not
+patched. The REST listing (`/api/v1/auctions`) shields the frontend from A6–A9 unless it decodes
+logs directly; A1–A4 and A10 hit `useAuctionLiveStatus` and `useAuctionActions` directly and are
+flagged **[frontend-pending]** below.
+
+---
+
+> **The multi-ilk auction surface (the shapes this doc uses throughout).** The DutchAuction is ONE
 > contract for all ilks: `sales(id)` is an **8-tuple led by `ilkId`**
 > `(ilkId, pos, tab, lot, vaultId, usr, tic, top)`; `buf`/`tail`/`cusp`/`chost` live in a per-ilk
 > **`ilks(ilkId)`** struct (there are no global getters); `upchost` takes the ilk
 > (**`upchost(ilkId)`**); a per-ilk **`list(ilkId)`** view exists alongside the global `list()`;
 > the price-curve getter is **`priceCurve()`**; and the `Kick`/`Take`/`Redo`/`Upchost` events all
-> carry an indexed `ilkId` (`usr` indexed on `Take`; `kpr` not indexed on `Kick`/`Redo`).
-> **[frontend-pending]** the shipped frontend was integrated against the older single-ilk shapes
-> (global `chost()`/`tail()`/`cusp()`/`buf()`, 7-tuple `sales`, `calc()`); every such read and
-> decode must be re-pointed at the per-ilk surface. The affected reads are flagged below.
+> carry an indexed `ilkId` (`id` and `kpr` stay indexed; `usr` is indexed on `Take` but not on
+> `Redo`; `vaultId` is not indexed on `Kick`).
 
 ---
 

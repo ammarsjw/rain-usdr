@@ -1,6 +1,8 @@
 # Solvency flag freshness — keeper specification
 
-> Contract set: `refactor/multi-ilk-compatibility` @ `07d31e8` (post-`v1.0.0-alpha.4`).
+> **Contract set: the current repo head** (kept matched to HEAD at all times; see the preamble of
+> [`BACKEND.md`] for the doc policy and for **§Changes since `v1.0.0-alpha.4`** — the explicit
+> old→new migration list from the last tagged baseline, including the events referenced here).
 > This is the canonical policy for **Job 7** in the keeper catalog
 > ([`BACKEND.md`]). Jobs 0–6 and 8 (drip, OSM, spot, breaker,
 > liquidations, auctions, treasury, End stand-down) live there.
@@ -73,7 +75,7 @@ The prediction-market exposure reporter calls `checkInvariant()` itself when its
 
 Keep a low-frequency poll of the comparison as a backstop — it is the only thing that detects the reporter being paused, upgraded, or calling out of order.
 
-Alert on `ExposureReportFailed(substituted)` (the exposure cap and its `ExposureClamped` event were removed in `7b5c985` — exposure now enters the loss at face value, unclamped). The event firing means the reporter REVERTED and the engine substituted the structural bound — total outstanding USDR debt (`VaultEngine.debt() / RAY`) — in its place. That substitution is almost certainly large enough to flip the verdict into breach, so treat it as a page: the flag is behaving correctly, but the reporter is down and the protocol is gated until it recovers.
+Alert on `ExposureReportFailed(substituted)` (there is no exposure cap and no `ExposureClamped` event — exposure enters the loss at face value, unclamped; see BACKEND.md §B1 for the migration). The event firing means the reporter REVERTED and the engine substituted the structural bound — total outstanding USDR debt (`VaultEngine.debt() / RAY`) — in its place. That substitution is almost certainly large enough to flip the verdict into breach, so treat it as a page: the flag is behaving correctly, but the reporter is down and the protocol is gated until it recovers.
 
 ## Submission policy
 

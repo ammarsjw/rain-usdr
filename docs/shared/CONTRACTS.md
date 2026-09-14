@@ -1,7 +1,15 @@
-> Contract set: `refactor/multi-ilk-compatibility` @ `07d31e8` (post-`v1.0.0-alpha.4`; originally written for
-> `feature/rate-accrual` @ `b850750` and re-verified against the current head — the exposure
-> semantics below, face-value + revert-substitutes-debt, already describe the post-`7b5c985`
-> contracts).
+> **Contract set: the current repo head** (kept matched to HEAD at all times — assume it can be
+> deployed at any moment).
+>
+> **Changes since `v1.0.0-alpha.4` that affect YOU (the exposure reporter / solvency reader):**
+> **(1) the exposure cap is gone** — `exposureCap()` and `ExposureClamped(reported, cap)` no
+> longer exist; your report enters `worstCaseLoss()` at face value, and a REVERTING reporter is
+> substituted with total outstanding USDR debt while `ExposureReportFailed(substituted)` is
+> emitted. If you read `exposureCap()` it now reverts; if you watched `ExposureClamped`, watch
+> `ExposureReportFailed` instead — it is your pager (§1). **(2) getter rename:** `osm()` →
+> `oracleSecurityModule()` on the SolvencyEngine. Everything else in this guide (the
+> `IExternalExposure` interface itself, `checkInvariant`, `isBreached`, `worstCaseLoss`,
+> `breachThreshold`, the reserve reads) is signature-identical to the tag.
 
 ---
 
