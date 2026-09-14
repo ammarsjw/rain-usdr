@@ -8,19 +8,21 @@ Everything in §1–§6 is derived from the contract. Everything in §7–§12 d
 (`rain-usdr`, branch `dev`), with file references so the code and this document can be checked
 against each other.
 
-> **Status:** implemented. Auction parameters re-read from Arbitrum One 2026-09-09 and matching the
-> values filed below.
+> **Status:** implemented. This document is kept matched to the **current repo head** at all times
+> — it assumes the head can be deployed at any moment and must be ready to share as-is, so it never
+> describes superseded builds. Parameter values quoted below are development-environment snapshots;
+> always re-read them on-chain.
 >
-> **Repo-head note (`refactor/multi-ilk-compatibility` @ `07d31e8`, post-`v1.0.0-alpha.4`) — the DEPLOYED contracts this doc
-> describes predate the multi-ilk auction refactor (`68bc08e`, `0d94809`).** On the current head
-> the DutchAuction is ONE contract for all ilks: `sales(id)` is an **8-tuple led by `ilkId`**
-> `(ilkId, pos, tab, lot, vaultId, usr, tic, top)`; `buf`/`tail`/`cusp`/`chost` moved into a
-> per-ilk **`ilks(ilkId)`** struct (the global getters are gone); `upchost` takes the ilk
-> (**`upchost(ilkId)`**); a per-ilk **`list(ilkId)`** view was added; the price-curve getter is
-> **`priceCurve()`**; and the `Kick`/`Take`/`Redo`/`Upchost` **event topics changed** (`ilkId`
-> added and indexed; `usr` indexed on `Take`; `kpr` un-indexed on `Kick`/`Redo`). Every read and
-> decode below marked with its old shape must be updated when the frontend re-points at a
-> deployment built from the current head. Until then, this doc matches what is live.
+> **Multi-ilk auction surface (the shapes this doc uses throughout).** The DutchAuction is ONE
+> contract for all ilks: `sales(id)` is an **8-tuple led by `ilkId`**
+> `(ilkId, pos, tab, lot, vaultId, usr, tic, top)`; `buf`/`tail`/`cusp`/`chost` live in a per-ilk
+> **`ilks(ilkId)`** struct (there are no global getters); `upchost` takes the ilk
+> (**`upchost(ilkId)`**); a per-ilk **`list(ilkId)`** view exists alongside the global `list()`;
+> the price-curve getter is **`priceCurve()`**; and the `Kick`/`Take`/`Redo`/`Upchost` events all
+> carry an indexed `ilkId` (`usr` indexed on `Take`; `kpr` not indexed on `Kick`/`Redo`).
+> **[frontend-pending]** the shipped frontend was integrated against the older single-ilk shapes
+> (global `chost()`/`tail()`/`cusp()`/`buf()`, 7-tuple `sales`, `calc()`); every such read and
+> decode must be re-pointed at the per-ilk surface. The affected reads are flagged below.
 
 ---
 
@@ -58,21 +60,21 @@ Read them on-chain rather than hardcoding — they are governable. Values below 
 | --- | --- | --- | --- |
 | `dust` | 100 rad | `VaultEngine.ilks(ilk)` | Minimum vault debt |
 | `chop` | 1.13 wad | `LiquidationTrigger.ilks(ilk)` | Liquidation penalty, 13% |
-| `chost` | **113 rad** | `DutchAuction.chost()` | Cached `dust * chop`. The dust floor for partial buys |
-| `buf` | 1.05 ray | `DutchAuction.buf()` | Opening price markup, 5% over market |
+| `chost` | **113 rad** | `DutchAuction.ilks(ilk).chost` | Cached `dust * chop`. The dust floor for partial buys |
+| `buf` | 1.05 ray | `DutchAuction.ilks(ilk).buf` | Opening price markup, 5% over market |
 | `tau` | 3600 s | `PriceCurve.tau()` | Time for the price to decay linearly to **zero** |
-| `tail` | 1800 s | `DutchAuction.tail()` | After this, `take` stops working and `redo` opens |
-| `cusp` | 0.40 ray | `DutchAuction.cusp()` | Price-ratio reset trigger |
+| `tail` | 1800 s | `DutchAuction.ilks(ilk).tail` | After this, `take` stops working and `redo` opens |
+| `cusp` | 0.40 ray | `DutchAuction.ilks(ilk).cusp` | Price-ratio reset trigger |
 | `chip` | 0.02 wad | `DutchAuction.chip()` | Keeper reward as a fraction of `tab`, 2% |
 | `tip` | **0 rad** | `DutchAuction.tip()` | Flat keeper reward. Deploy never files it, so it stays zero |
 
 Keeper reward on `kick` / `redo` is `tip + (tab * chip) / WAD`.
 
-`chost` is a **cache**. It only changes when someone calls the permissionless `upchost()` after
+`chost` is a **cache**. It only changes when someone calls the permissionless `upchost(ilkId)` after
 governance changes `dust` or `chop`. Re-read it rather than caching it client-side indefinitely.
 
 **As built.** `chost`, `tail`, `cusp` and `buf` are re-read every poll cycle alongside `getStatus`,
-so an `upchost()` is picked up within one refresh. **`chip` and `tip` are not read** — the UI
+so an `upchost(ilkId)` is picked up within one refresh. **`chip` and `tip` are not read** — the UI
 surfaces no keeper reward, so the reward formula above is currently unused by the frontend. Add both
 reads if a "reset this auction and earn X" affordance is ever built.
 
@@ -85,22 +87,26 @@ reads if a "reset this auction and earn X" affordance is ever built.
 
 ```
 DutchAuction.getStatus(id) -> (needsRedo, price [ray], lot [wad], tab [rad])
-DutchAuction.sales(id)     -> (pos, tab, lot, vaultId, usr, tic, top [ray])
-DutchAuction.chost()       -> [rad]
-DutchAuction.tail(), cusp(), buf()
+DutchAuction.sales(id)     -> (ilkId, pos, tab, lot, vaultId, usr, tic, top [ray])
+DutchAuction.ilks(ilkId)   -> (buf [ray], tail [s], cusp [ray], chost [rad])
 DutchAuction.live()        -> 1 while running
 DutchAuction.stopped()     -> 0 | 1 | 2 | 3
-DutchAuction.calc()        -> PriceCurve address
+DutchAuction.priceCurve()  -> PriceCurve address
 DutchAuction.governor()    -> Governor address
-PriceCurve.tau()                                   // second stage, once calc() resolves
+PriceCurve.tau()                                   // second stage, once priceCurve() resolves
 Governor.paused()          -> bool                 // second stage, once governor() resolves
 VaultEngine.ilks(ilk)      -> (..., spot [ray], ...)
-PriceConverter.ilks(ilk)   -> (pip, mat [ray], fixedPrice)
+PriceConverter.ilks(ilk)   -> (mat [ray], fixedPrice)
 PriceConverter.par()       -> [ray]
 ```
 
-`calc()` and `governor()` are read rather than hardcoded, and `tau()` / `paused()` are issued as a
-dependent second stage once those addresses resolve.
+`priceCurve()` and `governor()` are read rather than hardcoded, and `tau()` / `paused()` are issued
+as a dependent second stage once those addresses resolve.
+
+> **[frontend-pending]** `useAuctionLiveStatus` still issues the older single-ilk reads — global
+> `chost()`/`tail()`/`cusp()`/`buf()`, the 7-tuple `sales(id)` without `ilkId`, `calc()` instead of
+> `priceCurve()`, and the 3-tuple `PriceConverter.ilks` — and must be re-pointed at the shapes
+> above.
 
 Two further reads happen at submit time in `src/hooks/useAuctionActions.ts`, against state read that
 instant rather than the polled cache:
@@ -304,7 +310,7 @@ everyone who comes after.
 **Only one purchase is legal: the whole remaining position.** The band from `1 wei` to
 `allOrNothing - 1 wei` reverts with `NoPartialPurchase()`.
 
-Derive validation from `tab <= chost` rather than `tab == chost`: if `upchost()` ever raises `chost`
+Derive validation from `tab <= chost` rather than `tab == chost`: if `upchost(ilkId)` ever raises `chost`
 above an in-flight `tab`, `amt = 0` reverts too.
 
 **As built.** The frontend does not warn here — it **disables the Partial option outright** and
@@ -520,8 +526,8 @@ executing as a partial buy on a screen that had just quoted a full clear.
 
 ## 11. Reference implementation
 
-`src/lib/auctionQuote.ts` is a line-for-line port of §5. Feed it live `getStatus(id)` and `chost()`
-readings. Differences from the original reference in this guide, all deliberate:
+`src/lib/auctionQuote.ts` is a line-for-line port of §5. Feed it live `getStatus(id)` and
+`ilks(ilkId).chost` readings. Differences from the original reference in this guide, all deliberate:
 
 - `partialCap` is clamped to `lot` (the prose mandated it; the original code omitted it).
 - `bounds()` returns `clampBandExists` so the resize warning can be suppressed in case A1.

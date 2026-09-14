@@ -1,13 +1,13 @@
 # USDR Frontend/Integrator Requirements Doc
 
-> Contract set audited: the **deployed** Arbitrum One contracts (built from `feature/rate-accrual` @ `017b36a`). Repo head when this revision was last reviewed: `refactor/multi-ilk-compatibility` @ `07d31e8` (post-`v1.0.0-alpha.4`) — **the head has moved past the deployment**; every place they diverge carries a **[repo-head]** note. The deployed shapes remain authoritative for the live frontend until a redeploy.
-> Supersedes the `f881aff`/`9a9c81a` doc. Changes in this revision: **(1) stability fees exist** — `rate` is no longer fixed at RAY; debt = `art × rate` with `rate` live-growing per ilk; **(2) `ilks()` tuple gained `duty` and `rho`** — every decoder of the old 6-tuple breaks; **(3) new permissionless `VaultEngine.drip(ilkId)`** + `Drip` event + `feeRecipient` wiring; **(4) position cards must VIRTUALIZE debt between drips; (5) NEW @ `017b36a` — the solvency gate is now self-enforcing at every risk-increasing entry point:** borrow/withdraw `frob`s recompute the invariant on-chain (like `buyStable` already did) and revert `SolvencyGateActive` on breach — `isBreached()` reads are for pre-disabling buttons only, never a guarantee; simulate every gated tx. Everything from the prior revision (multi-vault, auction breaker, self-checking redemption gate, End, immutable timelock delay) carries over.
+> Contract set documented: the **current repo head**. This document is kept matched to HEAD at all times — it assumes the head can be deployed at any moment and must be ready to share as-is, so it never describes superseded builds. Where the shipped frontend code has not yet caught up to a contract-side change, the gap is flagged inline with a **[frontend-pending]** note.
+> Supersedes the `f881aff`/`9a9c81a` doc. Changes in this revision: **(1) stability fees exist** — `rate` is no longer fixed at RAY; debt = `art × rate` with `rate` live-growing per ilk; **(2) `ilks()` tuple gained `duty` and `rho`** — every decoder of the old 6-tuple breaks; **(3) new permissionless `VaultEngine.drip(ilkId)`** + `Drip` event + `feeRecipient` wiring; **(4) position cards must VIRTUALIZE debt between drips; (5) the solvency gate is self-enforcing at every risk-increasing entry point:** borrow/withdraw `frob`s recompute the invariant on-chain (like `buyStable` already did) and revert `SolvencyGateActive` on breach — `isBreached()` reads are for pre-disabling buttons only, never a guarantee; simulate every gated tx. Everything from the prior revision (multi-vault, auction breaker, self-checking redemption gate, End, immutable timelock delay) carries over.
 
-> **What this document is.** The previous revisions of this file were a requirements doc written from the contract side. This revision rewrites it to describe **how the `rain-usdr` frontend is actually integrated** against the deployed contracts, with file references so code and doc can be checked against each other. Contract facts that were stated but turned out not to match the deployment are corrected inline and marked **[corrected]**.
+> **What this document is.** The previous revisions of this file were a requirements doc written from the contract side. This revision rewrites it to describe **how the `rain-usdr` frontend is actually integrated** against the contracts, with file references so code and doc can be checked against each other. Statements from earlier revisions that turned out to be wrong are corrected inline and marked **[corrected]**.
 >
 > Auctions have their own document: see `FRONTEND-AUCTION.md`. This file covers units, the account model, mint, redeem, borrow, solvency, data sources and polling.
 >
-> Deployment audited: **Arbitrum One (42161)**, `NEXT_PUBLIC_ENV=development`. All on-chain values re-read 2026-09-09.
+> Reference environment: **Arbitrum One (42161)**, `NEXT_PUBLIC_ENV=development`. Concrete parameter values quoted below are the development-environment values current when this revision was written — always re-read them on-chain rather than trusting the snapshot.
 
 ---
 
@@ -91,9 +91,9 @@ The one exception: `useTransfer` (sending tokens out of the connected EOA) uses 
 - **`VaultEngine.ilks(ilkId)` returns an 8-tuple:** `(globalArt, globalInk, rate, spot, line, dust, duty, rho)`. Every destructure in this repo expects 8.
 - `VaultEngine.frob(vaultId, v, w, dink, dart)`; `urns(vaultId)`; `open(ilkId, usr)`.
 - `PSM.ilks(ilkId) -> (token, to18ConversionFactor, vaultId)` — the third field is the PSM's own dedicated vault for that ilk.
-- `LiquidationTrigger.ilks(ilkId) -> (clip, chop, hole, dirt, barkFactor)`. **[repo-head]** now a 4-tuple `(chop, hole, dirt, barkFactor)`; the auction address is the global `liquidationTrigger.dutchAuction()` (`68bc08e`).
-- `PriceConverter.ilks(ilkId) -> (pip, mat, fixedPrice)`. **[repo-head]** now a 2-tuple `(mat, fixedPrice)`; the OSM is the single global `priceConverter.oracleSecurityModule()` (`b032625`).
-- `DutchAuction.sales(id) -> (pos, tab, lot, vaultId, usr, tic, top)`. **[repo-head]** now an 8-tuple led by `ilkId`; `buf`/`tail`/`cusp`/`chost` are per-ilk via `auction.ilks(ilkId)`, `upchost(ilkId)`, and the `Kick`/`Take`/`Redo`/`Upchost` topics changed (`0d94809`) — see the repo-head note in `FRONTEND-AUCTION.md`.
+- `LiquidationTrigger.ilks(ilkId) -> (chop, hole, dirt, barkFactor)`; the auction house is the single global `liquidationTrigger.dutchAuction()`.
+- `PriceConverter.ilks(ilkId) -> (mat, fixedPrice)`; the OSM is the single global `priceConverter.oracleSecurityModule()`.
+- `DutchAuction.sales(id) -> (ilkId, pos, tab, lot, vaultId, usr, tic, top)` — an 8-tuple led by `ilkId`; `buf`/`tail`/`cusp`/`chost` are per-ilk via `auction.ilks(ilkId)` and `upchost(ilkId)` — see `FRONTEND-AUCTION.md`. **[frontend-pending]** the shipped decoders still expect the older single-ilk shapes of these three tuples; re-point them per `FRONTEND-AUCTION.md`.
 - No PSM fees: `tin`/`tout` do not exist.
 
 Errors are decoded from 4-byte selectors, never string-matched — `src/utils/txError.ts` (`describeTxError`) builds a selector map from six ABIs and is wired into 16 call sites across 9 files. Nothing surfaces a raw RPC error object to the user.
@@ -189,7 +189,7 @@ Repay-all computes the wipe as `dart = -art` read from `urns`, and quotes the US
 
 - `urns(vaultId) -> (ink, art)`; **debt = `art * rate_now / 1e27`**, virtualized.
 - APR line from `duty` — hidden when `duty == RAY`, shown as 10.00% today.
-- **Mark price:** `markPrice_wad = spot * mat / 1e27 / 1e9` (`src/hooks/useBorrowMarket.ts:125`). `spot` is index 3 of `VaultEngine.ilks`, `mat` is index 1 of `PriceConverter.ilks`. This inverts `PriceConverter.poke`; it is the delayed OSM value, not a live quote.
+- **Mark price:** `markPrice_wad = spot * mat / 1e27 / 1e9` (`src/hooks/useBorrowMarket.ts:125`). `spot` is index 3 of `VaultEngine.ilks`, `mat` is index 0 of the 2-tuple `PriceConverter.ilks` `(mat, fixedPrice)`. This inverts `PriceConverter.poke`; it is the delayed OSM value, not a live quote.
 > The auction path uses the fuller `(spot * mat * par) / RAY^2`. `par` is `1 ray` today so the two agree exactly; if `par` moves they diverge.
 - **Liquidation ratio uses `barkFactor`:** liquidation fires when `ink * spot < (art * rate_now / 1e18) * barkFactor`, so the effective ratio is `mat * barkFactor` — **260%** at a 400% `mat` and `barkFactor = 0.65e18`. The frontend renders `liqPrice = markPrice * liquidationRatio / ratio`. Using `mat` alone overstates liquidation prices by ~1.54x and shows every position as "at risk" prematurely.
 - **Liquidation price creeps upward over time** at nonzero duty even if the user does nothing. Since `duty` is live at 10% APY, health bars tick down on their own and at-risk alerts are computed against `rate_now`.
@@ -231,7 +231,6 @@ SolvencyEngine.worstCaseLoss()     [wad]
 SolvencyEngine.breached()          [bool]
 SolvencyEngine.reserveFactor()     [wad]  -- 0.9
 SolvencyEngine.externalExposure()  [address]
-SolvencyEngine.exposureCap()       [wad]  -- deployed only; REMOVED on repo head (7b5c985), drop after redeploy
 ReserveAccounting.totalReserve()   [wad]
 RainExposureReporter.reportedExposure() [wad]
 ```
@@ -274,30 +273,17 @@ Verified 2026-09-09: `totalReserve` `75,836.71` x `0.9` = `68,253.04`, byte-iden
 
 **As built.** The frontend computes `(totalReserve * reserveFactor) / WAD` from reads it already makes, rather than calling `breachThreshold()`. Same value to the wei, and it costs no extra call. The one thing calling `breachThreshold()` would buy is atomicity if governance refiled `reserveFactor` between two reads inside the same multicall — a race we judged not worth an eighth call.
 
-### 5.1 The `breached` flag goes stale **[corrected]**
+### 5.1 The `breached` flag is transaction-driven and goes stale on a quiet protocol
 
-Previous revisions stated: *"refreshed by the protocol itself: every successful OSM poke (~30 min), every fee-bearing drip, every gated frob/redemption/distribution … near-real-time without any keeper."*
+Every refresh path for the stored flag needs someone to transact:
 
-Measured 2026-09-08, live:
-
-```
-worstCaseLoss()    64,282.60
-breachThreshold()  63,864.50    <- worst case is 418.10 ABOVE the threshold
-breached()         false
-isBreached()       false
-```
-
-The invariant was violated and both flags read healthy; the dashboard rendered a green "Solvent" badge over numbers that read `64.3 > 63.9`.
-
-Cause: one of the three claimed refresh paths does not exist on the deployed contracts.
-
-| Claimed refresh source | Deployed reality |
+| Refresh source | Reality |
 | --- | --- |
-| every successful OSM poke (~30 min) | **Does not happen.** The verified `PriceConverter` contains no reference to `checkInvariant` and no `solvencyEngine` address at all. `poke` cannot refresh the flag. |
+| every successful OSM poke | Works — `OracleSecurityModule.poke` try-calls `solvencyEngine.checkInvariant()` once the engine address is filed. But `poke` itself is keeper-driven (~30 min cadence at best), and the try/catch means a failed refresh is silent. |
 | every fee-bearing drip | Works — `VaultEngine.drip` calls `checkInvariant()` when `rad != 0`, and `duty` is nonzero. But `drip` is triggered only by user activity, never on a timer. |
 | every gated frob/redemption/distribution | Works, and is likewise user-activity-driven. |
 
-Every surviving path needs someone to transact. On a quiet protocol the flag drifts. `SolvencyEngine.sol` line 22 is the accurate description: *"A keeper bot is expected to call `{checkInvariant}` regularly to keep the flag fresh."*
+No path fires on its own clock except the poke keeper's. On a quiet protocol the flag drifts: the invariant can be violated while `breached()`/`isBreached()` still read healthy, and a dashboard that trusts the flag renders a green "Solvent" badge over numbers that contradict it. `SolvencyEngine`'s own natspec is the accurate description: *"A keeper bot is expected to call `{checkInvariant}` regularly to keep the flag fresh."*
 
 **As built — the frontend no longer reads the flag for any decision.** Solvency is derived from the two figures the dashboard already displays:
 
@@ -322,19 +308,11 @@ The third matters as much as the first: `RedeemView` re-checks breach state imme
 
 `isBreached()` is still read, used only when `totalReserve` is zero — the window before the reads land, where comparing two zeroes would report a healthy protocol regardless.
 
-### 5.2 External exposure is capped on the deployed contract **[corrected]**
+### 5.2 External exposure enters at face value — there is no cap
 
-Previous revisions stated: *"There is no cap on external exposure — `reportedExposure()` enters `worstCaseLoss()` at face value, so never display a clamped or capped figure"*, and that `ExposureClamped` was replaced by `ExposureReportFailed`.
+There is no cap on external exposure: `reportedExposure()` enters `worstCaseLoss()` at face value, so never display a clamped or capped figure. `exposureCap` and `ExposureClamped` do not exist. The failure mode is handled differently: a reverting reporter is substituted with total outstanding debt (`VaultEngine.debt() / RAY`) and `ExposureReportFailed(substituted)` is emitted.
 
-The verified source at `0x2484d495258C3e281217995D30Bda16BeF6192dF` (the DEPLOYED engine) says otherwise:
-
-| Symbol | Deployed source |
-| --- | --- |
-| `exposureCap` | present (lines 49, 118, 126, 141, 210, 211) |
-| `ExposureClamped` | present, emitted at lines 211 and 214 |
-| `ExposureReportFailed` | **not present** |
-
-The frontend therefore clamps: `exposure = min(reportedExposure, exposureCap)`. The doc described a build newer than what is deployed — and that build has since landed: **[repo-head]** `7b5c985` removed `exposureCap`/`ExposureClamped` and added `ExposureReportFailed(substituted)` (a reverting reporter substitutes total outstanding debt, `VaultEngine.debt() / RAY`). After a redeploy the clamp must be dropped and the §5 multicall must remove the `exposureCap()` read — it will revert.
+**[frontend-pending]** The shipped frontend still clamps `exposure = min(reportedExposure, exposureCap)` and reads `exposureCap()` in the §5 multicall. Both must be removed — the read reverts against these contracts.
 
 ### 5.3 Chart and history
 
@@ -423,7 +401,7 @@ transports: { [arbitrum.id]: http(rpcUrl, { batch: { wait: 250, batchSize: 20 } 
 - **`rate` is live** — never display raw `art`; always `art * rate_now`. `duty` on RAIN-A is 10.00% APY today (§0.2).
 - **`hope` is per smart account**, not per EOA, and covers all that account's vaults.
 - Vaults are not transferable and ids are never reused; `vaultId` is a safe permanent key.
-- One `DutchAuction` per collateral type on the DEPLOYED contracts — resolve the clip per ilk from `LiquidationTrigger.ilks(ilkId).clip`, not a constant. **[repo-head]** inverted: ONE auction house serves all ilks, resolved once from `liquidationTrigger.dutchAuction()`; each sale carries its `ilkId` (`68bc08e`, `0d94809`).
+- ONE `DutchAuction` serves all ilks — resolve it once from `liquidationTrigger.dutchAuction()`, never per-ilk and never from a constant; each sale carries its `ilkId`.
 - SCSS is global and page-scoped: a class nested under one page's parent selector does not apply in another component tree. This has caused the same bug three times.
 
 ---
