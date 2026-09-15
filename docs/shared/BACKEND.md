@@ -308,30 +308,58 @@ are rate-independent (both rad) and unchanged in formula.
 | *Trigger type* | *Event/state-driven* — poll `getStatus(id)` for all active ids (`list()`) each block or on price updates |
 | *Proceed if* | `stopped() < 3` ∧ `!paused()` ∧ `needsRedo == true` ∧ `tip + chip × tab > gasCost × safetyFactor` |
 
-## Job 6 — Treasury housekeeping
+## Job 6 — Treasury housekeeping (flog → heal → distributeSurplus → snapshotReserve)
 
 Stability-fee note: **fee revenue now flows into the Balance Sheet continuously** — every
 `drip` (explicit or auto) credits `vaultEngine.usdr(balanceSheet)`. The heal /
 distributeSurplus cadence is unchanged, but there is now a steady revenue source on top of
-liquidation proceeds, so expect 6b to fire more often once duties are nonzero. Chain 6a/6b
+liquidation proceeds, so expect 6c to fire more often once duties are nonzero. Chain 6b/6c
 checks off `Drip` events too, not just `Take`/`Kick`/`Redo`.
 
-*6a. heal*
+The sub-jobs implement the Balance Sheet waterfall and are **ordered**: queued sin must be
+released (6a) before it can be healed (6b), and all unqueued sin must be healed before a
+distribution can move (6c) — the contract enforces each step, so a keeper that skips one
+doesn't break anything, it just silently stops buybacks. 6d is an independent daily
+freshness duty protecting 6c's target.
+
+*6a. flog — release queued sin*
 
 | | |
 |---|---|
 | *Contract* | BalanceSheet |
-| *Method* | `heal(uint256 rad)` with `rad = min(vaultEngine.usdr(balanceSheet), vaultEngine.sin(balanceSheet))` |
-| *Trigger type* | *Event-driven with periodic fallback* — after every `Take`/`Kick`/`Redo`/`Drip` event, plus hourly cron |
-| *Proceed if* | `min(usdr, sin) > 0` |
+| *Method* | `flog(uint256 era)` — permissionless |
+| *Trigger type* | *Scheduled per era* — every `Fess(tab)` event defines an era (= its block timestamp); schedule one flog at `era + wait()` |
+| *Proceed if* | `sin(era) > 0` ∧ `block.timestamp ≥ era + wait()` (early call reverts `WaitNotElapsed`) |
+| *Why it matters* | A skipped flog leaves debt queued **forever**: `heal` cannot touch queued sin, and `distributeSurplus` reserves surplus for it on top of the buffer target (`totalQueuedSin` is added to the target), so missed flogs directly and permanently suppress buybacks. Track eras from `Fess` events (squid table `fess` carries the block timestamp); one flog per era |
 
-*6b. distributeSurplus* (solvency-gated)
+*6b. heal — burn surplus against released sin*
 
 | | |
 |---|---|
+| *Contract* | BalanceSheet |
+| *Method* | `heal(uint256 rad)` with `rad = min(vaultEngine.usdr(balanceSheet), vaultEngine.sin(balanceSheet) − totalQueuedSin())` — only **unqueued** sin is healable (the `InsufficientDebt` guard subtracts the queue) |
+| *Trigger type* | *Event-driven with periodic fallback* — after every `Take`/`Kick`/`Redo`/`Drip`/`Flog` event, plus hourly cron |
+| *Proceed if* | `min(usdr, sin − totalQueuedSin) > 0` |
+
+*6c. distributeSurplus* (solvency-gated)
+
+| | |
+|---|---|
+| *Contract* | BalanceSheet |
 | *Method* | `distributeSurplus()` |
-| *Trigger type* | *Periodic* (e.g. hourly, after 6a) |
-| *Proceed if (all)* | `vaultEngine.sin(balanceSheet) == 0` ∧ `vaultEngine.usdr(balanceSheet) > hump()` ∧ `buybackReceiver() != address(0)` ∧ **`!solvencyEngine.isBreached()` after a fresh recompute** — the contract itself recomputes `checkInvariant()` and reverts `SolvencyGateActive` while breached (surplus must not ship out toward buyback against an uncovered stressed loss). Simulate first; on `SolvencyGateActive`, back off and retry after the reserve recovers rather than burning gas per hour |
+| *Trigger type* | *Periodic* (e.g. hourly), chained immediately after 6b in the same bundle |
+| *Proceed if (all)* | `vaultEngine.sin(balanceSheet) − totalQueuedSin() == 0` (any unqueued sin makes the call **return 0**, a harmless no-op — heal first) ∧ `vaultEngine.usdr(balanceSheet) > humpTarget() + totalQueuedSin()` (queued sin is reserved **on top of** the buffer target; below-target is also a 0-return no-op) ∧ `buybackReceiver() != address(0)` (else reverts `NoBuybackReceiver`) ∧ reserve backing holds: `reserveAccounting.totalReserve() × RAY ≥ Σ over noFee ilks of (globalArt × rate)` — on violation the contract reverts **`ReserveBackingShortfall`**, which means unbacked USDR was minted somewhere: **PAGE immediately, do not retry** ∧ **`!solvencyEngine.isBreached()` after a fresh recompute** — the contract recomputes `checkInvariant()` itself and reverts `SolvencyGateActive` while breached (surplus must not ship out toward buyback against an uncovered stressed loss); back off and retry after the reserve recovers rather than burning gas per hour |
+| *Target note* | There is no `hump()` getter. The target is dynamic: `humpTarget() = max(humpFloor, humpRate × max(totalReserve, laggedReserve) × RAY / WAD)` — the dynamic term reads the **larger** of the live reserve and the day-lagged snapshot, so PSM outflow can only lower the target after the snapshot (6d) catches up. Simulate first; distinguish the two outcomes: a **0-return is routine** (sin pending or buffer below target), only the two reverts above are alarms |
+
+*6d. snapshotReserve — lagged-snapshot freshness*
+
+| | |
+|---|---|
+| *Contract* | BalanceSheet |
+| *Method* | `snapshotReserve()` — permissionless |
+| *Trigger type* | *Periodic* — once per day, shortly after `laggedReserveAt() + 86400` elapses (the contract self-refreshes after every successful distribution, but only at most once per 86400 s window either way) |
+| *Proceed if* | `block.timestamp ≥ laggedReserveAt() + 86400` (otherwise the call is a silent no-op — skip to save gas) |
+| *Why a keeper duty* | The snapshot is the anti-drain floor of 6c's target: shrinking the target requires the reserve to be genuinely smaller for a full day. Self-refresh-on-distribution is not enough — if distributions stall (solvency gate, persistent sin) the snapshot freezes. A frozen-HIGH snapshot after a genuine reserve outflow keeps the target anchored to the old reserve level indefinitely, suppressing all buybacks even once the system is healthy; the daily permissionless call bounds that suppression to ~one day. Emits `SnapshotReserve(reserve)` (indexed by the squid, table `snapshot_reserve`) — **alert if `now − laggedReserveAt() > 2 × 86400`** (snapshot staleness canary) |
 
 ## Job 7 — Solvency flag freshness + watchdog
 
@@ -406,8 +434,10 @@ A broken role silently disables a whole job — `scripts/verify/verify-roles.js`
 - Gas-tank monitoring + auto-top-up for the keeper EOA; nonce management for same-block bundles;
   run Jobs 0–3 and 6 on two independent infrastructures (own bot + Gelato/Chainlink fallback).
 - Alert on: missed OSM window (> 35 min since last `Poke`, or a `PokeFailed`), breaker active > N
-  hours, auction stale > tail without redo, `sin > 0` for > 24h, **`stopped()`/`paused()` active >
-  N min**, **`End.live()==0`**, RPC/WS disconnects, **no `Drip` observed for an ilk with
+  hours, auction stale > tail without redo, `sin > 0` for > 24h, **any `ReserveBackingShortfall`
+  revert in a `distributeSurplus` simulation** (unbacked-mint alarm — page, never retry-loop),
+  **`laggedReserveAt()` older than 2 × 86400 s** (snapshot staleness, Job 6d),
+  **`stopped()`/`paused()` active > N min**, **`End.live()==0`**, RPC/WS disconnects, **no `Drip` observed for an ilk with
   `duty > RAY` for > 2× the drip interval** (freshness canary), **`FeeRecipientNotSet` in any
   simulation** (wiring regression).
 - Every tx `eth_call`-simulated in the target-block context first; log all reverts with reason
