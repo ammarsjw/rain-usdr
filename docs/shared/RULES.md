@@ -15,6 +15,11 @@ what changed for them without deriving it from git history.
   describing the stale integration as current.
 - Parameter values quoted in a body are development-environment snapshots; docs must say so
   and instruct consumers to re-read on-chain.
+- **Do not quote deploy-default / env-overridable example values** (e.g. a default `duty`):
+  they rot silently when the deploy config changes. Point at the live getter instead
+  ("read `VaultEngine.ilks(ilk)`"). Contract **constants** (`_RESERVE_LAG = 86400`,
+  `OBS_COUNT = 12`, hardcoded constructor defaults) may be quoted — they can only change with
+  a contract change, which §4 already forces through the docs.
 
 ## 2. Docs are diff-communication devices
 
