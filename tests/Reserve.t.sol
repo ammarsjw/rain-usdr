@@ -829,6 +829,17 @@ contract ReserveRegressionTest is BaseTest {
 
         vaultEngine.suck(address(this), address(balanceSheet), 100 * _RAD);
 
+        // With reserve accounting wired, distribution requires a lagged snapshot at least one lag window
+        // old; until then it is a routine no-op.
+        assertEq(balanceSheet.distributeSurplus(), 0, "no-op before a mature snapshot exists");
+
+        skip(1 days);
+        balanceSheet.snapshotReserve();
+
+        assertEq(balanceSheet.distributeSurplus(), 0, "no-op against a fresh snapshot");
+
+        skip(1 days);
+
         // Healthy state distributes fine (hump target 0).
         assertEq(balanceSheet.distributeSurplus(), 100 * _RAD, "backed distribution passes");
 
@@ -857,17 +868,17 @@ contract ReserveRegressionTest is BaseTest {
         balanceSheet.file("humpRate", _WAD / 10);
 
         // Reserve 200k -> dynamic target 20k [rad]. Snapshot it (one lag window must have elapsed since
-        // genesis).
+        // genesis) and let the snapshot mature for a full lag window so distribution may consume it.
         _sellUsdt(user, 200_000e6);
         skip(1 days);
         balanceSheet.snapshotReserve();
         assertEq(balanceSheet.laggedReserve(), 200_000e18, "snapshot taken");
+        skip(1 days);
 
         uint256 target = balanceSheet.humpTarget();
         assertEq(target, 20_000e18 * _RAY, "10% of reserve");
 
-        // The attacker redeems 150k in the same window: the live reserve drops to 50k, but the target must
-        // not.
+        // The attacker redeems 150k: the live reserve drops to 50k, but the target must not.
         vm.startPrank(user);
         usdr.approve(address(psm), 150_000e18);
         psm.buyStable(USDT_ILK, user, 150_000e6);
@@ -884,6 +895,11 @@ contract ReserveRegressionTest is BaseTest {
         _sellUsdt(user, 250_000e6);
         assertEq(balanceSheet.humpTarget(), 30_000e18 * _RAY, "growth is instant");
 
+        // A full window has elapsed since the first snapshot, so a fresh one lands (capturing 300k) and
+        // starts a new window.
+        balanceSheet.snapshotReserve();
+        assertEq(balanceSheet.laggedReserve(), 300_000e18, "new-window snapshot lands");
+
         // Shrinkage only lands after the lag window, via a fresh snapshot (300k - 200k = 100k live).
         vm.startPrank(user);
         usdr.approve(address(psm), 200_000e18);
@@ -891,12 +907,55 @@ contract ReserveRegressionTest is BaseTest {
         vm.stopPrank();
 
         balanceSheet.snapshotReserve();
-        assertEq(balanceSheet.laggedReserve(), 200_000e18, "same-window snapshot refused");
+        assertEq(balanceSheet.laggedReserve(), 300_000e18, "same-window snapshot refused");
 
         skip(1 days);
         balanceSheet.snapshotReserve();
         assertEq(balanceSheet.laggedReserve(), 100_000e18, "shrinkage lands after the lag");
         assertEq(balanceSheet.humpTarget(), 10_000e18 * _RAY, "target follows after the lag");
+    }
+
+    function test_distributeRefusesFreshSnapshotAtWindowBoundary() public {
+        // Regression: snapshots are SPACED at least one lag window apart, but the moment a window opens a
+        // fresh snapshot could be taken and consumed in the same transaction: redeem (shrink the live
+        // reserve) → snapshotReserve (capture the shrunk value) → distributeSurplus (measure against it) →
+        // re-deposit, shipping humpRate × redeemed extra surplus at zero cost. Distribution therefore
+        // refuses any snapshot younger than the lag window: shrinking the target requires the reserve to be
+        // genuinely smaller for a full day.
+        balanceSheet.file("reserveAccounting", address(reserveAccounting));
+        balanceSheet.file("buybackReceiver", address(0xB0B));
+        balanceSheet.file("humpRate", _WAD / 10);
+
+        // Reserve 200k, snapshot matured: honest dynamic target 20k [rad].
+        _sellUsdt(user, 200_000e6);
+        skip(1 days);
+        balanceSheet.snapshotReserve();
+        skip(1 days);
+
+        // Surplus 21k: the honest excess is 1k.
+        vaultEngine.suck(address(this), address(balanceSheet), 21_000e18 * _RAY);
+
+        // The attack, at the exact window boundary: redeem 150k and immediately re-snapshot the shrunk
+        // reserve (both succeed — spacing allows the snapshot).
+        vm.startPrank(user);
+        usdr.approve(address(psm), 150_000e18);
+        psm.buyStable(USDT_ILK, user, 150_000e6);
+        vm.stopPrank();
+
+        balanceSheet.snapshotReserve();
+        assertEq(balanceSheet.laggedReserve(), 50_000e18, "boundary snapshot captured the shrunk reserve");
+
+        // The shrunk snapshot must not be consumable: distribution no-ops instead of shipping 16k against a
+        // 5k target.
+        assertEq(balanceSheet.distributeSurplus(), 0, "fresh snapshot refused");
+
+        // The attacker re-deposits and walks away; once the snapshot matures it reflects a reserve the
+        // attacker no longer suppresses, and only the honest excess ships. (Live reserve is back at 200k,
+        // so max(live, lagged) restores the 20k target.)
+        _sellUsdt(user, 150_000e6);
+        skip(1 days);
+
+        assertEq(balanceSheet.distributeSurplus(), 1_000e18 * _RAY, "only the honest excess ships");
     }
 
     function test_backstopSellsTreasuryRainAndHealsSin() public {

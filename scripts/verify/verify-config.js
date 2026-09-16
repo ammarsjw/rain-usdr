@@ -173,6 +173,10 @@ const verifyConfig = async () => {
     assertNonZero("BalanceSheet.buybackReceiver", await balanceSheet.buybackReceiver());
     assertNonZero("BalanceSheet.oracleSecurityModule", await balanceSheet.oracleSecurityModule());
     assertEq("BalanceSheet.rainIlk", await balanceSheet.rainIlk(), rainIlk);
+    // The genesis snapshot must exist: distributeSurplus refuses to run against a missing (or immature)
+    // lagged reserve snapshot, so an unset laggedReserveAt means no distribution can ever succeed until a
+    // keeper takes the first snapshot and it matures.
+    assertNonZero("BalanceSheet.laggedReserveAt (genesis snapshot taken)", await balanceSheet.laggedReserveAt());
     assertNonZero("BalanceSheet.backstopCap", await balanceSheet.backstopCap());
     assertEq("BalanceSheet.backstopHaircut", await balanceSheet.backstopHaircut(), (WAD * 90n) / 100n);
 

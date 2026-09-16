@@ -157,6 +157,11 @@ const deployReserve = async () => {
         )
     ).wait();
 
+    // Taking the genesis reserve snapshot: distributeSurplus only consumes a snapshot at least one lag
+    // window (86400 s) old, so the clock must start at deploy or the first distribution waits on the first
+    // keeper snapshot instead. Keepers refresh it once per window from here on.
+    await (await balanceSheetInstance.snapshotReserve()).wait();
+
     // RAIN backstop (waterfall step 4): sell treasury RAIN at a haircuted OSM price to heal unqueued sin.
     const backstopCap = process.env.BACKSTOP_CAP ? BigInt(process.env.BACKSTOP_CAP) : 50000n * RAD;
     await (

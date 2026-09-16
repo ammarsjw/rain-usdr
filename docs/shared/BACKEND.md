@@ -137,7 +137,38 @@
   it). Filing a duty on a `noFee` ilk reverts unless the duty is exactly RAY.
 - **Action:** drop `ExemptFee` from event decoders; update any governance runbook.
 
-### B10. Getter renames (ABI-breaking selector changes, mechanical)
+### B10. VaultEngine — exclusive-ilk vault binding
+
+- **Was:** `open(ilkId, usr)` was permissionless on every initialized ilk — including the PSM
+  stable ilks, where a third-party 1:1 vault would desync the reserve-backing check in
+  `distributeSurplus` (its debt counts toward stable-ilk debt but never enters `totalReserve`).
+- **Now:** new `exclusiveTo(ilkId)` view: when nonzero, `open` reverts with new error
+  `IlkExclusive` for any `usr` other than the bound owner. Filed via the new per-ilk address
+  overload `file(ilkId, "exclusiveTo", addr)`, which emits the **new event**
+  `File(bytes32 indexed ilkId, bytes32 indexed what, address addr)` (new topic0 — distinct from
+  the existing global `File(what, addr)`). Deploy binds `USDT-A`/`USDC-A` to the PSM; `RAIN-A`
+  stays open.
+- **Action:** vault-opening tooling must not attempt vaults on the stable ilks (they revert);
+  add the per-ilk address `File` topic0 to event decoders; the squid needs a `File` handler for
+  the new signature (new nullable per-ilk address column or equivalent).
+
+### B11. BalanceSheet — snapshot maturity gate on distributions
+
+- **Was:** `distributeSurplus` refreshed the lagged reserve snapshot itself after every
+  successful distribution, and would run against a snapshot of any age — including one taken
+  seconds earlier at a window boundary, which let a same-transaction redeem → `snapshotReserve`
+  → distribute round trip ship `humpRate × redeemed` extra surplus.
+- **Now:** `distributeSurplus` **returns 0** (routine no-op) when `reserveAccounting` is wired
+  and the snapshot is missing (`laggedReserveAt == 0`) or younger than one lag window (86400 s).
+  The post-distribution self-refresh is **gone**: the permissionless `snapshotReserve()` (Job 6d)
+  is the snapshot's only mover, and the deploy takes the genesis snapshot. `SnapshotReserve`
+  events therefore no longer appear as side effects of distributions.
+- **Action:** treat the new 0-return as routine (same handling as sin-pending/below-target); run
+  Job 6d unconditionally on its daily schedule — it is load-bearing now, not a fallback; any
+  dashboard correlating `SnapshotReserve` with `DistributeSurplus` transactions should expect
+  them only from 6d.
+
+### B12. Getter renames (ABI-breaking selector changes, mechanical)
 
 | Contract | Was | Now |
 |---|---|---|
@@ -348,8 +379,8 @@ freshness duty protecting 6c's target.
 | *Contract* | BalanceSheet |
 | *Method* | `distributeSurplus()` |
 | *Trigger type* | *Periodic* (e.g. hourly), chained immediately after 6b in the same bundle |
-| *Proceed if (all)* | `vaultEngine.sin(balanceSheet) − totalQueuedSin() == 0` (any unqueued sin makes the call **return 0**, a harmless no-op — heal first) ∧ `vaultEngine.usdr(balanceSheet) > humpTarget() + totalQueuedSin()` (queued sin is reserved **on top of** the buffer target; below-target is also a 0-return no-op) ∧ `buybackReceiver() != address(0)` (else reverts `NoBuybackReceiver`) ∧ reserve backing holds: `reserveAccounting.totalReserve() × RAY ≥ Σ over noFee ilks of (globalArt × rate)` — on violation the contract reverts **`ReserveBackingShortfall`**, which means unbacked USDR was minted somewhere: **PAGE immediately, do not retry** ∧ **`!solvencyEngine.isBreached()` after a fresh recompute** — the contract recomputes `checkInvariant()` itself and reverts `SolvencyGateActive` while breached (surplus must not ship out toward buyback against an uncovered stressed loss); back off and retry after the reserve recovers rather than burning gas per hour |
-| *Target note* | There is no `hump()` getter. The target is dynamic: `humpTarget() = max(humpFloor, humpRate × max(totalReserve, laggedReserve) × RAY / WAD)` — the dynamic term reads the **larger** of the live reserve and the day-lagged snapshot, so PSM outflow can only lower the target after the snapshot (6d) catches up. Simulate first; distinguish the two outcomes: a **0-return is routine** (sin pending or buffer below target), only the two reverts above are alarms |
+| *Proceed if (all)* | `vaultEngine.sin(balanceSheet) − totalQueuedSin() == 0` (any unqueued sin makes the call **return 0**, a harmless no-op — heal first) ∧ **snapshot maturity**: `laggedReserveAt() != 0 ∧ block.timestamp ≥ laggedReserveAt() + 86400` when `reserveAccounting` is wired (a missing or younger-than-one-window snapshot is also a **0-return no-op** — the target must never be measured against a snapshot that same-window PSM outflow could have shrunk; retry next hour, it matures on its own) ∧ `vaultEngine.usdr(balanceSheet) > humpTarget() + totalQueuedSin()` (queued sin is reserved **on top of** the buffer target; below-target is also a 0-return no-op) ∧ `buybackReceiver() != address(0)` (else reverts `NoBuybackReceiver`) ∧ reserve backing holds: `reserveAccounting.totalReserve() × RAY ≥ Σ over noFee ilks of (globalArt × rate)` — on violation the contract reverts **`ReserveBackingShortfall`**, which means unbacked USDR was minted somewhere: **PAGE immediately, do not retry** ∧ **`!solvencyEngine.isBreached()` after a fresh recompute** — the contract recomputes `checkInvariant()` itself and reverts `SolvencyGateActive` while breached (surplus must not ship out toward buyback against an uncovered stressed loss); back off and retry after the reserve recovers rather than burning gas per hour |
+| *Target note* | There is no `hump()` getter. The target is dynamic: `humpTarget() = max(humpFloor, humpRate × max(totalReserve, laggedReserve) × RAY / WAD)` — the dynamic term reads the **larger** of the live reserve and the day-lagged snapshot, and 6c refuses to run until that snapshot is a full window old, so PSM outflow can only lower the target it faces after the reserve has genuinely been smaller for a day. Simulate first; distinguish the two outcomes: a **0-return is routine** (sin pending, immature snapshot, or buffer below target), only the two reverts above are alarms |
 
 *6d. snapshotReserve — lagged-snapshot freshness*
 
@@ -357,9 +388,9 @@ freshness duty protecting 6c's target.
 |---|---|
 | *Contract* | BalanceSheet |
 | *Method* | `snapshotReserve()` — permissionless |
-| *Trigger type* | *Periodic* — once per day, shortly after `laggedReserveAt() + 86400` elapses (the contract self-refreshes after every successful distribution, but only at most once per 86400 s window either way) |
+| *Trigger type* | *Periodic* — once per day, shortly after `laggedReserveAt() + 86400` elapses. This call is the snapshot's **only** mover (distribution does not refresh it), so 6d is load-bearing, not a fallback |
 | *Proceed if* | `block.timestamp ≥ laggedReserveAt() + 86400` (otherwise the call is a silent no-op — skip to save gas) |
-| *Why a keeper duty* | The snapshot is the anti-drain floor of 6c's target: shrinking the target requires the reserve to be genuinely smaller for a full day. Self-refresh-on-distribution is not enough — if distributions stall (solvency gate, persistent sin) the snapshot freezes. A frozen-HIGH snapshot after a genuine reserve outflow keeps the target anchored to the old reserve level indefinitely, suppressing all buybacks even once the system is healthy; the daily permissionless call bounds that suppression to ~one day. Emits `SnapshotReserve(reserve)` (indexed by the squid, table `snapshot_reserve`) — **alert if `now − laggedReserveAt() > 2 × 86400`** (snapshot staleness canary) |
+| *Why a keeper duty* | The snapshot is the anti-drain floor of 6c's target, and 6c refuses to consume it until it is a full window old: shrinking the target requires the reserve to be genuinely smaller for a full day. Without the daily call the snapshot freezes (a frozen snapshot still passes 6c's maturity gate — old is fine, missing or too-young is not — but it goes stale): a frozen-HIGH snapshot after a genuine reserve outflow keeps the target anchored to the old reserve level indefinitely, suppressing all buybacks even once the system is healthy. The daily permissionless call bounds that suppression to ~one day. The deploy takes the genesis snapshot, so the maturity clock is already running at launch. Emits `SnapshotReserve(reserve)` (indexed by the squid, table `snapshot_reserve`) — **alert if `now − laggedReserveAt() > 2 × 86400`** (snapshot staleness canary; under the maturity gate a stale snapshot also means distributions are running against increasingly old data, though always in the conservative direction) |
 
 ## Job 7 — Solvency flag freshness + watchdog
 

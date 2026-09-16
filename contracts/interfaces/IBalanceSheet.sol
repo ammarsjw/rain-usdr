@@ -207,16 +207,19 @@ interface IBalanceSheet {
 
     /**
      * @notice Sends the surplus above the buffer target toward RAIN buyback-and-burn.
-     * @dev Returns 0 without effect when the buffer is at or below target, the strict "fill before burn"
-     *      rule.
+     * @dev Returns 0 without effect when the buffer is at or below target (the strict "fill before burn"
+     *      rule), when unqueued bad debt is outstanding, or when reserve accounting is wired and the lagged
+     *      reserve snapshot is missing or younger than the lag window — the target must never be measured
+     *      against a snapshot that same-window reserve outflow could have shrunk.
      * @return excess Amount released [rad].
      */
     function distributeSurplus() external returns (uint256 excess);
 
     /**
      * @notice Refreshes the lagged reserve snapshot used by {humpTarget}, at most once per lag window.
-     * @dev Permissionless: keepers keep the snapshot fresh so reserve growth eventually raises the dynamic
-     *      target.
+     * @dev Permissionless and the snapshot's only mover: keepers call it once per window. A freshly taken
+     *      snapshot cannot be consumed by {distributeSurplus} until it matures for a full lag window, and a
+     *      stale snapshot fails safe (it can only overstate the reserve, holding the target up).
      */
     function snapshotReserve() external;
 
@@ -254,6 +257,7 @@ interface IBalanceSheet {
 
     /**
      * @notice Returns the lagged total-reserve snapshot [wad] used by {humpTarget}'s dynamic term.
+     *         {distributeSurplus} only consumes it once it is at least a full lag window old.
      */
     function laggedReserve() external view returns (uint256);
 
