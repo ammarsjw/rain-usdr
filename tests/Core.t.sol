@@ -144,6 +144,83 @@ contract VaultEngineCoreTest is BaseTest {
         vaultEngine.open(TEST_ILK, alice);
     }
 
+    function test_openOnExclusiveIlkOnlyForBoundOwner() public {
+        // Bind TEST-A to alice while it carries no debt.
+        vaultEngine.file(TEST_ILK, "exclusiveTo", alice);
+
+        // Any other owner is rejected, regardless of caller.
+        vm.expectRevert(IVaultEngine.IlkExclusive.selector);
+        vaultEngine.open(TEST_ILK, bob);
+
+        vm.prank(bob);
+        vm.expectRevert(IVaultEngine.IlkExclusive.selector);
+        vaultEngine.open(TEST_ILK, bob);
+
+        // The binding is on the OWNER (usr), not the caller: a router may open FOR alice...
+        vm.prank(bob);
+        uint256 vaultId = vaultEngine.open(TEST_ILK, alice);
+        assertEq(vaultEngine.ownerOf(vaultId), alice, "bound owner owns");
+
+        // ...and alice may open for herself.
+        vm.prank(alice);
+        vaultEngine.open(TEST_ILK, alice);
+
+        // Unbinding reopens the ilk.
+        vaultEngine.file(TEST_ILK, "exclusiveTo", address(0));
+        vm.prank(bob);
+        vaultEngine.open(TEST_ILK, bob);
+    }
+
+    function test_fileExclusiveToGuards() public {
+        // Uninitialized ilk is rejected.
+        vm.expectRevert(IVaultEngine.IlkNotInitialized.selector);
+        vaultEngine.file("UNKNOWN-A", "exclusiveTo", alice);
+
+        // Unknown address parameter is rejected.
+        vm.expectRevert(UnrecognizedParameter.selector);
+        vaultEngine.file(TEST_ILK, "nonsense", alice);
+
+        // Only governance may file.
+        vm.prank(alice);
+        vm.expectRevert();
+        vaultEngine.file(TEST_ILK, "exclusiveTo", alice);
+
+        // A nonzero binding on an ilk that already carries debt is rejected: pre-existing vaults are not
+        // evicted, so the binding would be a lie.
+        uint256 vaultId = _openTestVault(alice, 1000e18, 500e18);
+        vm.expectRevert(InvalidAssignment.selector);
+        vaultEngine.file(TEST_ILK, "exclusiveTo", alice);
+
+        // Clearing (zero) stays allowed even with debt outstanding.
+        vaultEngine.file(TEST_ILK, "exclusiveTo", address(0));
+
+        // And rebinding becomes possible again once all debt is repaid.
+        vm.prank(alice);
+        vaultEngine.frob(vaultId, alice, alice, -int256(uint256(1000e18)), -int256(uint256(500e18)));
+        vaultEngine.file(TEST_ILK, "exclusiveTo", alice);
+
+        // No filing after shutdown.
+        vaultEngine.cage();
+        vm.expectRevert(NotLive.selector);
+        vaultEngine.file(TEST_ILK, "exclusiveTo", alice);
+    }
+
+    function test_exclusiveIlkStopsRogueStableVault() public {
+        // Regression for the PSM reserve-backing bypass: with the stable ilks bound to the PSM, an attacker
+        // can no longer open a personal vault on a PSM ilk to mint 1:1 USDR whose debt the reserve-backing
+        // check counts against the PSM's reserve.
+        assertEq(vaultEngine.exclusiveTo(USDT_ILK), address(psm), "USDT-A bound to PSM");
+        assertEq(vaultEngine.exclusiveTo(USDC_ILK), address(psm), "USDC-A bound to PSM");
+
+        vm.startPrank(alice);
+        vm.expectRevert(IVaultEngine.IlkExclusive.selector);
+        vaultEngine.open(USDT_ILK, alice);
+
+        vm.expectRevert(IVaultEngine.IlkExclusive.selector);
+        vaultEngine.open(USDC_ILK, alice);
+        vm.stopPrank();
+    }
+
     /* ========================== 3. FROB CONSERVATION ========================== */
 
     function test_frobRoundTripConservesAllBalances() public {

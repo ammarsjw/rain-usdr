@@ -114,6 +114,14 @@ interface IVaultEngine {
     event File(bytes32 indexed ilkId, bytes32 indexed what, uint256 data);
 
     /**
+     * @dev Emitted when a per-collateral address parameter is updated.
+     * @param ilkId Identifier of the collateral type.
+     * @param what Name of the parameter.
+     * @param addr New address.
+     */
+    event File(bytes32 indexed ilkId, bytes32 indexed what, address addr);
+
+    /**
      * @dev Emitted when a user's free collateral balance is adjusted.
      * @param ilkId Identifier of the collateral type.
      * @param user Account whose balance is adjusted.
@@ -207,6 +215,12 @@ interface IVaultEngine {
      */
     error VaultNotFound();
 
+    /**
+     * @dev Indicates that the ilk is exclusively bound to a single vault owner and the requested owner is
+     *      not it.
+     */
+    error IlkExclusive();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**
@@ -264,10 +278,24 @@ interface IVaultEngine {
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
 
     /**
+     * @notice Updates a per-collateral address parameter. Currently only {exclusiveTo}: binding an ilk to a
+     *         single legitimate vault owner (zero, the default, leaves the ilk open to all).
+     * @dev Only governance can call this. Filing a nonzero binding requires the ilk to be initialized and to
+     *      carry no debt: vaults opened before the binding are not evicted by it, so binding a used ilk
+     *      would claim an exclusivity the ledger does not have. Required for every PSM (stable) ilk — the
+     *      reserve-backing check in the Balance Sheet assumes all debt on those ilks is the PSM's — and must
+     *      be filed BEFORE the module opens its vault.
+     * @param ilkId Identifier of the collateral type.
+     * @param what Name of the parameter.
+     * @param data New address.
+     */
+    function file(bytes32 ilkId, bytes32 what, address data) external;
+
+    /**
      * @notice Opens a new vault bound to a collateral type and returns its id.
      * @dev Permissionless. Vault ids are sequential and never reused; ownership is fixed at open time. `usr`
      *      lets periphery contracts open vaults on behalf of users (the vault belongs to `usr`, not the
-     *      caller).
+     *      caller). When the ilk carries an {exclusiveTo} binding, `usr` must be the bound owner.
      * @param ilkId Identifier of the collateral type the vault is bound to.
      * @param usr Owner of the new vault.
      * @return vaultId Identifier of the new vault.
@@ -459,6 +487,13 @@ interface IVaultEngine {
      * @param ilkId Identifier of the collateral type.
      */
     function noFee(bytes32 ilkId) external view returns (bool);
+
+    /**
+     * @notice Returns the single vault owner an ilk is exclusively bound to. Zero means the ilk is open to
+     *         all owners (the default).
+     * @param ilkId Identifier of the collateral type.
+     */
+    function exclusiveTo(bytes32 ilkId) external view returns (address);
 
     /**
      * @notice Returns an ilk's dynamic (liquidity-based) debt ceiling parameters and state.

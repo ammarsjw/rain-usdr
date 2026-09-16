@@ -120,6 +120,13 @@ abstract contract BaseTest is Test {
 
         // Deploying the PSMs and the Governor.
         psm = new PegStabilityModule(collateralAdapter, reserveAccounting);
+
+        // Binding the stable (PSM) ilks exclusively to the PSM BEFORE it opens its vaults: no other owner
+        // may ever hold a vault on a 1:1 ilk (the reserve-backing check in the Balance Sheet assumes all
+        // debt on these ilks is the PSM's).
+        vaultEngine.file(USDT_ILK, "exclusiveTo", address(psm));
+        vaultEngine.file(USDC_ILK, "exclusiveTo", address(psm));
+
         psm.init(USDT_ILK);
         psm.init(USDC_ILK);
         governor = new Governor(48 hours);

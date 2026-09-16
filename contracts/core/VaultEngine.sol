@@ -86,6 +86,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
     mapping(bytes32 ilkId => bool feeExempt) public noFee;
 
     /// @inheritdoc IVaultEngine
+    mapping(bytes32 ilkId => address owner) public exclusiveTo;
+
+    /// @inheritdoc IVaultEngine
     mapping(bytes32 ilkId => LiquidityCeiling ceiling) public liquidityCeilings;
 
     /// @inheritdoc IVaultEngine
@@ -288,6 +291,35 @@ contract VaultEngine is IVaultEngine, AccessControl {
     /**
      * @inheritdoc IVaultEngine
      */
+    function file(bytes32 ilkId, bytes32 what, address data) external onlyRole(_WARD_ROLE) {
+        if (live != 1) {
+            _revert(NotLive.selector);
+        }
+
+        if (what == "exclusiveTo") {
+            // The collateral type must have been initialized.
+            if (ilks[ilkId].rate == 0) {
+                _revert(IlkNotInitialized.selector);
+            }
+
+            // Binding is only honest while no debt exists against the ilk: vaults opened before the binding
+            // are not evicted by it (ownership is immutable), so a nonzero binding filed onto an ilk that
+            // already carries debt would claim an exclusivity the ledger does not actually have.
+            if (data != address(0) && ilks[ilkId].globalArt != 0) {
+                _revert(InvalidAssignment.selector);
+            }
+
+            exclusiveTo[ilkId] = data;
+        } else {
+            _revert(UnrecognizedParameter.selector);
+        }
+
+        emit File({ ilkId: ilkId, what: what, addr: data });
+    }
+
+    /**
+     * @inheritdoc IVaultEngine
+     */
     function open(bytes32 ilkId, address usr) external returns (uint256 vaultId) {
         // Vaults may only be opened while the system is live.
         if (live != 1) {
@@ -302,6 +334,16 @@ contract VaultEngine is IVaultEngine, AccessControl {
         // rather than later in frob, so indexers only ever see real positions.
         if (ilks[ilkId].rate == 0) {
             _revert(IlkNotInitialized.selector);
+        }
+
+        // Exclusive-ilk binding: an ilk bound to a single legitimate owner (a PSM stable ilk is bound to its
+        // PSM) rejects every other vault owner. Without this, anyone could open a personal vault on a 1:1
+        // ilk and frob debt that the reserve-backing check in {BalanceSheet.distributeSurplus} counts as the
+        // module's reserve-backed debt while no reserve entry exists, wedging distributions — and redeem the
+        // minted USDR against the module's genuine inventory. Checked against `usr` (the immutable owner),
+        // not `msg.sender`, so routers cannot bypass it and the bound module needs no role here.
+        if (exclusiveTo[ilkId] != address(0) && exclusiveTo[ilkId] != usr) {
+            _revert(IlkExclusive.selector);
         }
 
         // Vault ids are sequential and never reused. Ownership is immutable: transferring a position is not

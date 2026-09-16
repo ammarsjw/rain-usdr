@@ -129,6 +129,16 @@ const verifyConfig = async () => {
     assertEq("VaultEngine.noFee(USDC-A)", await vaultEngine.noFee(usdcIlk), true);
     assertEq("VaultEngine.noFee(RAIN-A)", await vaultEngine.noFee(rainIlk), false);
 
+    // Invariant: every PSM stable ilk is exclusively bound to the PSM (no third-party 1:1 vaults that would
+    // desync the reserve-backing check); the volatile ilk stays open to all.
+    assertEq("VaultEngine.exclusiveTo(USDT-A)", await vaultEngine.exclusiveTo(usdtIlk), addresses.PegStabilityModule);
+    assertEq("VaultEngine.exclusiveTo(USDC-A)", await vaultEngine.exclusiveTo(usdcIlk), addresses.PegStabilityModule);
+    assertEq(
+        "VaultEngine.exclusiveTo(RAIN-A)",
+        await vaultEngine.exclusiveTo(rainIlk),
+        "0x0000000000000000000000000000000000000000"
+    );
+
     // ------------------------------------------------------------------ PriceConverter
 
     const priceConverter = await hardhat.ethers.getContractAt("PriceConverter", addresses.PriceConverter);

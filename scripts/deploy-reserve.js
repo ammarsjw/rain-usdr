@@ -62,6 +62,25 @@ const deployReserve = async () => {
     // Allowing the Solvency Engine to commit escrow in Reserve Accounting.
     await (await reserveAccountingInstance.grantRole(COMMITTER_ROLE, solvencyEngineAddress)).wait();
 
+    // Binding the stable (PSM) ilks exclusively to the PSM BEFORE it opens its vaults: the reserve-backing
+    // check in BalanceSheet.distributeSurplus assumes every unit of debt on a stable ilk is the PSM's
+    // reserve-backed 1:1 debt, so no other owner may ever hold a vault on these ilks. Must be filed before
+    // psm.init (open enforces the binding) and while the ilks carry no debt (file enforces that).
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,address)"](
+            usdtIlk,
+            hardhat.ethers.encodeBytes32String("exclusiveTo"),
+            psmAddress
+        )
+    ).wait();
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,address)"](
+            usdcIlk,
+            hardhat.ethers.encodeBytes32String("exclusiveTo"),
+            psmAddress
+        )
+    ).wait();
+
     // Registering the stablecoin ilks on the PSM and authorizing it as a reserve recorder.
     const psmInstance = await hardhat.ethers.getContractAt(psmName, psmAddress);
     await (await psmInstance.init(usdtIlk)).wait();
