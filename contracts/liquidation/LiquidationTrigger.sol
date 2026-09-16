@@ -162,8 +162,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         }
 
         // The vault must exist, and its collateral type is fixed at open time. Each vault is checked against
-        // the bark threshold independently: only the (ink, art) of THIS vault id enter the unsafe condition, so
-        // one owner's unsafe vault never drags their other vaults into liquidation.
+        // the bark threshold independently: only the (ink, art) of THIS vault id enter the unsafe condition,
+        // so one owner's unsafe vault never drags their other vaults into liquidation.
         address owner = VAULT_ENGINE.ownerOf(vaultId);
 
         if (owner == address(0)) {

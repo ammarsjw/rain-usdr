@@ -156,8 +156,8 @@ contract VaultEngineCoreTest is BaseTest {
         vm.expectRevert(IVaultEngine.IlkExclusive.selector);
         vaultEngine.open(TEST_ILK, bob);
 
-        // A third party cannot open FOR the bound address either: junk vaults owned by the bound module
-        // would pollute event-driven vault discovery.
+        // A third party cannot open FOR the bound address either: junk vaults owned by the bound module would
+        // pollute event-driven vault discovery.
         vm.prank(bob);
         vm.expectRevert(IVaultEngine.IlkExclusive.selector);
         vaultEngine.open(TEST_ILK, alice);

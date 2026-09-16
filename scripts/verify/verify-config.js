@@ -3,10 +3,10 @@ const hardhat = require("hardhat");
 /**
  * Verifies the post-deployment risk-parameter surface.
  *
- * Complements verify-roles.js (access control) with a systemic gate against the recurring
- * "correct code, never configured" class (rev-2 hump, rev-5 buybackReceiver):
- * every governance risk parameter must be either explicitly set or intentionally default, and
- * every intentional default is asserted here so a drive-by change is caught too.
+ * Complements verify-roles.js (access control) with a systemic gate against the recurring "correct code,
+ * never configured" class (rev-2 hump, rev-5 buybackReceiver): every governance risk parameter must be either
+ * explicitly set or intentionally default, and every intentional default is asserted here so a drive-by
+ * change is caught too.
  *
  * Exits non-zero loudly on any mismatch.
  */
@@ -218,17 +218,17 @@ const verifyConfig = async () => {
 
     // ------------------------------------------------------------------ Auction curve invariants (all ilks)
     //
-    // Guards the zero-price take window: with `cusp == 0` the reset condition `price·RAY/top < cusp`
-    // (strict <) can NEVER fire, so only `tail` ends an auction; combined with `tail >= tau` the linear
-    // curve reaches price 0 while the auction still counts as running and `take` hands over the whole
-    // lot for 0 USDR. Neither `DutchAuction.file` nor `PriceCurve.file` range-checks this relationship
-    // (tau is global, tail/cusp are per-ilk), so it is enforced here for EVERY ilk that is liquidation-
-    // or auction-configured — including future ilks onboarded through this pipeline. Invariants:
-    //   buf > RAY            (auction must start above market, and a zero buf bricks kick)
-    //   0 < cusp < RAY       (zero disarms the price-based reset; >= RAY resets instantly)
-    //   0 < tail < tau       (the time-based reset must fire before the curve can reach zero;
+    // Guards the zero-price take window: with `cusp == 0` the reset condition `price·RAY/top < cusp` (strict
+    // <) can NEVER fire, so only `tail` ends an auction; combined with `tail >= tau` the linear curve reaches
+    // price 0 while the auction still counts as running and `take` hands over the whole lot for 0 USDR.
+    // Neither `DutchAuction.file` nor `PriceCurve.file` range-checks this relationship (tau is global,
+    // tail/cusp are per-ilk), so it is enforced here for EVERY ilk that is liquidation- or auction-configured
+    // — including future ilks onboarded through this pipeline. Invariants:
+    //   buf > RAY (auction must start above market, and a zero buf bricks kick) 0 < cusp < RAY (zero disarms
+    //   the price-based reset; >= RAY resets instantly) 0 < tail < tau (the time-based reset must fire before
+    //   the curve can reach zero;
     //                         with cusp > 0 the price reset fires first anyway — belt and braces)
-    //   chost != 0           (upchost was run, partial-take dust protection is armed)
+    //   chost != 0 (upchost was run, partial-take dust protection is armed)
     const tau = await priceCurve.tau();
     const ilkIdsLength = await vaultEngine.ilkIdsLength();
 

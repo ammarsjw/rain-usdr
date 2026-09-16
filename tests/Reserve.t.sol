@@ -775,8 +775,8 @@ contract ReserveRegressionTest is BaseTest {
     }
 
     function test_psmRoundTripStaysExactAfterYearsAndDrips() public {
-        // The blast radius, inverted: with the exemption in place, drips over long horizons
-        // must leave the PSM's round trip bit-exact — the broken scenario redeemed 0 of 100,000.
+        // The blast radius, inverted: with the exemption in place, drips over long horizons must leave the
+        // PSM's round trip bit-exact — the broken scenario redeemed 0 of 100,000.
         _sellUsdt(user, 100_000e6);
 
         skip(3650 days);
@@ -829,8 +829,8 @@ contract ReserveRegressionTest is BaseTest {
 
         vaultEngine.suck(address(this), address(balanceSheet), 100 * _RAD);
 
-        // With reserve accounting wired, distribution requires a lagged snapshot at least one lag window
-        // old; until then it is a routine no-op.
+        // With reserve accounting wired, distribution requires a lagged snapshot at least one lag window old;
+        // until then it is a routine no-op.
         assertEq(balanceSheet.distributeSurplus(), 0, "no-op before a mature snapshot exists");
 
         skip(1 days);
@@ -919,9 +919,9 @@ contract ReserveRegressionTest is BaseTest {
         // Regression: snapshots are SPACED at least one lag window apart, but the moment a window opens a
         // fresh snapshot could be taken and consumed in the same transaction: redeem (shrink the live
         // reserve) → snapshotReserve (capture the shrunk value) → distributeSurplus (measure against it) →
-        // re-deposit, shipping humpRate × redeemed extra surplus at zero cost. Distribution therefore
-        // refuses any snapshot younger than the lag window: shrinking the target requires the reserve to be
-        // genuinely smaller for a full day.
+        // re-deposit, shipping humpRate × redeemed extra surplus at zero cost. Distribution therefore refuses
+        // any snapshot younger than the lag window: shrinking the target requires the reserve to be genuinely
+        // smaller for a full day.
         balanceSheet.file("reserveAccounting", address(reserveAccounting));
         balanceSheet.file("buybackReceiver", address(0xB0B));
         balanceSheet.file("humpRate", _WAD / 10);
@@ -950,8 +950,8 @@ contract ReserveRegressionTest is BaseTest {
         assertEq(balanceSheet.distributeSurplus(), 0, "fresh snapshot refused");
 
         // The attacker re-deposits and walks away; once the snapshot matures it reflects a reserve the
-        // attacker no longer suppresses, and only the honest excess ships. (Live reserve is back at 200k,
-        // so max(live, lagged) restores the 20k target.)
+        // attacker no longer suppresses, and only the honest excess ships. (Live reserve is back at 200k, so
+        // max(live, lagged) restores the 20k target.)
         _sellUsdt(user, 150_000e6);
         skip(1 days);
 

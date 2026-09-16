@@ -32,8 +32,8 @@ import { _revert } from "../shared/Globals.sol";
  * @dev Each ilk's `rate` is initialized to `RAY` (1.0) and grows as stability fees accrue: `duty` is a
  *      per-second compounding factor [ray] and the permissionless {drip} lazily folds
  *      `rpow(duty, now - rho) * rate` into the ilk, crediting the accrued fees to the {feeRecipient} (the
- *      Balance Sheet) as surplus. `frob` (when changing debt) and duty changes drip automatically, and
- *      after `cage` the rate is frozen. Internal USDR balances are tracked in `rad` (45 decimals). When an ilk's
+ *      Balance Sheet) as surplus. `frob` (when changing debt) and duty changes drip automatically, and after
+ *      `cage` the rate is frozen. Internal USDR balances are tracked in `rad` (45 decimals). When an ilk's
  *      liquidity safety factor is nonzero, its effective debt ceiling is
  *      `min(line, laggedLiquidity * fSafety)`: liquidity decreases are lagged by a day so temporary dips
  *      cannot whip the ceiling, and repayments always bypass ceilings.
@@ -336,8 +336,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
         }
 
         // Exclusive-ilk binding: an ilk bound to a single legitimate owner (a PSM stable ilk is bound to its
-        // PSM) rejects every other vault owner. Without this, anyone could open a personal vault on a 1:1
-        // ilk and frob debt that the reserve-backing check in {BalanceSheet.distributeSurplus} counts as the
+        // PSM) rejects every other vault owner. Without this, anyone could open a personal vault on a 1:1 ilk
+        // and frob debt that the reserve-backing check in {BalanceSheet.distributeSurplus} counts as the
         // module's reserve-backed debt while no reserve entry exists, wedging distributions. Afterwards, they
         // can also redeem the minted USDR against the module's genuine inventory.
         if (exclusiveTo[ilkId] != address(0) && (exclusiveTo[ilkId] != usr || exclusiveTo[ilkId] != msg.sender)) {
@@ -435,9 +435,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
             _revert(NotSafe.selector);
         }
 
-        // Permission checks: the vault is either less risky than before, or its owner consents. Collateral
-        // is either not being taken, or its source consents. Internal USDR is either not being drawn down,
-        // or the destination consents.
+        // Permission checks: the vault is either less risky than before, or its owner consents. Collateral is
+        // either not being taken, or its source consents. Internal USDR is either not being drawn down, or
+        // the destination consents.
         if (!(Math.both(dart <= 0, dink >= 0) || _wish(owner, msg.sender))) {
             _revert(NotAllowed.selector);
         }

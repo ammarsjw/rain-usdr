@@ -36,9 +36,9 @@ interface IVaultEngine {
     }
 
     /**
-     * @notice A single collateralized position. Users may hold any number of vaults per collateral type.
-     *         Each vault is identified by a sequential id and is collateralized, drawn against and
-     *         liquidated independently.
+     * @notice A single collateralized position. Users may hold any number of vaults per collateral type. Each
+     *         vault is identified by a sequential id and is collateralized, drawn against and liquidated
+     *         independently.
      * @param ink Amount of collateral locked in the vault [wad].
      * @param art Normalized debt of the vault [wad].
      */
@@ -216,8 +216,8 @@ interface IVaultEngine {
     error VaultNotFound();
 
     /**
-     * @dev Indicates that a vault was requested on an exclusively bound ilk. Only the bound address may
-     *      open vaults there, for itself.
+     * @dev Indicates that a vault was requested on an exclusively bound ilk. Only the bound address may open
+     *      vaults there, for itself.
      */
     error IlkExclusive();
 
@@ -294,9 +294,9 @@ interface IVaultEngine {
 
     /**
      * @notice Opens a new vault bound to a collateral type and returns its id.
-     * @dev Permissionless. Vault ids are sequential and never reused. Ownership is fixed at open time.
-     *      `usr` lets periphery contracts open vaults on behalf of users (the vault belongs to `usr`, not
-     *      the caller). When the ilk carries an {exclusiveTo} binding, both the caller and `usr` must be the
+     * @dev Permissionless. Vault ids are sequential and never reused. Ownership is fixed at open time. `usr`
+     *      lets periphery contracts open vaults on behalf of users (the vault belongs to `usr`, not the
+     *      caller). When the ilk carries an {exclusiveTo} binding, both the caller and `usr` must be the
      *      bound address: the bound module opens for itself, which keeps event-driven vault discovery clean
      *      because every `Open` on the ilk is the module's own vault.
      * @param ilkId Identifier of the collateral type the vault is bound to.
@@ -492,8 +492,8 @@ interface IVaultEngine {
     function noFee(bytes32 ilkId) external view returns (bool);
 
     /**
-     * @notice Returns the single address an ilk is exclusively bound to: only it may open vaults on the
-     *         ilk, and only for itself. Zero means the ilk is open to all owners (the default).
+     * @notice Returns the single address an ilk is exclusively bound to: only it may open vaults on the ilk,
+     *         and only for itself. Zero means the ilk is open to all owners (the default).
      * @param ilkId Identifier of the collateral type.
      */
     function exclusiveTo(bytes32 ilkId) external view returns (address);

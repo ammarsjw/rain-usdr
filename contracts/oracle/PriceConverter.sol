@@ -128,8 +128,8 @@ contract PriceConverter is IPriceConverter, AccessControl {
 
             ilks[ilkId].mat = data;
         } else if (what == "fixed") {
-            // Marking an ilk fixed (1) pins it to $1 with no oracle lookup, and clearing the flag (0) makes it
-            // oracle-backed via the single system-wide OSM. Clearing is fail-closed: if the OSM does not
+            // Marking an ilk fixed (1) pins it to $1 with no oracle lookup, and clearing the flag (0) makes
+            // it oracle-backed via the single system-wide OSM. Clearing is fail-closed: if the OSM does not
             // serve the ilk, poke writes a ZERO spot (freezing mints) rather than freezing the last value.
             if (data > 1) {
                 _revert(InvalidAmount.selector);

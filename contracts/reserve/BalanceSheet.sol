@@ -403,11 +403,11 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         // Dynamic buffer target: the greater of the static floor and `humpRate` of the total stable reserve.
         // The reserve is tracked in wad, the buffer in rad, so the rate product is scaled up by RAY. The
         // dynamic term reads the LARGER of the live reserve and the lagged snapshot: `totalReserve` moves
-        // with permissionless PSM flows, so without the lag a user could redeem first, shrink the target,
-        // and drain more surplus in the same transaction. {distributeSurplus} additionally waits for the
-        // snapshot to be at least {_RESERVE_LAG} old, so the value it consumes here has stood for a full
-        // window. Growing the target (selling stables in) takes effect immediately and
-        // only shrinking it is lagged. The floor remains the authoritative lower bound.
+        // with permissionless PSM flows, so without the lag a user could redeem first, shrink the target, and
+        // drain more surplus in the same transaction. {distributeSurplus} additionally waits for the snapshot
+        // to be at least {_RESERVE_LAG} old, so the value it consumes here has stood for a full window.
+        // Growing the target (selling stables in) takes effect immediately and only shrinking it is lagged.
+        // The floor remains the authoritative lower bound.
         target = humpFloor;
 
         if (address(reserveAccounting) != address(0)) {
