@@ -32,8 +32,8 @@ import { _revert } from "../shared/Globals.sol";
  * @dev Each ilk's `rate` is initialized to `RAY` (1.0) and grows as stability fees accrue: `duty` is a
  *      per-second compounding factor [ray] and the permissionless {drip} lazily folds
  *      `rpow(duty, now - rho) * rate` into the ilk, crediting the accrued fees to the {feeRecipient} (the
- *      Balance Sheet) as surplus. `frob` (when changing debt) and duty changes drip automatically; after
- *      `cage` the rate is frozen. Internal USDR balances are tracked in `rad` (45 decimals). When an ilk's
+ *      Balance Sheet) as surplus. `frob` (when changing debt) and duty changes drip automatically, and
+ *      after `cage` the rate is frozen. Internal USDR balances are tracked in `rad` (45 decimals). When an ilk's
  *      liquidity safety factor is nonzero, its effective debt ceiling is
  *      `min(line, laggedLiquidity * fSafety)`: liquidity decreases are lagged by a day so temporary dips
  *      cannot whip the ceiling, and repayments always bypass ceilings.
@@ -48,8 +48,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
     uint256 private constant _MAX_DUTY = 1000000021979553151239153027;
 
     /// @dev Minimum age of the lagged liquidity snapshot used by the dynamic debt ceiling. Matches the
-    ///      surplus-buffer lag: shrinking the input requires capital to stay away for a full day, not a flash
-    ///      round trip.
+    ///      surplus-buffer lag: shrinking the input requires capital to stay away for a full day.
     uint256 private constant _LIQUIDITY_LAG = 86_400;
 
     /// @inheritdoc IVaultEngine
@@ -225,7 +224,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
             // `line` as the only cap.
             liquidityCeilings[ilkId].fSafety = data;
         } else if (what == "liquidity") {
-            // Available market liquidity [wad]. Growth raises the lagged snapshot immediately; shrinkage
+            // Available market liquidity [wad]. Growth raises the lagged snapshot immediately, and shrinkage
             // waits for {_LIQUIDITY_LAG}.
             liquidityCeilings[ilkId].liquidity = data;
             _snapshotLiquidity(ilkId);
@@ -303,8 +302,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
             }
 
             // Binding is only honest while no debt exists against the ilk: vaults opened before the binding
-            // are not evicted by it (ownership is immutable), so a nonzero binding filed onto an ilk that
-            // already carries debt would claim an exclusivity the ledger does not actually have.
+            // survive it (ownership is immutable), so a nonzero binding filed onto an ilk that already
+            // carries debt would claim an exclusivity the ledger lacks.
             if (data != address(0) && ilks[ilkId].globalArt != 0) {
                 _revert(InvalidAssignment.selector);
             }
@@ -436,9 +435,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
             _revert(NotSafe.selector);
         }
 
-        // Permission checks: the vault is either less risky than before, or its owner consents; collateral is
-        // either not being taken, or its source consents; internal USDR is either not being drawn down, or
-        // the destination consents.
+        // Permission checks: the vault is either less risky than before, or its owner consents. Collateral
+        // is either not being taken, or its source consents. Internal USDR is either not being drawn down,
+        // or the destination consents.
         if (!(Math.both(dart <= 0, dink >= 0) || _wish(owner, msg.sender))) {
             _revert(NotAllowed.selector);
         }

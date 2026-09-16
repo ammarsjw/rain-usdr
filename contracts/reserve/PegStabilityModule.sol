@@ -171,7 +171,7 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
         }
 
         // Defense-in-depth: the 1:1 frob below is only correct at `rate == RAY`. The fee exemption enforced
-        // at init makes this unreachable; if it is ever observed the module mis-accounts on every leg, so
+        // at init makes this unreachable. If it is ever observed the module mis-accounts on every leg, so
         // failing loudly beats corrupting the reserve accounting.
         _requireRatePar(ilkId);
 
@@ -251,7 +251,7 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
 
     /**
      * @dev Reverts unless the ilk's debt multiplier is exactly RAY. The module's 1:1 vault accounting is only
-     *      sound at par; see the guards in {init} and {VaultEngine.file}(ilkId, "noFee", 1).
+     *      sound at par. See the guards in {init} and {VaultEngine.file}(ilkId, "noFee", 1).
      * @param ilkId Identifier of the stable collateral type.
      */
     function _requireRatePar(bytes32 ilkId) private view {

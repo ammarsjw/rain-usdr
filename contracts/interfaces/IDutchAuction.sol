@@ -298,7 +298,7 @@ interface IDutchAuction {
     function upchost(bytes32 ilkId) external;
 
     /**
-     * @notice Shuts the auction house down. Blocks kick, take and redo; yank remains available so settlement
+     * @notice Shuts the auction house down. Blocks kick, take and redo. Yank remains available so settlement
      *         can reclaim in-flight auctions.
      */
     function cage() external;

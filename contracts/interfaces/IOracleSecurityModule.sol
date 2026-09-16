@@ -110,7 +110,7 @@ interface IOracleSecurityModule {
     function file(bytes32 what, address data) external;
 
     /**
-     * @notice Sets a numeric parameter {maxAge}. Zero disables the staleness check; a nonzero value makes
+     * @notice Sets a numeric parameter {maxAge}. Zero disables the staleness check, and a nonzero value makes
      *         {peek}/ {read} treat prices older than `maxAge` seconds since the last successful poke as
      *         invalid.
      * @param what Name of the parameter.
@@ -120,7 +120,7 @@ interface IOracleSecurityModule {
 
     /**
      * @notice Freezes a collateral's price updates.
-     * @dev CAUTION: stop blocks {poke} only; {peek}/{read} keep serving the LAST STORED price as live
+     * @dev CAUTION: stop blocks {poke} only, while {peek}/{read} keep serving the LAST STORED price as live
      *      (`has == true`), so consumers continue trusting a frozen value. Use stop when the stored price is
      *      trusted and updates must halt (e.g. source maintenance). For a suspected-compromised feed use
      *      {void}, which is fail-closed: it wipes the stored prices so consumers value the collateral at

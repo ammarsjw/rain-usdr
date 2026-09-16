@@ -161,8 +161,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             _revert(SystemPaused.selector);
         }
 
-        // The vault must exist; its collateral type is fixed at open time. Each vault is checked against the
-        // bark threshold independently: only the (ink, art) of THIS vault id enter the unsafe condition, so
+        // The vault must exist, and its collateral type is fixed at open time. Each vault is checked against
+        // the bark threshold independently: only the (ink, art) of THIS vault id enter the unsafe condition, so
         // one owner's unsafe vault never drags their other vaults into liquidation.
         address owner = VAULT_ENGINE.ownerOf(vaultId);
 
@@ -190,10 +190,10 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
 
             // Unsafe check: the vault's collateral value must be below `barkFactor` of its debt. `spot` [ray]
             // already embeds the ilk's required ratio (mat), so `ink * spot < art * rate` is the at-mat
-            // condition; scaling the debt side by barkFactor [wad] moves the trigger to barkFactor of mat
-            // (e.g. 65% of 400% = 260%). Units: ink [wad] * spot [ray] = [rad]; art [wad] * rate [ray] =
+            // condition. Scaling the debt side by barkFactor [wad] moves the trigger to barkFactor of mat
+            // (e.g. 65% of 400% = 260%). Units: ink [wad] * spot [ray] = [rad] and art [wad] * rate [ray] =
             // [rad]. With a variable rate, `art * rate` is no longer a multiple of RAY, so dividing by WAD
-            // before multiplying by barkFactor would truncate; Math.mulDiv keeps full 512-bit precision at
+            // before multiplying by barkFactor would truncate, so Math.mulDiv keeps full 512-bit precision at
             // any rate >= RAY.
             if (spot == 0 || ink * spot >= Math.mulDiv(art * rate, milk.barkFactor, _WAD)) {
                 _revert(NotUnsafe.selector);

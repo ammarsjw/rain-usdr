@@ -23,7 +23,7 @@ import { _revert } from "../shared/Globals.sol";
  *         flag fresh.
  * @dev The stress scenario prices COLLATERAL: each volatile ilk's aggregate locked collateral is valued at
  *      the delayed oracle price read DIRECTLY from the Oracle Security Module (never reconstructed as spot
- *      times mat), marked down by the stress markdown (50%) and the stress liquidation depth (35%); the loss
+ *      times mat), marked down by the stress markdown (50%) and the stress liquidation depth (35%). The loss
  *      is any debt not covered by that stressed recoverable value. An unavailable price values the collateral
  *      at zero, so the invariant fails CLOSED. Exposure reported by the prediction market layer is consumed
  *      at FACE VALUE: that layer settles in USDR and every USDR in existence originates here, so outstanding
@@ -279,7 +279,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      *      already bounds what can possibly be exposed. The call is wrapped because a reverting reporter
      *      would otherwise brick {worstCaseLoss} and, through it, every consumer of the solvency gate.
      * @return exposure The exposure to add to the worst-case loss [wad].
-     * @return ok Whether the value was measured; false when the fail-closed bound was substituted.
+     * @return ok Whether the value was measured. False when the fail-closed bound was substituted.
      */
     function _exposure() private view returns (uint256 exposure, bool ok) {
         if (address(externalExposure) == address(0)) {

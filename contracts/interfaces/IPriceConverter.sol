@@ -88,7 +88,7 @@ interface IPriceConverter {
     /**
      * @notice Sets a collateral type's collateralization ratio {mat} or marks it as a supported stablecoin
      *         pinned to $1 ({fixed}, 1 to set and 0 to clear). A cleared flag makes the ilk oracle-backed via
-     *         the single system-wide OSM; if the OSM does not serve the ilk, {poke} fails closed to a zero
+     *         the single system-wide OSM. If the OSM does not serve the ilk, {poke} fails closed to a zero
      *         spot.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.

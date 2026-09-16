@@ -183,7 +183,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             _revert(NotLive.selector);
         }
 
-        // Breaker level 1+ stops new auctions; the governance pause is a full stop for the auction house too.
+        // Breaker level 1+ stops new auctions. The governance pause is a full stop for the auction house too.
         _requireRunning(1);
 
         if (ilkId == bytes32(0)) {
@@ -364,7 +364,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
                 slice = owe / price;
             } else if (owe < tab && slice < lot) {
                 // A partial purchase must leave a remainder of at least the ilk's chost. Instead of reverting
-                // outright, the purchase is adjusted down so the remainder is exactly chost; only when the
+                // outright, the purchase is adjusted down so the remainder is exactly chost. Only when the
                 // whole tab is at or below chost is a partial purchase impossible.
                 uint256 chost = ilks[ilkId].chost;
 

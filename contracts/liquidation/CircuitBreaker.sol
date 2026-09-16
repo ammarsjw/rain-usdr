@@ -29,13 +29,13 @@ import { _revert } from "../shared/Globals.sol";
  *
  *      The global verdict is deliberate policy: a dislocation in ANY watched ilk throttles liquidations of
  *      ALL ilks, mirroring the solvency gate's global posture. The cost is a cross-ilk griefing surface
- *      (manipulating one ilk's market throttles another ilk's liquidations); the OSM delay, the 1/N anchor
+ *      (manipulating one ilk's market throttles another ilk's liquidations). The OSM delay, the 1/N anchor
  *      movement and the fact that the breaker throttles rather than halts bound that surface. An unavailable
  *      price for an ilk skips it rather than activating: a dark feed is not price manipulation, and
  *      liquidations must not freeze because a feed hiccuped (fail-open, the OPPOSITE polarity from the
  *      Solvency Engine, whose unavailable price is a solvency question).
  *
- *      Residual assumption: a keeper calls {check} regularly (at least once per observation interval); if
+ *      Residual assumption: a keeper calls {check} regularly (at least once per observation interval). If
  *      checks stop entirely, the trends go stale until calls resume.
  */
 contract CircuitBreaker is ICircuitBreaker, AccessControl {

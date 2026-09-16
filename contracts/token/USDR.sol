@@ -19,7 +19,7 @@ import { _revert } from "../shared/Globals.sol";
  *         administrator can create USDR out of nothing.
  * @dev Minter authorization is governed by the `_WARD_ROLE` of the shared AccessControl base. Burning from an
  *      arbitrary address without an allowance requires the dedicated `_BURNER_ROLE`, held only by the
- *      Collateral Adapter; `_WARD_ROLE` administers roles but does not itself carry burn power.
+ *      Collateral Adapter. `_WARD_ROLE` administers roles but does not itself carry burn power.
  */
 contract USDR is IUSDR, ERC20, ERC20Permit, AccessControl {
     /* ========================== CONSTRUCTOR ========================== */

@@ -36,9 +36,9 @@ interface IVaultEngine {
     }
 
     /**
-     * @notice A single collateralized position. Users may hold any number of vaults per collateral type; each
-     *         vault is identified by a sequential id and is collateralized, drawn against and liquidated
-     *         independently.
+     * @notice A single collateralized position. Users may hold any number of vaults per collateral type.
+     *         Each vault is identified by a sequential id and is collateralized, drawn against and
+     *         liquidated independently.
      * @param ink Amount of collateral locked in the vault [wad].
      * @param art Normalized debt of the vault [wad].
      */
@@ -216,8 +216,8 @@ interface IVaultEngine {
     error VaultNotFound();
 
     /**
-     * @dev Indicates that the ilk is exclusively bound to a single vault owner and either the requested
-     *      owner or the caller is not it.
+     * @dev Indicates that a vault was requested on an exclusively bound ilk. Only the bound address may
+     *      open vaults there, for itself.
      */
     error IlkExclusive();
 
@@ -282,10 +282,10 @@ interface IVaultEngine {
      *         single legitimate vault owner (zero, the default, leaves the ilk open to all). On a bound ilk,
      *         only the bound address may open vaults, and only for itself.
      * @dev Only governance can call this. Filing a nonzero binding requires the ilk to be initialized and to
-     *      carry no debt: vaults opened before the binding are not evicted by it, so binding a used ilk
-     *      would claim an exclusivity the ledger does not have. Required for every PSM (stable) ilk — the
-     *      reserve-backing check in the Balance Sheet assumes all debt on those ilks is the PSM's — and must
-     *      be filed BEFORE the module opens its vault.
+     *      carry no debt: vaults opened before the binding survive it, so binding a used ilk would claim an
+     *      exclusivity the ledger lacks. Required for every PSM (stable) ilk and filed BEFORE the module
+     *      opens its vault. The reserve-backing check in the Balance Sheet assumes all debt on those ilks is
+     *      the PSM's, and the binding is what enforces that assumption on the ledger.
      * @param ilkId Identifier of the collateral type.
      * @param what Name of the parameter.
      * @param data New address.
@@ -294,11 +294,11 @@ interface IVaultEngine {
 
     /**
      * @notice Opens a new vault bound to a collateral type and returns its id.
-     * @dev Permissionless. Vault ids are sequential and never reused; ownership is fixed at open time. `usr`
-     *      lets periphery contracts open vaults on behalf of users (the vault belongs to `usr`, not the
-     *      caller). When the ilk carries an {exclusiveTo} binding, both the caller and `usr` must be the
-     *      bound address: the bound module opens for itself, third parties cannot open vaults on the ilk at
-     *      all (not even owned by the module — junk vaults would pollute event-driven vault discovery).
+     * @dev Permissionless. Vault ids are sequential and never reused. Ownership is fixed at open time.
+     *      `usr` lets periphery contracts open vaults on behalf of users (the vault belongs to `usr`, not
+     *      the caller). When the ilk carries an {exclusiveTo} binding, both the caller and `usr` must be the
+     *      bound address: the bound module opens for itself, which keeps event-driven vault discovery clean
+     *      because every `Open` on the ilk is the module's own vault.
      * @param ilkId Identifier of the collateral type the vault is bound to.
      * @param usr Owner of the new vault.
      * @return vaultId Identifier of the new vault.
@@ -393,10 +393,10 @@ interface IVaultEngine {
      *         the last accrual (`rho`), folds the resulting delta into the ilk's `rate`, and credits the
      *         accrued fees to the {feeRecipient} as internal USDR surplus (with total {debt} increased
      *         equally).
-     * @dev Permissionless and lazy: anyone may call at any time; `frob` (when changing debt), `bark` and duty
-     *      changes drip automatically. Idempotent within a block. After `cage`, drip is a no-op that returns
-     *      the frozen rate so settlement math is unaffected. Reverts if the ilk is uninitialized, or if fees
-     *      would accrue while no fee recipient is set.
+     * @dev Permissionless and lazy: anyone may call at any time, and `frob` (when changing debt), `bark` and
+     *      duty changes drip automatically. Idempotent within a block. After `cage`, drip is a no-op that
+     *      returns the frozen rate so settlement math is unaffected. Reverts if the ilk is uninitialized, or
+     *      if fees would accrue while no fee recipient is set.
      * @param ilkId Identifier of the collateral type.
      * @return newRate The debt multiplier after accrual [ray].
      */
@@ -452,7 +452,7 @@ interface IVaultEngine {
 
     /**
      * @notice Returns the registered collateral type identifier at `index`. Ilks are appended at {init} and
-     *         never removed; the array lets {cage} (and off-chain consumers) enumerate every ilk.
+     *         never removed. The array lets {cage} (and off-chain consumers) enumerate every ilk.
      * @param index Position in the registration order.
      */
     function ilkIds(uint256 index) external view returns (bytes32);

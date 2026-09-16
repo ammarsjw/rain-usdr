@@ -31,7 +31,7 @@ import { _revert } from "../shared/Globals.sol";
  * @notice The emergency settlement module. When governance pulls the plug, this contract freezes the system,
  *         settles every vault at the last oracle price, hands vault owners their excess collateral back, and
  *         finally lets every USDR holder redeem the remaining collateral pro-rata. This contract runs on a
- *         single balance sheet; the Vault Engine's cage drips every ilk before freezing its rates, so no
+ *         single balance sheet. The Vault Engine's cage drips every ilk before freezing its rates, so no
  *         accrued fee is silently forgiven at shutdown and the settlement math below is exact at any accrued
  *         rate (`tab / rate`, `art * rate * tag`).
  * @dev Settlement runs in ordered phases:
@@ -407,7 +407,7 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
 
         // The settlement price is par (USDR's target value) divided by the collateral's last delayed price:
         // collateral units owed per USDR of debt [ray]. Fixed-price ilks settle at exactly $1, matching the
-        // price they minted at; oracle-backed ilks read the OSM's current value one final time.
+        // price they minted at, while oracle-backed ilks read the OSM's current value one final time.
         (, bool fixedPrice) = priceConverter.ilks(ilkId);
 
         uint256 price;
