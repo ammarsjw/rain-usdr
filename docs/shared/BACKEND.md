@@ -143,7 +143,9 @@
   stable ilks, where a third-party 1:1 vault would desync the reserve-backing check in
   `distributeSurplus` (its debt counts toward stable-ilk debt but never enters `totalReserve`).
 - **Now:** new `exclusiveTo(ilkId)` view: when nonzero, `open` reverts with new error
-  `IlkExclusive` for any `usr` other than the bound owner. Filed via the new per-ilk address
+  `IlkExclusive` unless the bound address is BOTH the caller and `usr` (the bound module opens
+  for itself; third parties cannot open on the ilk at all, so no junk vaults owned by the module
+  can pollute `Open`-event vault discovery). Filed via the new per-ilk address
   overload `file(ilkId, "exclusiveTo", addr)`, which emits the **new event**
   `File(bytes32 indexed ilkId, bytes32 indexed what, address addr)` (new topic0 — distinct from
   the existing global `File(what, addr)`). Deploy binds `USDT-A`/`USDC-A` to the PSM; `RAIN-A`

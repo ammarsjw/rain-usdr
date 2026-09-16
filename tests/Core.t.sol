@@ -144,7 +144,7 @@ contract VaultEngineCoreTest is BaseTest {
         vaultEngine.open(TEST_ILK, alice);
     }
 
-    function test_openOnExclusiveIlkOnlyForBoundOwner() public {
+    function test_openOnExclusiveIlkOnlyByBoundAddressForItself() public {
         // Bind TEST-A to alice while it carries no debt.
         vaultEngine.file(TEST_ILK, "exclusiveTo", alice);
 
@@ -156,14 +156,21 @@ contract VaultEngineCoreTest is BaseTest {
         vm.expectRevert(IVaultEngine.IlkExclusive.selector);
         vaultEngine.open(TEST_ILK, bob);
 
-        // The binding is on the OWNER (usr), not the caller: a router may open FOR alice...
+        // A third party cannot open FOR the bound address either: junk vaults owned by the bound module
+        // would pollute event-driven vault discovery.
         vm.prank(bob);
+        vm.expectRevert(IVaultEngine.IlkExclusive.selector);
+        vaultEngine.open(TEST_ILK, alice);
+
+        // The bound address cannot open for someone else.
+        vm.prank(alice);
+        vm.expectRevert(IVaultEngine.IlkExclusive.selector);
+        vaultEngine.open(TEST_ILK, bob);
+
+        // Only the bound address opening for itself passes.
+        vm.prank(alice);
         uint256 vaultId = vaultEngine.open(TEST_ILK, alice);
         assertEq(vaultEngine.ownerOf(vaultId), alice, "bound owner owns");
-
-        // ...and alice may open for herself.
-        vm.prank(alice);
-        vaultEngine.open(TEST_ILK, alice);
 
         // Unbinding reopens the ilk.
         vaultEngine.file(TEST_ILK, "exclusiveTo", address(0));
@@ -218,6 +225,10 @@ contract VaultEngineCoreTest is BaseTest {
 
         vm.expectRevert(IVaultEngine.IlkExclusive.selector);
         vaultEngine.open(USDC_ILK, alice);
+
+        // Nor a junk vault owned by the PSM itself.
+        vm.expectRevert(IVaultEngine.IlkExclusive.selector);
+        vaultEngine.open(USDT_ILK, address(psm));
         vm.stopPrank();
     }
 
