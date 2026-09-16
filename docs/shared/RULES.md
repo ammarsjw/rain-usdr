@@ -25,7 +25,9 @@ what changed for them without deriving it from git history.
 
 - Each doc carries a section **"Changes since `<latest tag>`"** near the top, produced
   mechanically from `git diff <tag>..HEAD -- contracts/`, where `<tag>` is the latest release
-  tag (the baseline the running consumer system was built against).
+  tag (the baseline the running consumer system was built against). Release tags include
+  tags with `alpha` and `rc` pre-release identifiers or no pre-release identifiers at all.
+  Tags with `beta` pre-release identifiers must be ignored.
 - Every entry is spelled out as **old shape → new shape → required action**. Never make the
   consumer derive the action; state explicitly what THEY must change.
 - Scope each doc's migration list to its consumer: only items that affect that consumer's
