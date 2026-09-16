@@ -55,6 +55,15 @@ const verifyConfig = async () => {
         }
     };
 
+    const assertInvariant = (label, holds) => {
+        if (!holds) {
+            console.error(`CONFIG INVARIANT VIOLATED: ${label}`);
+            ++failures;
+        } else {
+            console.log(`OK: ${label}`);
+        }
+    };
+
     const assertNonZero = (label, actual) => {
         const zero = actual === 0n || actual === "0x0000000000000000000000000000000000000000";
         if (zero) {
@@ -191,7 +200,47 @@ const verifyConfig = async () => {
     assertEq("DutchAuction.ilks(RAIN-A).tail", rainAuction.tail, 1800n);
     assertEq("DutchAuction.ilks(RAIN-A).cusp", rainAuction.cusp, (RAY * 40n) / 100n);
     assertEq("DutchAuction.chip", await dutchAuction.chip(), (WAD * 2n) / 100n);
-    assertNonZero("DutchAuction.ilks(RAIN-A).chost (upchost run)", rainAuction.chost);
+    // (chost covered by the all-ilks curve-invariant loop below.)
+
+    // ------------------------------------------------------------------ Auction curve invariants (all ilks)
+    //
+    // Guards the zero-price take window: with `cusp == 0` the reset condition `price·RAY/top < cusp`
+    // (strict <) can NEVER fire, so only `tail` ends an auction; combined with `tail >= tau` the linear
+    // curve reaches price 0 while the auction still counts as running and `take` hands over the whole
+    // lot for 0 USDR. Neither `DutchAuction.file` nor `PriceCurve.file` range-checks this relationship
+    // (tau is global, tail/cusp are per-ilk), so it is enforced here for EVERY ilk that is liquidation-
+    // or auction-configured — including future ilks onboarded through this pipeline. Invariants:
+    //   buf > RAY            (auction must start above market, and a zero buf bricks kick)
+    //   0 < cusp < RAY       (zero disarms the price-based reset; >= RAY resets instantly)
+    //   0 < tail < tau       (the time-based reset must fire before the curve can reach zero;
+    //                         with cusp > 0 the price reset fires first anyway — belt and braces)
+    //   chost != 0           (upchost was run, partial-take dust protection is armed)
+    const tau = await priceCurve.tau();
+    const ilkIdsLength = await vaultEngine.ilkIdsLength();
+
+    for (let i = 0n; i < ilkIdsLength; ++i) {
+        const ilkId = await vaultEngine.ilkIds(i);
+        const ilkName = hardhat.ethers.decodeBytes32String(ilkId);
+
+        const triggerIlk = await liquidationTrigger.ilks(ilkId);
+        const auctionIlk = await dutchAuction.ilks(ilkId);
+
+        const liquidatable = triggerIlk.chop !== 0n || triggerIlk.hole !== 0n || triggerIlk.barkFactor !== 0n;
+        const auctionConfigured = auctionIlk.buf !== 0n || auctionIlk.tail !== 0n || auctionIlk.cusp !== 0n;
+
+        if (!liquidatable && !auctionConfigured) {
+            // Never enters the auction house (e.g. PSM stable ilks). Nothing to assert.
+            console.log(`OK: ${ilkName} not liquidation/auction configured - curve invariants skipped`);
+            continue;
+        }
+
+        assertInvariant(`DutchAuction.ilks(${ilkName}).buf > RAY`, auctionIlk.buf > RAY);
+        assertInvariant(`DutchAuction.ilks(${ilkName}).cusp > 0`, auctionIlk.cusp > 0n);
+        assertInvariant(`DutchAuction.ilks(${ilkName}).cusp < RAY`, auctionIlk.cusp < RAY);
+        assertInvariant(`DutchAuction.ilks(${ilkName}).tail > 0`, auctionIlk.tail > 0n);
+        assertInvariant(`DutchAuction.ilks(${ilkName}).tail (${auctionIlk.tail}) < PriceCurve.tau (${tau})`, auctionIlk.tail < tau);
+        assertNonZero(`DutchAuction.ilks(${ilkName}).chost (upchost run)`, auctionIlk.chost);
+    }
 
     const circuitBreaker = await hardhat.ethers.getContractAt("CircuitBreaker", addresses.CircuitBreaker);
     assertEq("CircuitBreaker.isWatched(RAIN-A)", await circuitBreaker.isWatched(rainIlk), true);
