@@ -252,7 +252,10 @@ const verifyConfig = async () => {
         assertInvariant(`DutchAuction.ilks(${ilkName}).cusp > 0`, auctionIlk.cusp > 0n);
         assertInvariant(`DutchAuction.ilks(${ilkName}).cusp < RAY`, auctionIlk.cusp < RAY);
         assertInvariant(`DutchAuction.ilks(${ilkName}).tail > 0`, auctionIlk.tail > 0n);
-        assertInvariant(`DutchAuction.ilks(${ilkName}).tail (${auctionIlk.tail}) < PriceCurve.tau (${tau})`, auctionIlk.tail < tau);
+        assertInvariant(
+            `DutchAuction.ilks(${ilkName}).tail (${auctionIlk.tail}) < PriceCurve.tau (${tau})`,
+            auctionIlk.tail < tau
+        );
         assertNonZero(`DutchAuction.ilks(${ilkName}).chost (upchost run)`, auctionIlk.chost);
     }
 

@@ -337,13 +337,10 @@ contract VaultEngine is IVaultEngine, AccessControl {
         }
 
         // Exclusive-ilk binding: an ilk bound to a single legitimate owner (a PSM stable ilk is bound to its
-        // PSM) only accepts vaults opened BY the bound address FOR itself. Without the owner leg, anyone
-        // could open a personal vault on a 1:1 ilk and frob debt that the reserve-backing check in
-        // {BalanceSheet.distributeSurplus} counts as the module's reserve-backed debt while no reserve entry
-        // exists, wedging distributions — and redeem the minted USDR against the module's genuine inventory.
-        // The caller leg additionally stops third parties from spamming empty vaults owned by the bound
-        // module (junk `Open` events that pollute vault discovery). The bound module needs no role here: it
-        // opens for itself.
+        // PSM) rejects every other vault owner. Without this, anyone could open a personal vault on a 1:1
+        // ilk and frob debt that the reserve-backing check in {BalanceSheet.distributeSurplus} counts as the
+        // module's reserve-backed debt while no reserve entry exists, wedging distributions. Afterwards, they
+        // can also redeem the minted USDR against the module's genuine inventory.
         if (exclusiveTo[ilkId] != address(0) && (exclusiveTo[ilkId] != usr || exclusiveTo[ilkId] != msg.sender)) {
             _revert(IlkExclusive.selector);
         }
