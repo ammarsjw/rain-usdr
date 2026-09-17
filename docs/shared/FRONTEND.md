@@ -86,6 +86,18 @@ HEAD. Items are also flagged **[frontend-pending]** at their point of use in the
 - OSM `maxAge` staleness cutoff — prices fail closed once stale; a frozen `spot` plus gated
   minting is now a reachable protocol state the UI may want to explain.
 
+### F7. `VaultEngine.open` — exclusive-ilk binding (new revert surface)
+
+- **Was:** `open(ilkId, usr)` permissionless on every initialized ilk.
+- **Now:** ilks carrying a nonzero `exclusiveTo(ilkId)` binding (deploy binds `USDT-A`/`USDC-A`
+  to the PSM; `RAIN-A` stays open) revert `IlkExclusive` unless the bound address is BOTH the
+  caller and `usr`. Practical effect for the frontend: none for RAIN-A borrowing, but any
+  future flow that opens vaults on a stable ilk will revert, and the error decoder
+  (`describeTxError`) must learn the new `IlkExclusive` selector. A new per-ilk address `File`
+  event also exists (new topic0) — indexer concern, documented in `BACKEND.md`.
+- **Action:** add `IlkExclusive` to the selector map in `src/utils/txError.ts`; no shipped flow
+  changes otherwise.
+
 ---
 
 ## 0. Conventions
@@ -109,6 +121,8 @@ Fixed-point arithmetic is `BigInt` throughout the auction path (`src/lib/auction
 Positions are identified by a sequential `uint256 vaultId` from `VaultEngine.open(ilkId, usr)`.
 
 - One user can hold any number of vaults per ilk; each is liquidated independently.
+- `open` is permissionless on open ilks (RAIN-A). Ilks with a nonzero `exclusiveTo` binding
+  (the PSM stable ilks) revert `IlkExclusive` for anyone but the bound module — see §F7.
 - A vault is permanently bound to one ilk and one owner. No transfer; ids never reused.
 - `ownerOf(vaultId)`, `ilkOf(vaultId)`, `vaultCount()`, `urns(vaultId) -> (ink, art)`.
 - `hope`/`nope` are **address-level**: an operator approved via `hope` can manage all of that address's vaults. There is no per-vault approval.

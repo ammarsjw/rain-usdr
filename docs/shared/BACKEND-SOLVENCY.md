@@ -60,7 +60,7 @@ Notes on filters and three of these:
 
 **Self-publishing.** `OracleSecurityModule.poke` and `VaultEngine.drip` both place a soft `checkInvariant()` call *after* their own state writes, so the flag is already correct when `Poke` or `Drip` is observed. `PokeFailed` needs no action either — it means the price source refused to report and `cur` was left unchanged, so the verdict has not moved. `Drip` with `rad == 0` skips its refresh, but a zero fee means the rate did not change, so again nothing moved. (Matches BACKEND Jobs 0–1 solvency side-effects.)
 
-**Not invariant inputs.** These look relevant and are not. `worstCaseLoss()` reads only per-ilk `globalArt`, `rate`, `globalInk`, the OSM price, the two stress parameters, the volatile-ilk set, and the clamped external exposure term:
+**Not invariant inputs.** These look relevant and are not. `worstCaseLoss()` reads only per-ilk `globalArt`, `rate`, `globalInk`, the OSM price, the two stress parameters, the volatile-ilk set, and the external exposure term (unclamped, face value):
 
 - `BalanceSheet.distributeSurplus` — solvency-gated, but it moves internal USDR only and changes no input. It cannot cause the breach it checks for.
 - `PriceConverter.poke` — writes `spot`, which the engine deliberately does not read. Collateral is priced directly from the OSM.
