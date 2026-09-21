@@ -200,8 +200,8 @@ interface IDutchAuction {
 
     /**
      * @notice Opens a new auction for a seized vault's collateral.
-     * @dev Only the Liquidation Trigger can call this. The starting price is set to the current market price plus the
-     *      markup.
+     * @dev Only the Liquidation Trigger can call this. The starting price is set to the current market price
+     *      plus the markup.
      * @param tab USDR debt to recover, including the penalty [rad].
      * @param lot Collateral for sale [wad].
      * @param vaultId Identifier of the vault the collateral was seized from (used by emergency settlement to
@@ -221,15 +221,16 @@ interface IDutchAuction {
     function redo(uint256 id, address kpr) external;
 
     /**
-     * @notice Refreshes the cached dust-times-chop threshold from the Vault Engine and the Liquidation Trigger.
+     * @notice Refreshes the cached dust-times-chop threshold from the Vault Engine and the Liquidation
+     *         Trigger.
      * @dev Permissionless. Must be called after `dust` or `chop` changes.
      */
     function upchost() external;
 
     /**
      * @notice Lets a keeper buy some or all of the collateral at the current descending price.
-     * @dev Supports flash-loan-style buying via the callback. Reverts if the auction needs a reset or if the current
-     *      price exceeds the keeper's maximum.
+     * @dev Supports flash-loan-style buying via the callback. Reverts if the auction needs a reset or if the
+     *      current price exceeds the keeper's maximum.
      * @param id Identifier of the auction.
      * @param amt Maximum collateral amount to buy [wad].
      * @param max Highest acceptable price [ray].
@@ -239,16 +240,16 @@ interface IDutchAuction {
     function take(uint256 id, uint256 amt, uint256 max, address who, bytes calldata data) external;
 
     /**
-     * @notice Forcibly ends an auction, used during emergency shutdown. The remaining collateral moves to the caller
-     *         so the settlement module can reclaim it into the seized vault.
+     * @notice Forcibly ends an auction, used during emergency shutdown. The remaining collateral moves to the
+     *         caller so the settlement module can reclaim it into the seized vault.
      * @dev Only governance or the settlement module may call this via authorization.
      * @param id Identifier of the auction.
      */
     function yank(uint256 id) external;
 
     /**
-     * @notice Shuts the auction house down. Blocks kick, take and redo; yank remains available so settlement can
-     *         reclaim in-flight auctions.
+     * @notice Shuts the auction house down. Blocks kick, take and redo; yank remains available so settlement
+     *         can reclaim in-flight auctions.
      */
     function cage() external;
 
@@ -315,7 +316,8 @@ interface IDutchAuction {
     function kicks() external view returns (uint256);
 
     /**
-     * @notice Returns the cached dust-times-chop threshold used for reward gating and partial purchases [rad].
+     * @notice Returns the cached dust-times-chop threshold used for reward gating and partial purchases
+     *         [rad].
      */
     function chost() external view returns (uint256);
 
@@ -325,8 +327,8 @@ interface IDutchAuction {
     function live() external view returns (uint256);
 
     /**
-     * @notice Returns the breaker level: 0 = normal, 1 = no new kicks, 2 = no kicks or takes, 3 = no kicks, takes or
-     *         redos. Yank is never gated.
+     * @notice Returns the breaker level: 0 = normal, 1 = no new kicks, 2 = no kicks or takes, 3 = no kicks,
+     *         takes or redos. Yank is never gated.
      */
     function stopped() external view returns (uint256);
 

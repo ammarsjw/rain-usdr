@@ -15,8 +15,8 @@ import { BaseTest } from "./shared/BaseTest.sol";
 /**
  * @title GovernanceTest
  * @author Rain Team
- * @notice Adversarial coverage of the Governor: timelock immutability (M-4), schedule/execute/cancel lifecycle, and
- *         the real 72-hour pause auto-expiry (L-6).
+ * @notice Adversarial coverage of the Governor: timelock immutability (M-4), schedule/execute/cancel
+ *         lifecycle, and the real 72-hour pause auto-expiry (L-6).
  */
 contract GovernanceTest is BaseTest {
     /* ========================== 1. IMMUTABLE DELAY ========================== */
@@ -40,7 +40,8 @@ contract GovernanceTest is BaseTest {
     /* ========================== 2. TIMELOCK LIFECYCLE ========================== */
 
     function test_scheduleExecuteLifecycle() public {
-        // Target: raise the RAIN line via the Governor (it holds no ward here, so use a self-call demo target).
+        // Target: raise the RAIN line via the Governor (it holds no ward here, so use a self-call demo
+        // target).
         vaultEngine.grantRole(_WARD_ROLE, address(governor));
 
         bytes memory call = abi.encodeWithSignature(
@@ -200,8 +201,8 @@ contract GovernanceTest is BaseTest {
 /**
  * @title SettlementTest
  * @author Rain Team
- * @notice End-to-end emergency settlement scenarios: full lifecycle, in-flight auction reclaim, owner collateral
- *         reclaim and phase-ordering guards.
+ * @notice End-to-end emergency settlement scenarios: full lifecycle, in-flight auction reclaim, owner
+ *         collateral reclaim and phase-ordering guards.
  */
 contract SettlementTest is BaseTest {
     /* ========================== HELPERS ========================== */
@@ -347,9 +348,10 @@ contract SettlementTest is BaseTest {
     }
 
     function test_cageIlkHaltsAuctionHouse() public {
-        // Audit C-2: End.cage(ilkId) must cage the ilk's auction house. Before the fix, in-flight auctions kept
-        // decaying against the FIXED settlement price — a risk-free, unbounded arbitrage against redeemers once the
-        // curve crossed break-even, with the bought collateral permanently leaving the redemption pool.
+        // Audit C-2: End.cage(ilkId) must cage the ilk's auction house. Before the fix, in-flight auctions
+        // kept decaying against the FIXED settlement price — a risk-free, unbounded arbitrage against
+        // redeemers once the curve crossed break-even, with the bought collateral permanently leaving the
+        // redemption pool.
         _setRainPrice(1e18);
         uint256 vaultId = _openVault(user, 400e18, 100e18);
 
@@ -384,17 +386,17 @@ contract SettlementTest is BaseTest {
     }
 
     function test_skipRestoresArtSnapshotSoFixIsExact() public {
-        // Audit H-4: skip reinstates the auction's debt into the vault (grab) AND must add it back to the ilk's
-        // settlement snapshot. Before the fix, thaw's total debt included the restored debt while art[ilk] did not,
-        // so flow divided a short numerator by a full denominator — understating fix and stranding collateral in
-        // End forever (measured ~53% stranded in the audit).
+        // Audit H-4: skip reinstates the auction's debt into the vault (grab) AND must add it back to the
+        // ilk's settlement snapshot. Before the fix, thaw's total debt included the restored debt while
+        // art[ilk] did not, so flow divided a short numerator by a full denominator — understating fix and
+        // stranding collateral in End forever (measured ~53% stranded in the audit).
         _setRainPrice(1e18);
 
         uint256 vaultId = _openVault(user, 400e18, 100e18);
         _sellUsdt(keeper, 100e6);
 
-        // Bark the vault so ALL RAIN debt is in-flight at settlement (the worst case for the old code: the RAIN
-        // snapshot would have been zero).
+        // Bark the vault so ALL RAIN debt is in-flight at settlement (the worst case for the old code: the
+        // RAIN snapshot would have been zero).
         _setRainPrice(0.6e18);
         uint256 auctionId = liquidationTrigger.bark(vaultId, keeper);
         uint256 barkEra = vm.getBlockTimestamp();
@@ -416,8 +418,8 @@ contract SettlementTest is BaseTest {
         (, , uint256 psmVaultId) = psm.ilks(USDT_ILK);
         end.skim(psmVaultId);
 
-        // Thaw requires the Balance Sheet's surplus healed away: release the bark-era sin queue (wait = 0 in this
-        // harness) and net the skip-created surplus against it.
+        // Thaw requires the Balance Sheet's surplus healed away: release the bark-era sin queue (wait = 0 in
+        // this harness) and net the skip-created surplus against it.
         balanceSheet.flog(barkEra);
         balanceSheet.heal(vaultEngine.usdr(address(balanceSheet)));
 
@@ -431,9 +433,9 @@ contract SettlementTest is BaseTest {
 
         assertEq(end.fix(RAIN_ILK), expectedFix, "fix computed on the full snapshot");
 
-        // The conservation identity H-4 broke: the ENTIRE fixed debt redeemed at fix reclaims exactly the RAIN End
-        // holds (sub-wei truncation dust aside) — nothing is stranded. Before the fix, the snapshot missed the
-        // restored debt, fix was understated by ~50%, and most of the pot was unreachable forever.
+        // The conservation identity H-4 broke: the ENTIRE fixed debt redeemed at fix reclaims exactly the
+        // RAIN End holds (sub-wei truncation dust aside) — nothing is stranded. Before the fix, the snapshot
+        // missed the restored debt, fix was understated by ~50%, and most of the pot was unreachable forever.
         uint256 held = vaultEngine.collateral(RAIN_ILK, address(end));
         uint256 claimable = ((end.debt() / _RAY) * end.fix(RAIN_ILK)) / _RAY;
 
@@ -511,7 +513,8 @@ contract SettlementTest is BaseTest {
         _setRainPrice(1e18);
         _sellUsdt(keeper, 50e6);
 
-        // Surplus on the balance sheet blocks thaw (matched sin lands on the balance sheet too, so it can heal).
+        // Surplus on the balance sheet blocks thaw (matched sin lands on the balance sheet too, so it can
+        // heal).
         vaultEngine.suck(address(balanceSheet), address(balanceSheet), 5 * _RAD);
 
         end.cage();

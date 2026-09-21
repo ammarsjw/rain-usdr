@@ -15,16 +15,16 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title PriceConverter
  * @author Rain Team
- * @notice The link between the oracle and the Vault Engine. Takes the delayed price and divides it by the required
- *         collateralization ratio to produce the price factor, the maximum USDR mintable per unit of collateral. For
- *         RAIN at $1 with a 400% ratio, the factor is $0.25. Supported stablecoins skip the oracle entirely. They are
- *         marked fixed and always convert at $1, so USDR mints 1:1 against them.
- * @dev Every ilk is configured as exactly one of two kinds. A fixed ilk has no oracle and its price is pinned to $1,
- *      with the trust decision living in listing governance. An oracle-backed ilk reads its price from the OSM. The
- *      OSM itself never learns about fixed ilks. Being registered on the OSM is what needs a price lookup means, and
- *      this contract is the single place that routes between the two kinds. `file("pip")` and `file("fixed")` clear
- *      each other so an ilk can never be both, and `poke` reverts for unconfigured ilks rather than writing a zero
- *      spot.
+ * @notice The link between the oracle and the Vault Engine. Takes the delayed price and divides it by the
+ *         required collateralization ratio to produce the price factor, the maximum USDR mintable per unit of
+ *         collateral. For RAIN at $1 with a 400% ratio, the factor is $0.25. Supported stablecoins skip the
+ *         oracle entirely. They are marked fixed and always convert at $1, so USDR mints 1:1 against them.
+ * @dev Every ilk is configured as exactly one of two kinds. A fixed ilk has no oracle and its price is pinned
+ *      to $1, with the trust decision living in listing governance. An oracle-backed ilk reads its price from
+ *      the OSM. The OSM itself never learns about fixed ilks. Being registered on the OSM is what needs a
+ *      price lookup means, and this contract is the single place that routes between the two kinds.
+ *      `file("pip")` and `file("fixed")` clear each other so an ilk can never be both, and `poke` reverts for
+ *      unconfigured ilks rather than writing a zero spot.
  */
 contract PriceConverter is IPriceConverter, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -92,10 +92,10 @@ contract PriceConverter is IPriceConverter, AccessControl {
         }
 
         if (what == "par") {
-            // `par == 0` would make poke revert on division for every ilk, freezing all spots at their last values
-            // since a stale spot keeps authorizing mints. And because file requires live == 1, a zeroed par could
-            // never be repaired after cage. Guarding here matches the contract's own standard elsewhere (MatBelowOne,
-            // WouldOrphanIlk).
+            // `par == 0` would make poke revert on division for every ilk, freezing all spots at their last
+            // values since a stale spot keeps authorizing mints. And because file requires live == 1, a
+            // zeroed par could never be repaired after cage. Guarding here matches the contract's own
+            // standard elsewhere (MatBelowOne, WouldOrphanIlk).
             if (data == 0) {
                 _revert(InvalidAmount.selector);
             }
@@ -117,8 +117,8 @@ contract PriceConverter is IPriceConverter, AccessControl {
         }
 
         if (what == "mat") {
-            // A collateralization ratio below 100% would authorize minting more than a dollar of USDR per dollar of
-            // collateral at origination. No legitimate configuration wants that.
+            // A collateralization ratio below 100% would authorize minting more than a dollar of USDR per
+            // dollar of collateral at origination. No legitimate configuration wants that.
             if (data < _RAY) {
                 _revert(MatBelowOne.selector);
             }
@@ -130,9 +130,10 @@ contract PriceConverter is IPriceConverter, AccessControl {
                 ilks[ilkId].fixedPrice = true;
                 ilks[ilkId].pip = IOracleSecurityModule(address(0));
             } else {
-                // Clearing the fixed flag on an ilk with no oracle would silently brick its price updates and freeze
-                // spot at its last value (the dangerous direction: a stale price keeps authorizing mints). The flag is
-                // only clearable by assigning an oracle via file("pip"), which clears it atomically.
+                // Clearing the fixed flag on an ilk with no oracle would silently brick its price updates and
+                // freeze spot at its last value (the dangerous direction: a stale price keeps authorizing
+                // mints). The flag is only clearable by assigning an oracle via file("pip"), which clears it
+                // atomically.
                 _revert(WouldOrphanIlk.selector);
             }
         } else {
@@ -173,8 +174,9 @@ contract PriceConverter is IPriceConverter, AccessControl {
             (val, has) = ilk.pip.peek(ilkId);
         }
 
-        // If the price is invalid, the price factor is set to ZERO, freezing new minting against this collateral until
-        // a valid price returns (a zero spot makes every mint/withdraw fail the safety check).
+        // If the price is invalid, the price factor is set to ZERO, freezing new minting against this
+        // collateral until a valid price returns (a zero spot makes every mint/withdraw fail the safety
+        // check).
         uint256 spot = has ? ((((uint256(val) * (10 ** 9)) * _RAY) / par) * _RAY) / ilk.mat : 0;
 
         VAULT_ENGINE.file(ilkId, "spot", spot);

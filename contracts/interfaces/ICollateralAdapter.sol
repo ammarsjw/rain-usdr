@@ -19,8 +19,8 @@ interface ICollateralAdapter {
      * @notice Configuration and state of a registered ilk.
      * @param token The token this ilk bridges, held in custody, or minted and burned for USDR.
      * @param dec Decimals of the token.
-     * @param isUsdr Whether this ilk is the USDR ilk (`move` plus mint and burn) or a collateral ilk (`slip` plus
-     *        custody).
+     * @param isUsdr Whether this ilk is the USDR ilk (`move` plus mint and burn) or a collateral ilk (`slip`
+     *        plus custody).
      * @param live Ilk liveness flag. `1` while live, `0` after shutdown.
      */
     struct Ilk {
@@ -64,21 +64,22 @@ interface ICollateralAdapter {
     /* ========================== ERRORS ========================== */
 
     /**
-     * @dev Indicates that a token with more than 18 decimals was supplied. Such tokens cannot be represented in the
-     *      internal 18 decimal accounting.
+     * @dev Indicates that a token with more than 18 decimals was supplied. Such tokens cannot be represented
+     *      in the internal 18 decimal accounting.
      */
     error InvalidDecimals();
 
     /**
-     * @dev Indicates that a token delivered fewer units than were sent. Such tokens cannot back the shared adapter.
+     * @dev Indicates that a token delivered fewer units than were sent. Such tokens cannot back the shared
+     *      adapter.
      */
     error FeeOnTransferToken();
 
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Registers an ilk with its token. This is how new tokens are added to the module. Registering under
-     *         {_USDR_ILK} marks the ilk as the USDR ilk (mint and burn behaviour).
+     * @notice Registers an ilk with its token. This is how new tokens are added to the module. Registering
+     *         under {_USDR_ILK} marks the ilk as the USDR ilk (mint and burn behaviour).
      * @param ilkId Identifier of the ilk.
      * @param token Address of the token the ilk bridges.
      */
@@ -93,8 +94,8 @@ interface ICollateralAdapter {
 
     /**
      * @notice Brings a token into the system.
-     * @dev Collateral ilks credit free collateral, and the caller must have approved the adapter. The USDR ilk burns
-     *      the caller's USDR and credits internal balance. Decimals are converted internally.
+     * @dev Collateral ilks credit free collateral, and the caller must have approved the adapter. The USDR
+     *      ilk burns the caller's USDR and credits internal balance. Decimals are converted internally.
      * @param ilkId Identifier of the ilk.
      * @param user Account credited inside the system.
      * @param amount Token amount to deposit, in the token's native decimals.
@@ -103,8 +104,8 @@ interface ICollateralAdapter {
 
     /**
      * @notice Takes a token back out of the system.
-     * @dev Collateral ilks release custodied tokens, and the caller must have enough free collateral. The USDR ilk
-     *      debits internal balance and mints USDR.
+     * @dev Collateral ilks release custodied tokens, and the caller must have enough free collateral. The
+     *      USDR ilk debits internal balance and mints USDR.
      * @param ilkId Identifier of the ilk.
      * @param user Account that receives the tokens.
      * @param amount Token amount to withdraw, in the token's native decimals.

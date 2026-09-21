@@ -21,9 +21,10 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title DutchAuction
  * @author Rain Team
- * @notice The auction house. Runs each liquidation as a Dutch auction. The collateral starts at a price above market
- *         and falls over time until a keeper buys it. It settles instantly, needs no locked capital from bidders, and
- *         supports flash-loan-style buying where the keeper buys and resells in one transaction.
+ * @notice The auction house. Runs each liquidation as a Dutch auction. The collateral starts at a price above
+ *         market and falls over time until a keeper buys it. It settles instantly, needs no locked capital
+ *         from bidders, and supports flash-loan-style buying where the keeper buys and resells in one
+ *         transaction.
  * @dev One instance per collateral type.
  */
 contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
@@ -131,8 +132,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         } else if (what == "tip") {
             tip = uint192(data);
         } else if (what == "stopped") {
-            // Breaker levels: 0 = normal, 1 = no new kicks, 2 = no new kicks or takes, 3 = no kicks, takes or redos.
-            // Yank always stays available for settlement.
+            // Breaker levels: 0 = normal, 1 = no new kicks, 2 = no new kicks or takes, 3 = no kicks, takes or
+            // redos. Yank always stays available for settlement.
             stopped = data;
         } else {
             _revert(UnrecognizedParameter.selector);
@@ -246,8 +247,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             _revert(AuctionNotRunning.selector);
         }
 
-        // At least one reset condition must hold: the auction has run past its reset time, or its price has dropped
-        // below the reset threshold of the starting price.
+        // At least one reset condition must hold: the auction has run past its reset time, or its price has
+        // dropped below the reset threshold of the starting price.
         (bool done, ) = _status(tic, top);
 
         if (!done) {
@@ -270,9 +271,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         sales[id].top = top;
 
-        // Whoever triggers the reset earns the keeper reward for doing so, but only when the auction is large enough
-        // to be worth resetting: both the remaining debt and the collateral's market value must be at least the cached
-        // dust-times-chop threshold (chost). This prevents reward farming on tiny auctions.
+        // Whoever triggers the reset earns the keeper reward for doing so, but only when the auction is large
+        // enough to be worth resetting: both the remaining debt and the collateral's market value must be at
+        // least the cached dust-times-chop threshold (chost). This prevents reward farming on tiny auctions.
         uint256 coin;
 
         if (tip > 0 || chip > 0) {
@@ -294,8 +295,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             _revert(NotLive.selector);
         }
 
-        // Breaker level 2 stops purchases: during an oracle incident governance must be able to stop keepers buying
-        // collateral at bad-feed prices, in-flight auctions included. The governance pause does too.
+        // Breaker level 2 stops purchases: during an oracle incident governance must be able to stop keepers
+        // buying collateral at bad-feed prices, in-flight auctions included. The governance pause does too.
         _requireRunning(2);
 
         address usr = sales[id].usr;
@@ -340,9 +341,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
                 owe = tab;
                 slice = owe / price;
             } else if (owe < tab && slice < lot) {
-                // A partial purchase must leave a remainder of at least chost. Instead of reverting outright, the
-                // purchase is adjusted down so the remainder is exactly chost; only when the whole tab is at or below
-                // chost is a partial purchase impossible.
+                // A partial purchase must leave a remainder of at least chost. Instead of reverting outright,
+                // the purchase is adjusted down so the remainder is exactly chost; only when the whole tab is
+                // at or below chost is a partial purchase impossible.
                 if (tab - owe < chost) {
                     if (tab <= chost) {
                         // Any partial purchase would leave a remainder below chost.
@@ -361,7 +362,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             // Sending the collateral to the keeper (or their callback contract).
             VAULT_ENGINE.flux(ILK_ID, address(this), who, slice);
 
-            // Flash-loan-style buying: the callback can resell the collateral and pay in the same transaction.
+            // Flash-loan-style buying: the callback can resell the collateral and pay in the same
+            // transaction.
             if (data.length > 0 && who != address(VAULT_ENGINE) && who != address(dog)) {
                 IDutchAuctionCallee(who).clipperCall(msg.sender, owe, slice, data);
             }
@@ -378,7 +380,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         if (lot == 0) {
             _remove(id);
         } else if (tab == 0) {
-            // All the debt is covered and collateral remains: the leftover is returned to the original vault owner.
+            // All the debt is covered and collateral remains: the leftover is returned to the original vault
+            // owner.
             VAULT_ENGINE.flux(ILK_ID, address(this), usr, lot);
 
             _remove(id);
@@ -396,10 +399,10 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             _revert(AuctionNotRunning.selector);
         }
 
-        // The remaining debt is freed from the liquidation capacity and the remaining collateral moves to the CALLER:
-        // during emergency settlement the caller is the End, which reclaims the collateral into the the seized vault
-        // so the position settles like every other. Handing it to the vault owner here instead would erase the debt
-        // side and leak value at settlement.
+        // The remaining debt is freed from the liquidation capacity and the remaining collateral moves to the
+        // CALLER: during emergency settlement the caller is the End, which reclaims the collateral into the
+        // the seized vault so the position settles like every other. Handing it to the vault owner here
+        // instead would erase the debt side and leak value at settlement.
         dog.digs(ILK_ID, sales[id].tab);
         VAULT_ENGINE.flux(ILK_ID, address(this), msg.sender, sales[id].lot);
 
@@ -460,8 +463,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     }
 
     /**
-     * @dev Reverts when the breaker is at or above `level`, or when the governance pause is active. Yank is never
-     *      gated: emergency settlement must always be able to reclaim auctions.
+     * @dev Reverts when the breaker is at or above `level`, or when the governance pause is active. Yank is
+     *      never gated: emergency settlement must always be able to reclaim auctions.
      * @param level Breaker level at which the calling operation is stopped.
      */
     function _requireRunning(uint256 level) private view {

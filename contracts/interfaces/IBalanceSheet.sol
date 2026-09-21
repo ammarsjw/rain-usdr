@@ -93,16 +93,16 @@ interface IBalanceSheet {
     error NoBuybackReceiver();
 
     /**
-     * @dev Indicates that the stable reserve no longer covers the debt of the fee-exempt (PSM) ilks: unbacked USDR
-     *      exists and no surplus may leave the protocol.
+     * @dev Indicates that the stable reserve no longer covers the debt of the fee-exempt (PSM) ilks: unbacked
+     *      USDR exists and no surplus may leave the protocol.
      */
     error ReserveBackingShortfall();
 
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Adjusts the surplus buffer floor {humpFloor} [rad], the dynamic buffer rate {humpRate} [wad], or the bad
-     *         debt queue delay {wait} [seconds].
+     * @notice Adjusts the surplus buffer floor {humpFloor} [rad], the dynamic buffer rate {humpRate} [wad],
+     *         or the bad debt queue delay {wait} [seconds].
      * @param what Name of the parameter.
      * @param data New value.
      */
@@ -117,8 +117,8 @@ interface IBalanceSheet {
 
     /**
      * @notice Registers bad debt when an auction fails to fully cover a vault's debt.
-     * @dev Called by the Liquidation Trigger. The debt itself lands on this contract's `sin` balance in the Vault
-     *      Engine via `grab`.
+     * @dev Called by the Liquidation Trigger. The debt itself lands on this contract's `sin` balance in the
+     *      Vault Engine via `grab`.
      * @param tab Amount of uncovered debt registered [rad].
      */
     function fess(uint256 tab) external;
@@ -146,20 +146,23 @@ interface IBalanceSheet {
 
     /**
      * @notice Sends the surplus above the buffer target toward RAIN buyback-and-burn.
-     * @dev Returns 0 without effect when the buffer is at or below target, the strict "fill before burn" rule.
+     * @dev Returns 0 without effect when the buffer is at or below target, the strict "fill before burn"
+     *      rule.
      * @return excess Amount released [rad].
      */
     function distributeSurplus() external returns (uint256 excess);
 
     /**
-     * @notice Returns the current surplus buffer target: max of {humpFloor} and {humpRate} of the total reserve.
+     * @notice Returns the current surplus buffer target: max of {humpFloor} and {humpRate} of the total
+     *         reserve.
      * @return target The buffer target [rad].
      */
     function humpTarget() external view returns (uint256 target);
 
     /**
      * @notice Refreshes the lagged reserve snapshot used by {humpTarget}, at most once per lag window.
-     * @dev Permissionless: keepers keep the snapshot fresh so reserve growth eventually raises the dynamic target.
+     * @dev Permissionless: keepers keep the snapshot fresh so reserve growth eventually raises the dynamic
+     *      target.
      */
     function snapshotReserve() external;
 

@@ -20,8 +20,8 @@ import { MockExternalExposure } from "./mocks/MockExternalExposure.sol";
 /**
  * @title BalanceSheetTest
  * @author Rain Team
- * @notice Coverage of the treasury: sin queue lifecycle, heal bounds, keeper reward suck, the fill-before-burn surplus
- *         rule and the dynamic hump target.
+ * @notice Coverage of the treasury: sin queue lifecycle, heal bounds, keeper reward suck, the
+ *         fill-before-burn surplus rule and the dynamic hump target.
  */
 contract BalanceSheetTest is BaseTest {
     /* ========================== 1. FILE ========================== */
@@ -110,15 +110,17 @@ contract BalanceSheetTest is BaseTest {
     /* ========================== 3. SURPLUS DISTRIBUTION ========================== */
 
     function test_distributeNoOpsOnUnqueuedBadDebt() public {
-        // Audit M-6 (fixed): unqueued sin (e.g. a suck keeper reward) is a routine keeper race, so distribution
-        // no-ops (Maker-consistent) instead of hard-reverting and alarming automation through every liquidation.
+        // Audit M-6 (fixed): unqueued sin (e.g. a suck keeper reward) is a routine keeper race, so
+        // distribution no-ops (Maker-consistent) instead of hard-reverting and alarming automation through
+        // every liquidation.
         balanceSheet.file("buybackReceiver", address(0xB0B));
 
         vaultEngine.suck(address(balanceSheet), address(balanceSheet), 10 * _RAD);
 
         assertEq(balanceSheet.distributeSurplus(), 0, "no-op while unqueued sin outstanding");
 
-        // Healing the sin re-enables distribution of the remaining surplus (all of it: hump target is 0 here).
+        // Healing the sin re-enables distribution of the remaining surplus (all of it: hump target is 0
+        // here).
         balanceSheet.heal(10 * _RAD);
         vaultEngine.suck(address(this), address(balanceSheet), 5 * _RAD);
 
@@ -126,19 +128,19 @@ contract BalanceSheetTest is BaseTest {
     }
 
     function test_distributeReservesQueuedSinInsteadOfBlocking() public {
-        // Audit M-6 (fixed): queued sin cannot be healed yet, but the surplus that will heal it must not leave.
-        // Instead of blocking ALL distribution for the whole wait window, the queued amount is reserved on top of
-        // the hump target and only the genuine excess ships.
+        // Audit M-6 (fixed): queued sin cannot be healed yet, but the surplus that will heal it must not
+        // leave. Instead of blocking ALL distribution for the whole wait window, the queued amount is
+        // reserved on top of the hump target and only the genuine excess ships.
         balanceSheet.file("buybackReceiver", address(0xB0B));
         balanceSheet.file("wait", 1 days);
 
-        // 30 surplus on the sheet; 10 of queued bad debt arrives via fess (no matched engine sin needed for the
-        // reservation logic itself — fess only books the queue).
+        // 30 surplus on the sheet; 10 of queued bad debt arrives via fess (no matched engine sin needed for
+        // the reservation logic itself — fess only books the queue).
         vaultEngine.suck(address(this), address(balanceSheet), 30 * _RAD);
         balanceSheet.fess(10 * _RAD);
 
-        // Note: fess books queue-side only; engine sin for the balance sheet is what distribute reads as badDebt.
-        // Here badDebt == 0 but totalQueuedSin == 10: the queued amount is still reserved.
+        // Note: fess books queue-side only; engine sin for the balance sheet is what distribute reads as
+        // badDebt. Here badDebt == 0 but totalQueuedSin == 10: the queued amount is still reserved.
         assertEq(balanceSheet.distributeSurplus(), 20 * _RAD, "only surplus above the queued reservation ships");
     }
 
@@ -191,8 +193,9 @@ contract BalanceSheetTest is BaseTest {
 /**
  * @title ReserveTest
  * @author Rain Team
- * @notice Adversarial coverage of the reserve stack: the H-1 direct-OSM pricing (mat-change immunity), the M-3 lazy
- *         redemption gate, parameter bounds (L-4), volatile ilk validation (L-5) and escrow guards (L-1).
+ * @notice Adversarial coverage of the reserve stack: the H-1 direct-OSM pricing (mat-change immunity), the
+ *         M-3 lazy redemption gate, parameter bounds (L-4), volatile ilk validation (L-5) and escrow guards
+ *         (L-1).
  */
 contract ReserveTest is BaseTest {
     /* ========================== HELPERS ========================== */
@@ -229,8 +232,8 @@ contract ReserveTest is BaseTest {
     /* ========================== 1. DIRECT OSM PRICING ========================== */
 
     function test_worstCaseLossImmuneToMatChange() public {
-        // THE rev-4 headline scenario. Loss must be identical before and after a mat change with no poke: the engine
-        // prices collateral straight from the OSM, so mat desynchronization cannot bend it.
+        // THE rev-4 headline scenario. Loss must be identical before and after a mat change with no poke: the
+        // engine prices collateral straight from the OSM, so mat desynchronization cannot bend it.
         _setRainPrice(1e18);
         _openVault(user, 800e18, 200e18);
 
@@ -275,9 +278,9 @@ contract ReserveTest is BaseTest {
         psm.buyStable(USDT_ILK, keeper, 5e6);
         vm.stopPrank();
 
-        // NOTE: The revert rolls the recompute back with the rest of the transaction, the persistent flag is still
-        // refreshed by keepers and by any SUCCESSFUL redemption; what the lazy gate guarantees is that no redemption
-        // can ever pass on stale data, which the revert above just proved.
+        // NOTE: The revert rolls the recompute back with the rest of the transaction, the persistent flag is
+        // still refreshed by keepers and by any SUCCESSFUL redemption; what the lazy gate guarantees is that
+        // no redemption can ever pass on stale data, which the revert above just proved.
         assertFalse(solvencyEngine.breached(), "flag untouched by the reverted attempt");
     }
 
@@ -403,13 +406,13 @@ contract ReserveTest is BaseTest {
     /* ========================== 8. SOLVENCY GATE HOOKS ========================== */
 
     function test_frobHardGateHoldsWithoutAnyKeeper() public {
-        // No reserve at all. The FIRST draw passes: the gate recomputes on pre-frob state, where loss is still 0.
+        // No reserve at all. The FIRST draw passes: the gate recomputes on pre-frob state, where loss is
+        // still 0.
         _setRainPrice(1e18);
         uint256 vaultId = _openVault(user, 800e18, 200e18);
 
-        // Now the ilk carries a stressed loss of 60 against a zero reserve.
-        // NOTE: No checkInvariant call anywhere, the stale flag still says healthy and frob itself must detect the
-        // breach.
+        // Now the ilk carries a stressed loss of 60 against a zero reserve. NOTE: No checkInvariant call
+        // anywhere, the stale flag still says healthy and frob itself must detect the breach.
         assertFalse(solvencyEngine.breached(), "flag stale-healthy");
 
         // Drawing more debt is blocked.
@@ -422,8 +425,8 @@ contract ReserveTest is BaseTest {
         vm.expectRevert(SolvencyGateActive.selector);
         vaultEngine.frob(vaultId, user, user, -1, 0);
 
-        // Risk-DECREASING changes always stay available: repayment and top-ups must never be gated (death-spiral
-        // ).
+        // Risk-DECREASING changes always stay available: repayment and top-ups must never be gated
+        // (death-spiral ).
         vm.prank(user);
         vaultEngine.frob(vaultId, user, user, 0, -int256(50e18));
 
@@ -436,7 +439,8 @@ contract ReserveTest is BaseTest {
     }
 
     function test_frobGateClearsOnceReserveCovers() public {
-        // 199 of debt against 800 RAIN leaves mat headroom for one more 1-USDR draw (cap at spot 0.25 is 200).
+        // 199 of debt against 800 RAIN leaves mat headroom for one more 1-USDR draw (cap at spot 0.25 is
+        // 200).
         _setRainPrice(1e18);
         uint256 vaultId = _openVault(user, 800e18, 199e18);
 
@@ -445,7 +449,8 @@ contract ReserveTest is BaseTest {
         vm.expectRevert(SolvencyGateActive.selector);
         vaultEngine.frob(vaultId, user, user, 0, int256(1e18));
 
-        // Seeding the reserve past the stressed loss (129 / 0.9 ~ 144) reopens the gate with no keeper involved.
+        // Seeding the reserve past the stressed loss (129 / 0.9 ~ 144) reopens the gate with no keeper
+        // involved.
         _sellUsdt(keeper, 150e6);
 
         vm.prank(user);
@@ -482,8 +487,8 @@ contract ReserveTest is BaseTest {
         solvencyEngine.checkInvariant();
         assertFalse(solvencyEngine.breached(), "healthy at 1.0");
 
-        // The crash arrives through the feed. The pokes themselves must refresh the flag: no keeper, no checkInvariant
-        // call. At $0.2 the loss is 200 - 800*0.2*0.175 = 172 > 90.
+        // The crash arrives through the feed. The pokes themselves must refresh the flag: no keeper, no
+        // checkInvariant call. At $0.2 the loss is 200 - 800*0.2*0.175 = 172 > 90.
         _setRainPrice(0.2e18);
 
         assertTrue(solvencyEngine.breached(), "poke surfaced the breach");
@@ -501,8 +506,8 @@ contract ReserveTest is BaseTest {
         solvencyEngine.checkInvariant();
         assertFalse(solvencyEngine.breached(), "healthy before accrual");
 
-        // ~10% APY. A year of fees pushes the debt to ~220 and the loss to ~80 > 61.2: accrual alone must surface the
-        // breach, with no keeper and no user action.
+        // ~10% APY. A year of fees pushes the debt to ~220 and the loss to ~80 > 61.2: accrual alone must
+        // surface the breach, with no keeper and no user action.
         vaultEngine.file(RAIN_ILK, "duty", 1000000003022265980097387650);
         vm.warp(vm.getBlockTimestamp() + 365 days);
 
@@ -542,8 +547,8 @@ contract ReserveTest is BaseTest {
 /**
  * @title ReserveAuditTest
  * @author Rain Team
- * @notice Audit regressions exercising the reserve stack: PSM round trips, the solvency invariant and gate, external
- *         exposure clamping, sin queue timing and surplus distribution around the hump.
+ * @notice Audit regressions exercising the reserve stack: PSM round trips, the solvency invariant and gate,
+ *         external exposure clamping, sin queue timing and surplus distribution around the hump.
  */
 contract ReserveAuditTest is BaseTest {
     /* ========================== HELPERS ========================== */
@@ -551,8 +556,9 @@ contract ReserveAuditTest is BaseTest {
     /// @dev Pushes `price` [wad] through the OSM (two pokes) and into the Vault Engine's spot.
     function _setRainPrice(uint256 price) internal {
         rainPriceSource.setPrice(price);
-        // The OSM snaps its delay anchor down to the HOP boundary, so warp to fresh boundaries. Read the clock via the
-        // cheatcode: the compiler may otherwise rematerialize a stale block.timestamp across warps under via-ir.
+        // The OSM snaps its delay anchor down to the HOP boundary, so warp to fresh boundaries. Read the
+        // clock via the cheatcode: the compiler may otherwise rematerialize a stale block.timestamp across
+        // warps under via-ir.
         vm.warp(((vm.getBlockTimestamp() / 1800) + 2) * 1800);
         osm.poke(RAIN_ILK);
         vm.warp(vm.getBlockTimestamp() + 3600);
@@ -628,16 +634,17 @@ contract ReserveAuditTest is BaseTest {
         vm.prank(user);
         vaultEngine.frob(vaultId, user, user, 0, -1e18);
 
-        // Redemption recomputes the invariant lazily (no stale-flag window): while the reserve is still thin the gate
-        // holds even without any keeper call.
+        // Redemption recomputes the invariant lazily (no stale-flag window): while the reserve is still thin
+        // the gate holds even without any keeper call.
         vm.startPrank(keeper);
         usdr.approve(address(psm), 5e18);
         vm.expectRevert(SolvencyGateActive.selector);
         psm.buyStable(USDT_ILK, keeper, 5e6);
         vm.stopPrank();
 
-        // Reserve-increasing PSM flow stays open. Reserve becomes 100 -> threshold 90 > loss (59 after the wipe), and
-        // the next redemption's lazy recompute clears the breach by itself, again no keeper needed.
+        // Reserve-increasing PSM flow stays open. Reserve becomes 100 -> threshold 90 > loss (59 after the
+        // wipe), and the next redemption's lazy recompute clears the breach by itself, again no keeper
+        // needed.
         _sellUsdt(keeper, 80e6);
 
         vm.startPrank(keeper);
@@ -702,7 +709,8 @@ contract ReserveAuditTest is BaseTest {
         vaultEngine.suck(address(balanceSheet), address(balanceSheet), 50 * _RAD);
         balanceSheet.fess(50 * _RAD);
 
-        // Using the cheatcode (not block.timestamp) so via-ir cannot rematerialize the value after the warp below.
+        // Using the cheatcode (not block.timestamp) so via-ir cannot rematerialize the value after the warp
+        // below.
         uint256 era = vm.getBlockTimestamp();
 
         // Queued sin cannot be healed.
@@ -750,8 +758,9 @@ contract ReserveAuditTest is BaseTest {
     /* ========================== 5. PSM FEE EXEMPTION (C-1) ========================== */
 
     function test_dutyOnStableIlkIsRejected() public {
-        // Audit C-1: the PSM's 1:1 accounting is only sound at rate == RAY. The stable ilks are fee-exempt from
-        // BaseTest wiring (as in deploy), so ANY duty above RAY — including the minimal RAY + 1 — must be rejected.
+        // Audit C-1: the PSM's 1:1 accounting is only sound at rate == RAY. The stable ilks are fee-exempt
+        // from BaseTest wiring (as in deploy), so ANY duty above RAY — including the minimal RAY + 1 — must
+        // be rejected.
         vm.expectRevert(InvalidDuty.selector);
         vaultEngine.file(USDT_ILK, "duty", _RAY + 1);
 
@@ -763,8 +772,9 @@ contract ReserveAuditTest is BaseTest {
     }
 
     function test_psmRoundTripStaysExactAfterYearsAndDrips() public {
-        // Audit C-1 (the measured blast radius, inverted): with the exemption in place, drips over long horizons
-        // must leave the PSM's round trip bit-exact — the audit's broken scenario redeemed 0 of 100,000.
+        // Audit C-1 (the measured blast radius, inverted): with the exemption in place, drips over long
+        // horizons must leave the PSM's round trip bit-exact — the audit's broken scenario redeemed 0 of
+        // 100,000.
         _sellUsdt(user, 100_000e6);
 
         skip(3650 days);
@@ -807,9 +817,9 @@ contract ReserveAuditTest is BaseTest {
     /* ========================== 6. RESERVE BACKING NET (H-3) ========================== */
 
     function test_distributeRevertsWhenReserveNoLongerBacksStableDebt() public {
-        // Audit H-3 (system-level net): if the stable reserve ever stops covering the PSM ilks' debt — unbacked
-        // USDR exists — no surplus may leave toward the buyback. The primary C-1 guard makes the fee path
-        // unreachable, so the imbalance is simulated directly on the reserve ledger.
+        // Audit H-3 (system-level net): if the stable reserve ever stops covering the PSM ilks' debt —
+        // unbacked USDR exists — no surplus may leave toward the buyback. The primary C-1 guard makes the fee
+        // path unreachable, so the imbalance is simulated directly on the reserve ledger.
         balanceSheet.file("reserveAccounting", address(reserveAccounting));
         balanceSheet.file("buybackReceiver", address(0xB0B));
 
@@ -838,12 +848,14 @@ contract ReserveAuditTest is BaseTest {
 
     function test_humpTargetCannotBeShrunkBySameWindowRedemption() public {
         // Audit M-5: the dynamic hump term used to read the LIVE reserve, so redeem-shrink-distribute in one
-        // transaction lowered the target and drained extra surplus. The term now reads max(live, lagged snapshot).
+        // transaction lowered the target and drained extra surplus. The term now reads max(live, lagged
+        // snapshot).
         balanceSheet.file("reserveAccounting", address(reserveAccounting));
         balanceSheet.file("buybackReceiver", address(0xB0B));
         balanceSheet.file("humpRate", _WAD / 10);
 
-        // Reserve 200k -> dynamic target 20k [rad]. Snapshot it (one lag window must have elapsed since genesis).
+        // Reserve 200k -> dynamic target 20k [rad]. Snapshot it (one lag window must have elapsed since
+        // genesis).
         _sellUsdt(user, 200_000e6);
         skip(1 days);
         balanceSheet.snapshotReserve();
@@ -852,7 +864,8 @@ contract ReserveAuditTest is BaseTest {
         uint256 target = balanceSheet.humpTarget();
         assertEq(target, 20_000e18 * _RAY, "10% of reserve");
 
-        // The attacker redeems 150k in the same window: the live reserve drops to 50k, but the target must not.
+        // The attacker redeems 150k in the same window: the live reserve drops to 50k, but the target must
+        // not.
         vm.startPrank(user);
         usdr.approve(address(psm), 150_000e18);
         psm.buyStable(USDT_ILK, user, 150_000e6);
@@ -887,8 +900,8 @@ contract ReserveAuditTest is BaseTest {
     /* ========================== 8. EXPOSURE CAP SYMMETRIC GUARD (H-5) ========================== */
 
     function test_exposureCapCannotBeZeroedWhileReporterWired() public {
-        // Audit H-5: rev-4 guarded the wiring call but not the cap setter — zeroing the cap afterwards restored the
-        // fail-open (reverting reporter -> exposure 0, honest report -> clamped to 0).
+        // Audit H-5: rev-4 guarded the wiring call but not the cap setter — zeroing the cap afterwards
+        // restored the fail-open (reverting reporter -> exposure 0, honest report -> clamped to 0).
         MockExternalExposure exposure = new MockExternalExposure();
 
         solvencyEngine.file("exposureCap", 1_000e18);
@@ -897,7 +910,8 @@ contract ReserveAuditTest is BaseTest {
         vm.expectRevert(ISolvencyEngine.ExposureCapNotSet.selector);
         solvencyEngine.file("exposureCap", 0);
 
-        // The fail-open shape the guard prevents: a reverting reporter must keep falling back to a NONZERO cap.
+        // The fail-open shape the guard prevents: a reverting reporter must keep falling back to a NONZERO
+        // cap.
         exposure.setShouldRevert(true);
         assertEq(solvencyEngine.worstCaseLoss(), 1_000e18, "fail-closed at the cap");
 

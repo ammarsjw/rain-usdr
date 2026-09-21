@@ -13,16 +13,16 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title CircuitBreaker
  * @author Rain Team
- * @notice A defense against price manipulation during liquidation. Watches how far the delayed price has moved from
- *         its recent trend. If the move is too large too fast, it throttles liquidations, slowing them but never
- *         freezing them, so a manipulated price cannot trigger a wave of unfair liquidations. It never touches
- *         ordinary vault operations.
- * @dev Activates when the delayed price deviates more than the threshold (25%) from the trailing-average trend.
- *      Deactivates only after a full calm period (in seconds) has elapsed since activation AND the deviation is back
- *      under the threshold at that moment. The trend anchor is the average of a small ring buffer of observations
- *      recorded at most once per `obsInterval`, so a single manipulated observation moves the anchor by at most 1/N.
- *      Residual assumption: a keeper calls {check} regularly (at least once per observation interval); if checks stop
- *      entirely, the trend goes stale until calls resume.
+ * @notice A defense against price manipulation during liquidation. Watches how far the delayed price has
+ *         moved from its recent trend. If the move is too large too fast, it throttles liquidations, slowing
+ *         them but never freezing them, so a manipulated price cannot trigger a wave of unfair liquidations.
+ *         It never touches ordinary vault operations.
+ * @dev Activates when the delayed price deviates more than the threshold (25%) from the trailing-average
+ *      trend. Deactivates only after a full calm period (in seconds) has elapsed since activation AND the
+ *      deviation is back under the threshold at that moment. The trend anchor is the average of a small ring
+ *      buffer of observations recorded at most once per `obsInterval`, so a single manipulated observation
+ *      moves the anchor by at most 1/N. Residual assumption: a keeper calls {check} regularly (at least once
+ *      per observation interval); if checks stop entirely, the trend goes stale until calls resume.
  */
 contract CircuitBreaker is ICircuitBreaker, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -122,8 +122,8 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
 
         uint256 currentPrice = uint256(val);
 
-        // Recording an observation at most once per interval. A single manipulated observation moves the trailing
-        // average by at most 1/OBS_COUNT, so the anchor cannot be poisoned in one block.
+        // Recording an observation at most once per interval. A single manipulated observation moves the
+        // trailing average by at most 1/OBS_COUNT, so the anchor cannot be poisoned in one block.
         if (lastObsTimestamp == 0 || block.timestamp - lastObsTimestamp >= obsInterval) {
             _observations[_obsIndex] = currentPrice;
             _obsIndex = (_obsIndex + 1) % OBS_COUNT;
@@ -148,8 +148,8 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
 
             activatedAt = block.timestamp;
         } else if (active && block.timestamp >= activatedAt + calmPeriod) {
-            // Time-based deactivation: a full calm period has elapsed since the last above-threshold reading AND the
-            // deviation is back under the threshold right now.
+            // Time-based deactivation: a full calm period has elapsed since the last above-threshold reading
+            // AND the deviation is back under the threshold right now.
             active = false;
             activatedAt = 0;
 

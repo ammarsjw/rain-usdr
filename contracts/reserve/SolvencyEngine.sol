@@ -16,16 +16,18 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title SolvencyEngine
  * @author Rain Team
- * @notice The guardian. Computes the protocol's worst-case loss under stress and verifies that the stable reserve
- *         exceeds it. When the worst-case loss exceeds the configured fraction of the reserve, the engine flags a
- *         breach and the rest of the system gates every non-reserve-increasing operation until the invariant is
- *         restored. A keeper bot is expected to call {checkInvariant} regularly to keep the flag fresh.
- * @dev The stress scenario prices COLLATERAL: each volatile ilk's aggregate locked collateral is valued at the delayed
- *      oracle price read DIRECTLY from the Oracle Security Module (never reconstructed as spot times mat), marked down
- *      by the stress markdown (50%) and the stress liquidation depth (35%); the loss is any debt not covered by that
- *      stressed recoverable value. An unavailable price values the collateral at zero, so the invariant fails CLOSED.
- *      Exposure reported by the prediction market layer is consumed defensively: it is clamped to a governance-set cap
- *      and a reverting reporter falls back to the cap, so the invariant can never overflow or permanently revert.
+ * @notice The guardian. Computes the protocol's worst-case loss under stress and verifies that the stable
+ *         reserve exceeds it. When the worst-case loss exceeds the configured fraction of the reserve, the
+ *         engine flags a breach and the rest of the system gates every non-reserve-increasing operation until
+ *         the invariant is restored. A keeper bot is expected to call {checkInvariant} regularly to keep the
+ *         flag fresh.
+ * @dev The stress scenario prices COLLATERAL: each volatile ilk's aggregate locked collateral is valued at
+ *      the delayed oracle price read DIRECTLY from the Oracle Security Module (never reconstructed as spot
+ *      times mat), marked down by the stress markdown (50%) and the stress liquidation depth (35%); the loss
+ *      is any debt not covered by that stressed recoverable value. An unavailable price values the collateral
+ *      at zero, so the invariant fails CLOSED. Exposure reported by the prediction market layer is consumed
+ *      defensively: it is clamped to a governance-set cap and a reverting reporter falls back to the cap, so
+ *      the invariant can never overflow or permanently revert.
  */
 contract SolvencyEngine is ISolvencyEngine, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -94,8 +96,9 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      */
     function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "stressMarkdown") {
-            // Stress parameters live in (0, WAD]: zero would value all collateral at nothing forever (permanent
-            // breach), above WAD would inflate recoverable value beyond market (disabling the invariant).
+            // Stress parameters live in (0, WAD]: zero would value all collateral at nothing forever
+            // (permanent breach), above WAD would inflate recoverable value beyond market (disabling the
+            // invariant).
             if (data == 0 || data > _WAD) {
                 _revert(ParameterOutOfBounds.selector);
             }
@@ -108,17 +111,18 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
 
             stressDepth = data;
         } else if (what == "reserveFactor") {
-            // The breach threshold fraction lives in (0, WAD]: zero would flag a breach on any loss regardless of
-            // reserve, above WAD would tolerate losses exceeding the entire reserve.
+            // The breach threshold fraction lives in (0, WAD]: zero would flag a breach on any loss
+            // regardless of reserve, above WAD would tolerate losses exceeding the entire reserve.
             if (data == 0 || data > _WAD) {
                 _revert(ParameterOutOfBounds.selector);
             }
 
             reserveFactor = data;
         } else if (what == "exposureCap") {
-            // Symmetric guard to the wiring check below: zeroing the cap while a reporter is wired clamps every honest
-            // report to zero AND turns a reverting reporter's fallback into zero, exactly what the wiring guard was
-            // added to prevent. Disabling exposure tracking must be done explicitly by unwiring the reporter first.
+            // Symmetric guard to the wiring check below: zeroing the cap while a reporter is wired clamps
+            // every honest report to zero AND turns a reverting reporter's fallback into zero, exactly what
+            // the wiring guard was added to prevent. Disabling exposure tracking must be done explicitly by
+            // unwiring the reporter first.
             if (data == 0 && address(externalExposure) != address(0)) {
                 _revert(ExposureCapNotSet.selector);
             }
@@ -136,8 +140,8 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      */
     function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
         if (what == "externalExposure") {
-            // Wiring an exposure reporter without a nonzero cap would clamp every report to zero (fail-open); the cap
-            // must be configured first.
+            // Wiring an exposure reporter without a nonzero cap would clamp every report to zero (fail-open);
+            // the cap must be configured first.
             if (data != address(0) && exposureCap == 0) {
                 _revert(ExposureCapNotSet.selector);
             }
@@ -203,8 +207,8 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
         loss = worstCaseLoss();
         reserve = RESERVE_ACCOUNTING.totalReserve();
 
-        // Surfacing exposure-reporter anomalies for monitoring: a revert or an above-cap report both fall back to the
-        // conservative cap inside {worstCaseLoss}; here the anomaly is made visible.
+        // Surfacing exposure-reporter anomalies for monitoring: a revert or an above-cap report both fall
+        // back to the conservative cap inside {worstCaseLoss}; here the anomaly is made visible.
         if (address(externalExposure) != address(0)) {
             try externalExposure.reportedExposure() returns (uint256 reported) {
                 if (reported > exposureCap) {
@@ -215,12 +219,13 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
             }
         }
 
-        // The master rule: worst-case loss must stay under the gated fraction of the stable reserve. This function
-        // never reverts on a breach: state is always brought up to date so the committed escrow and free slack can
-        // never go stale (a stale escrow would let redemptions overpay).
+        // The master rule: worst-case loss must stay under the gated fraction of the stable reserve. This
+        // function never reverts on a breach: state is always brought up to date so the committed escrow and
+        // free slack can never go stale (a stale escrow would let redemptions overpay).
         breached = loss > (reserve * reserveFactor) / _WAD;
 
-        // Keeping the reserve split accurate. The escrow is capped at the full reserve so accounting never reverts.
+        // Keeping the reserve split accurate. The escrow is capped at the full reserve so accounting never
+        // reverts.
         RESERVE_ACCOUNTING.updateCommittedEscrow(loss > reserve ? reserve : loss);
 
         emit InvariantChecked({ reserve: reserve, worstCaseLoss: loss, passed: !breached });
@@ -244,8 +249,8 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      * @inheritdoc ISolvencyEngine
      */
     function worstCaseLoss() public view returns (uint256 loss) {
-        // Adding the shortfall risk from volatile collateral, priced at stressed COLLATERAL values: debt outstanding
-        // minus the stressed recoverable value of the collateral actually locked against it.
+        // Adding the shortfall risk from volatile collateral, priced at stressed COLLATERAL values: debt
+        // outstanding minus the stressed recoverable value of the collateral actually locked against it.
         uint256 volatileIlksLength = volatileIlks.length;
 
         for (uint256 i; i < volatileIlksLength; ++i) {
@@ -256,10 +261,10 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
             // Total debt against this collateral [wad]: art [wad] * rate [ray] / RAY.
             uint256 ilkDebt = (globalArt * rate) / _RAY;
 
-            // Collateral market value [wad], priced DIRECTLY from the Oracle Security Module. Reconstructing the price
-            // as spot * mat is forbidden: a mat change without a poke desynchronizes the two and the reconstructed
-            // price is wrong by exactly matNew / matOld. An unavailable or zero price values the collateral at zero,
-            // which is the conservative direction (loss rises).
+            // Collateral market value [wad], priced DIRECTLY from the Oracle Security Module. Reconstructing
+            // the price as spot * mat is forbidden: a mat change without a poke desynchronizes the two and
+            // the reconstructed price is wrong by exactly matNew / matOld. An unavailable or zero price
+            // values the collateral at zero, which is the conservative direction (loss rises).
             uint256 collateralValue;
 
             (bytes32 val, bool has) = osm.peek(ilkId);
@@ -268,8 +273,8 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
                 collateralValue = (globalInk * uint256(val)) / _WAD;
             }
 
-            // Stressed recoverable value: collateral value marked down by the stress markdown [wad] and the stress
-            // liquidation depth [wad].
+            // Stressed recoverable value: collateral value marked down by the stress markdown [wad] and the
+            // stress liquidation depth [wad].
             uint256 recoverable = (((collateralValue * stressMarkdown) / _WAD) * stressDepth) / _WAD;
 
             if (ilkDebt > recoverable) {
@@ -277,8 +282,9 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
             }
         }
 
-        // Adding any exposure reported by the prediction market layer, defensively: a reverting reporter falls back to
-        // the cap (conservative), and any reported value is clamped to the cap so it can never overflow the sum.
+        // Adding any exposure reported by the prediction market layer, defensively: a reverting reporter
+        // falls back to the cap (conservative), and any reported value is clamped to the cap so it can never
+        // overflow the sum.
         if (address(externalExposure) != address(0)) {
             uint256 exposure = exposureCap;
 

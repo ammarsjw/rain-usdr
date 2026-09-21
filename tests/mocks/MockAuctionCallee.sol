@@ -8,7 +8,8 @@ import { IVaultEngine } from "../../contracts/interfaces/IVaultEngine.sol";
 /**
  * @title MockAuctionCallee
  * @author Rain Team
- * @notice Flash-take callback for tests: receives collateral mid-take and repays from a pre-funded internal balance.
+ * @notice Flash-take callback for tests: receives collateral mid-take and repays from a pre-funded internal
+ *         balance.
  */
 contract MockAuctionCallee is IDutchAuctionCallee {
     IVaultEngine public immutable VAULT_ENGINE;

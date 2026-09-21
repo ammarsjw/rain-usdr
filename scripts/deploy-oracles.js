@@ -42,9 +42,9 @@ const deployOracles = async () => {
     const priceConverterInstance = await hardhat.ethers.getContractAt(priceConverterName, priceConverterAddress);
     const vaultEngineInstance = await hardhat.ethers.getContractAt("VaultEngine", vaultEngineAddress);
 
-    // Registering RAIN's price source (Uniswap TWAP wrapper, any IPriceSource adapter works, e.g. a Chainlink wrapper
-    // for future volatile collaterals like ETH or WBTC). Supported stablecoins are never registered on the OSM: they
-    // are marked fixed on the Price Converter and always convert at $1.
+    // Registering RAIN's price source (Uniswap TWAP wrapper, any IPriceSource adapter works, e.g. a Chainlink
+    // wrapper for future volatile collaterals like ETH or WBTC). Supported stablecoins are never registered
+    // on the OSM: they are marked fixed on the Price Converter and always convert at $1.
     await (await osmInstance.change(rainIlk, rainPriceSourceAddress)).wait();
 
     // Whitelisting the Price Converter to read the OSM.
@@ -98,7 +98,8 @@ const deployOracles = async () => {
     // Authorizing the Price Converter to push price factors into the ledger.
     await (await vaultEngineInstance.grantRole(WARD_ROLE, priceConverterAddress)).wait();
 
-    // Setting the stablecoins' price factors once; fixed ilks never need another poke unless par or mat changes.
+    // Setting the stablecoins' price factors once; fixed ilks never need another poke unless par or mat
+    // changes.
     await (await priceConverterInstance.poke(usdtIlk)).wait();
     await (await priceConverterInstance.poke(usdcIlk)).wait();
 

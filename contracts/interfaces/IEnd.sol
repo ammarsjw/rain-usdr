@@ -10,8 +10,8 @@ import { IVaultEngine } from "./IVaultEngine.sol";
 /**
  * @title IEnd
  * @author Rain Team
- * @notice Interface for the emergency settlement module that winds the system down and lets every USDR holder redeem
- *         collateral pro-rata.
+ * @notice Interface for the emergency settlement module that winds the system down and lets every USDR holder
+ *         redeem collateral pro-rata.
  */
 interface IEnd {
     /* ========================== EVENTS ========================== */
@@ -174,31 +174,31 @@ interface IEnd {
     function file(bytes32 what, address data) external;
 
     /**
-     * @notice Phase 1: freezes the system. Cages the Vault Engine, the Liquidation Trigger and the Price Converter,
-     *         and starts the settlement clock.
+     * @notice Phase 1: freezes the system. Cages the Vault Engine, the Liquidation Trigger and the Price
+     *         Converter, and starts the settlement clock.
      * @dev Only governance may call this.
      */
     function cage() external;
 
     /**
-     * @notice Phase 2: fixes a collateral type's settlement price from its last delayed oracle price and snapshots its
-     *         total debt.
+     * @notice Phase 2: fixes a collateral type's settlement price from its last delayed oracle price and
+     *         snapshots its total debt.
      * @dev Permissionless once settlement has been triggered. Fixed-price ilks settle at exactly $1.
      * @param ilkId Identifier of the collateral type.
      */
     function cage(bytes32 ilkId) external;
 
     /**
-     * @notice Phase 3a: reclaims an in-flight Dutch auction, returning its collateral and debt to the vault it was
-     *         seized from so the vault settles like every other.
+     * @notice Phase 3a: reclaims an in-flight Dutch auction, returning its collateral and debt to the vault
+     *         it was seized from so the vault settles like every other.
      * @param ilkId Identifier of the collateral type.
      * @param auctionId Identifier of the auction to reclaim.
      */
     function skip(bytes32 ilkId, uint256 auctionId) external;
 
     /**
-     * @notice Phase 3b: settles a vault. Confiscates exactly the collateral needed to back its debt at the settlement
-     *         price and cancels the debt. Any shortfall is recorded in the collateral's gap.
+     * @notice Phase 3b: settles a vault. Confiscates exactly the collateral needed to back its debt at the
+     *         settlement price and cancels the debt. Any shortfall is recorded in the collateral's gap.
      * @param vaultId Identifier of the vault to settle.
      */
     function skim(uint256 vaultId) external;

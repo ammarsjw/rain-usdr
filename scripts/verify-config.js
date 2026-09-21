@@ -79,7 +79,8 @@ const verifyConfig = async () => {
     ]) {
         const ilkData = await vaultEngine.ilks(id);
         assertEq(`VaultEngine.ilks(${name}).line`, ilkData.line, line);
-        // duty defaults to RAY (zero fee) and RAY is the intended launch value for every ilk: asserted, not assumed.
+        // duty defaults to RAY (zero fee) and RAY is the intended launch value for every ilk: asserted, not
+        // assumed.
         assertEq(`VaultEngine.ilks(${name}).duty`, ilkData.duty, RAY);
         assertEq(`VaultEngine.ilks(${name}).rate`, ilkData.rate, RAY);
     }

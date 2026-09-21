@@ -170,7 +170,8 @@ const deployLiquidation = async () => {
     await (await dutchAuctionInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
     await (await balanceSheetInstance.grantRole(WARD_ROLE, liquidationTriggerAddress)).wait();
 
-    // Circuit breaker: 30 minute calm period, 5 minute observation interval (constructor defaults; set explicitly).
+    // Circuit breaker: 30 minute calm period, 5 minute observation interval (constructor defaults; set
+    // explicitly).
     await (
         await circuitBreakerInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("calmPeriod"), 1800n)
     ).wait();

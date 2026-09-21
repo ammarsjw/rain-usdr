@@ -30,8 +30,8 @@ import { MockFeeOnTransferERC20 } from "./mocks/MockFeeOnTransferERC20.sol";
 /**
  * @title VaultEngineCoreTest
  * @author Rain Team
- * @notice Adversarial coverage of the core ledger: authorization, conservation, overflow behaviour, permissions and
- *         vault lifecycle.
+ * @notice Adversarial coverage of the core ledger: authorization, conservation, overflow behaviour,
+ *         permissions and vault lifecycle.
  */
 contract VaultEngineCoreTest is BaseTest {
     bytes32 internal constant TEST_ILK = "TEST-A";
@@ -244,8 +244,8 @@ contract VaultEngineCoreTest is BaseTest {
     /* ========================== 4. OVERFLOW BEHAVIOUR ========================== */
 
     function test_frobSafetyCheckOverflowRevertsDecodably() public {
-        // ink * spot overflows 2^256 at a reachable collateral size: the revert must be the library's decodable
-        // MulOverflow, never a raw arithmetic panic.
+        // ink * spot overflows 2^256 at a reachable collateral size: the revert must be the library's
+        // decodable MulOverflow, never a raw arithmetic panic.
         vaultEngine.file(TEST_ILK, "spot", 100_000 * _RAY);
 
         uint256 hugeInk = type(uint256).max / (100_000 * _RAY) + 1;
@@ -260,8 +260,8 @@ contract VaultEngineCoreTest is BaseTest {
         vm.expectRevert(Math.MulOverflow.selector);
         vaultEngine.frob(vaultId, alice, alice, 0, 1);
 
-        // Critically, the position is NOT bricked: deleveraging out of the overflow zone works because the pure
-        // top-up/repay path skips the safety check.
+        // Critically, the position is NOT bricked: deleveraging out of the overflow zone works because the
+        // pure top-up/repay path skips the safety check.
         vaultEngine.frob(vaultId, alice, alice, -int256(hugeInk / 2), 0);
         vm.stopPrank();
 
@@ -430,8 +430,8 @@ contract VaultEngineCoreTest is BaseTest {
 /**
  * @title TokenAdapterTest
  * @author Rain Team
- * @notice Adversarial coverage of the Collateral Adapter and USDR token: decimal conversion, balance-delta enforcement
- *         (H-2), mint/burn authority and lifecycle guards.
+ * @notice Adversarial coverage of the Collateral Adapter and USDR token: decimal conversion, balance-delta
+ *         enforcement (H-2), mint/burn authority and lifecycle guards.
  */
 contract TokenAdapterTest is BaseTest {
     address internal alice = address(0xA11CE);
@@ -439,8 +439,8 @@ contract TokenAdapterTest is BaseTest {
     /* ========================== 1. FEE-ON-TRANSFER ========================== */
 
     function test_joinRevertsOnFeeOnTransferToken() public {
-        // A 1% fee token registered as collateral must be unusable: join measures the received delta and refuses any
-        // shortfall, so the shared adapter can never be silently under-collateralized.
+        // A 1% fee token registered as collateral must be unusable: join measures the received delta and
+        // refuses any shortfall, so the shared adapter can never be silently under-collateralized.
         MockFeeOnTransferERC20 feeToken = new MockFeeOnTransferERC20("Fee Token", "FEE", 18, 100);
         bytes32 feeIlk = "FEE-A";
 
@@ -638,8 +638,9 @@ contract TokenAdapterTest is BaseTest {
 /**
  * @title StabilityFeeTest
  * @author Rain Team
- * @notice Coverage of stability fee accrual: drip idempotency and compounding, fee crediting, frob and bark auto-drip,
- *         non-retroactive duty changes, dust and liquidation math at rate > RAY, and the post-cage freeze.
+ * @notice Coverage of stability fee accrual: drip idempotency and compounding, fee crediting, frob and bark
+ *         auto-drip, non-retroactive duty changes, dust and liquidation math at rate > RAY, and the post-cage
+ *         freeze.
  */
 contract StabilityFeeTest is BaseTest {
     bytes32 internal constant TEST_ILK = "TEST-A";
@@ -775,9 +776,9 @@ contract StabilityFeeTest is BaseTest {
         // A fresh engine without feeRecipient wiring.
         vm.startPrank(address(this));
 
-        // Reuse the shared engine by unsetting is impossible (file rejects zero), so deploy expectations directly:
-        // this test uses a dedicated assertion on the shared engine by checking the error path via a mock is
-        // unnecessary, instead verify the error surfaces from a brand-new engine.
+        // Reuse the shared engine by unsetting is impossible (file rejects zero), so deploy expectations
+        // directly: this test uses a dedicated assertion on the shared engine by checking the error path via
+        // a mock is unnecessary, instead verify the error surfaces from a brand-new engine.
         vm.stopPrank();
 
         // Deploy a minimal standalone engine.
@@ -841,8 +842,8 @@ contract StabilityFeeTest is BaseTest {
 
     function test_frobDripsUnconditionallyIncludingCollateralOnlyChanges() public {
         // Audit H-1: a pure collateral change must ALSO drip. The dangerous branch is a withdrawal (dink < 0,
-        // dart == 0): its safety check prices the debt as art * rate, and a stale rate there understates the debt by
-        // the entire undripped accrual, authorizing withdrawals the true debt would forbid.
+        // dart == 0): its safety check prices the debt as art * rate, and a stale rate there understates the
+        // debt by the entire undripped accrual, authorizing withdrawals the true debt would forbid.
         vaultEngine.file(TEST_ILK, "duty", DUTY_5PCT);
 
         uint256 vaultId = _openTestVault(alice, 1000e18, 100e18);
@@ -863,9 +864,9 @@ contract StabilityFeeTest is BaseTest {
     }
 
     function test_collateralWithdrawalPricedAtFreshRate() public {
-        // Audit H-1, the attack shape: draw at rate RAY, wait years without any drip, then withdraw collateral down
-        // to the minimum the STALE rate would allow. With the fix, frob drips first, so the withdrawal is checked
-        // against the true accrued debt and reverts.
+        // Audit H-1, the attack shape: draw at rate RAY, wait years without any drip, then withdraw
+        // collateral down to the minimum the STALE rate would allow. With the fix, frob drips first, so the
+        // withdrawal is checked against the true accrued debt and reverts.
         vaultEngine.file(TEST_ILK, "duty", DUTY_5PCT);
 
         uint256 vaultId = _openTestVault(alice, 1000e18, 100e18);
@@ -893,13 +894,14 @@ contract StabilityFeeTest is BaseTest {
         // Zero fee for a year...
         skip(365 days);
 
-        // ...then a high duty is filed. The elapsed year must accrue at the OLD duty (RAY, zero fee): filing must not
-        // apply the new duty retroactively over the gap.
+        // ...then a high duty is filed. The elapsed year must accrue at the OLD duty (RAY, zero fee): filing
+        // must not apply the new duty retroactively over the gap.
         vaultEngine.file(TEST_ILK, "duty", DUTY_100PCT);
 
         assertEq(_rate(TEST_ILK), _RAY, "gap accrued at old (zero) duty");
 
-        // Symmetric direction: accrue at the high duty, then file a lower one; the gap uses the old HIGH duty.
+        // Symmetric direction: accrue at the high duty, then file a lower one; the gap uses the old HIGH
+        // duty.
         skip(365 days);
 
         uint256 expected = Math.rmul(Math.rpow(DUTY_100PCT, 365 days, _RAY), _RAY);
@@ -940,8 +942,8 @@ contract StabilityFeeTest is BaseTest {
     }
 
     function test_barkUsesFreshRateAndThresholdMathAtRateAboveRay() public {
-        // RAIN priced at 1: spot = 0.25 (mat 400%). A vault at 800 ink / 190 art is safe with headroom, then fees push
-        // it below the bark threshold with NO price move.
+        // RAIN priced at 1: spot = 0.25 (mat 400%). A vault at 800 ink / 190 art is safe with headroom, then
+        // fees push it below the bark threshold with NO price move.
         _setRainPrice(1e18);
 
         uint256 vaultId = _openRainVault(address(this), 800e18, 190e18);
@@ -952,8 +954,8 @@ contract StabilityFeeTest is BaseTest {
         vm.expectRevert(ILiquidationTrigger.NotUnsafe.selector);
         liquidationTrigger.bark(vaultId, address(this));
 
-        // A year of ~100% APY roughly doubles the debt: the vault becomes barkable purely through accrual. bark must
-        // drip first (fresh rate) so the unsafe check and the tab see the accrued debt.
+        // A year of ~100% APY roughly doubles the debt: the vault becomes barkable purely through accrual.
+        // bark must drip first (fresh rate) so the unsafe check and the tab see the accrued debt.
         skip(365 days);
 
         uint256 id = liquidationTrigger.bark(vaultId, address(this));
@@ -973,7 +975,8 @@ contract StabilityFeeTest is BaseTest {
     /* ========================== 5. FEE EXEMPTION (C-1) ========================== */
 
     function test_exemptFeePinsDutyToRay() public {
-        // Audit C-1: a fee-exempt ilk rejects any duty above RAY, forever. Filing RAY itself stays legal (no-op).
+        // Audit C-1: a fee-exempt ilk rejects any duty above RAY, forever. Filing RAY itself stays legal
+        // (no-op).
         vaultEngine.exemptFee(TEST_ILK);
 
         vm.expectRevert(InvalidDuty.selector);
@@ -1018,8 +1021,9 @@ contract StabilityFeeTest is BaseTest {
     /* ========================== 6. DUTY BOUND & ESCAPE HATCH (H-2) ========================== */
 
     function test_dutyUpperBoundRejectsBrickingValues() public {
-        // Audit H-2: unbounded duty values brick the ilk via rpow overflow. The classic fat-finger (1.5e27 = 50%
-        // per SECOND, intending 1.0000000015e27) and the audit's 2.0e27 case must both be rejected at file time.
+        // Audit H-2: unbounded duty values brick the ilk via rpow overflow. The classic fat-finger (1.5e27 =
+        // 50% per SECOND, intending 1.0000000015e27) and the audit's 2.0e27 case must both be rejected at
+        // file time.
         vm.expectRevert(InvalidDuty.selector);
         vaultEngine.file(TEST_ILK, "duty", 2 * _RAY);
 
@@ -1040,9 +1044,10 @@ contract StabilityFeeTest is BaseTest {
     }
 
     function test_fileDutyRemainsUsableEvenIfDripReverts() public {
-        // Audit H-2 (escape hatch): file("duty") drips first, and on a standalone engine with fees accrued but no
-        // feeRecipient, that drip REVERTS. Filing a duty must survive it (non-fatal drip) so governance can always
-        // reconfigure — the deadlock was: bad duty -> drip reverts -> file reverts -> unrecoverable.
+        // Audit H-2 (escape hatch): file("duty") drips first, and on a standalone engine with fees accrued
+        // but no feeRecipient, that drip REVERTS. Filing a duty must survive it (non-fatal drip) so
+        // governance can always reconfigure — the deadlock was: bad duty -> drip reverts -> file reverts ->
+        // unrecoverable.
         VaultEngineHarness engine = new VaultEngineHarness();
 
         engine.init(TEST_ILK);
@@ -1073,8 +1078,8 @@ contract StabilityFeeTest is BaseTest {
     /* ========================== 7. CAGE SETTLES FEES (M-1) ========================== */
 
     function test_cageDripsAllIlksSoNoFeeIsForgiven() public {
-        // Audit M-1: fees undripped at cage time used to be silently forgiven (rates freeze), shorting redeemers.
-        // cage() must drip every registered ilk first so settlement sees the exact accrued debt.
+        // Audit M-1: fees undripped at cage time used to be silently forgiven (rates freeze), shorting
+        // redeemers. cage() must drip every registered ilk first so settlement sees the exact accrued debt.
         vaultEngine.file(TEST_ILK, "duty", DUTY_5PCT);
         _openTestVault(alice, 1000e18, 500e18);
 
@@ -1127,8 +1132,8 @@ contract StabilityFeeTest is BaseTest {
 /**
  * @title CoreAuditTest
  * @author Rain Team
- * @notice Audit regressions exercising the core ledger: draw-at-mat boundaries, multi-vault independence and vault
- *         existence/permission guards.
+ * @notice Audit regressions exercising the core ledger: draw-at-mat boundaries, multi-vault independence and
+ *         vault existence/permission guards.
  */
 contract CoreAuditTest is BaseTest {
     /* ========================== HELPERS ========================== */
@@ -1136,8 +1141,9 @@ contract CoreAuditTest is BaseTest {
     /// @dev Pushes `price` [wad] through the OSM (two pokes) and into the Vault Engine's spot.
     function _setRainPrice(uint256 price) internal {
         rainPriceSource.setPrice(price);
-        // The OSM snaps its delay anchor down to the HOP boundary, so warp to fresh boundaries. Read the clock via the
-        // cheatcode: the compiler may otherwise rematerialize a stale block.timestamp across warps under via-ir.
+        // The OSM snaps its delay anchor down to the HOP boundary, so warp to fresh boundaries. Read the
+        // clock via the cheatcode: the compiler may otherwise rematerialize a stale block.timestamp across
+        // warps under via-ir.
         vm.warp(((vm.getBlockTimestamp() / 1800) + 2) * 1800);
         osm.poke(RAIN_ILK);
         vm.warp(vm.getBlockTimestamp() + 3600);
@@ -1162,9 +1168,9 @@ contract CoreAuditTest is BaseTest {
     function test_frobDrawAtExactlyMatSucceedsAboveFails() public {
         _setRainPrice(1e18);
 
-        // Seed the stable reserve: frob now recomputes the solvency invariant on every risk-increasing change, and a
-        // 100 USDR draw against 400 RAIN carries a stressed loss of 30 (100 - 400 * 0.5 * 0.35 * 1). Without a reserve
-        // the gate (correctly) fires before the safety check this test targets.
+        // Seed the stable reserve: frob now recomputes the solvency invariant on every risk-increasing
+        // change, and a 100 USDR draw against 400 RAIN carries a stressed loss of 30 (100 - 400 * 0.5 * 0.35
+        // * 1). Without a reserve the gate (correctly) fires before the safety check this test targets.
         usdt.mint(keeper, 100e6);
         vm.startPrank(keeper);
         usdt.approve(address(psm), 100e6);

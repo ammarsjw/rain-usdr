@@ -7,7 +7,8 @@ import { IPriceSource } from "./IPriceSource.sol";
 /**
  * @title IOracleSecurityModule
  * @author Rain Team
- * @notice Interface for the delayed price feed serving every priced collateral from a single deployed instance.
+ * @notice Interface for the delayed price feed serving every priced collateral from a single deployed
+ *         instance.
  */
 interface IOracleSecurityModule {
     /* ========================== TYPES ========================== */
@@ -70,7 +71,8 @@ interface IOracleSecurityModule {
     event Poke(bytes32 indexed ilkId, uint128 current, uint128 next);
 
     /**
-     * @dev Emitted when a poke finds the price source reporting an invalid value. The stored prices are untouched.
+     * @dev Emitted when a poke finds the price source reporting an invalid value. The stored prices are
+     *      untouched.
      * @param ilkId Identifier of the collateral type.
      * @param src Address of the price source that failed.
      */
@@ -92,8 +94,8 @@ interface IOracleSecurityModule {
 
     /**
      * @notice Sets an address dependency {solvencyEngine}.
-     * @dev The Solvency Engine is consulted SOFTLY after every successful poke: the breach flag is refreshed but a
-     *      failure can never block the price update.
+     * @dev The Solvency Engine is consulted SOFTLY after every successful poke: the breach flag is refreshed
+     *      but a failure can never block the price update.
      * @param what Name of the parameter.
      * @param data New address.
      */
@@ -101,10 +103,11 @@ interface IOracleSecurityModule {
 
     /**
      * @notice Freezes a collateral's price updates.
-     * @dev CAUTION: stop blocks {poke} only; {peek}/{read} keep serving the LAST STORED price as live (`has == true`),
-     *      so consumers continue trusting a frozen value. Use stop when the stored price is trusted and updates must
-     *      halt (e.g. source maintenance). For a suspected-compromised feed use {void}, which is fail-closed: it wipes
-     *      the stored prices so consumers value the collateral at zero.
+     * @dev CAUTION: stop blocks {poke} only; {peek}/{read} keep serving the LAST STORED price as live
+     *      (`has == true`), so consumers continue trusting a frozen value. Use stop when the stored price is
+     *      trusted and updates must halt (e.g. source maintenance). For a suspected-compromised feed use
+     *      {void}, which is fail-closed: it wipes the stored prices so consumers value the collateral at
+     *      zero.
      * @param ilkId Identifier of the collateral type.
      */
     function stop(bytes32 ilkId) external;
@@ -122,19 +125,19 @@ interface IOracleSecurityModule {
     function void(bytes32 ilkId) external;
 
     /**
-     * @notice Registers a collateral's price source, or switches an existing one. This is how new tokens are added to
-     *         the module. Any {IPriceSource} adapter works, whether it wraps a Uniswap time-weighted average or a
-     *         Chainlink feed.
-     * @dev Future updates read from the new source. Consumers keep reading the same current price until the next poke
-     *      cycle completes.
+     * @notice Registers a collateral's price source, or switches an existing one. This is how new tokens are
+     *         added to the module. Any {IPriceSource} adapter works, whether it wraps a Uniswap time-weighted
+     *         average or a Chainlink feed.
+     * @dev Future updates read from the new source. Consumers keep reading the same current price until the
+     *      next poke cycle completes.
      * @param ilkId Identifier of the collateral type.
      * @param newSrc Address of the new price source.
      */
     function change(bytes32 ilkId, IPriceSource newSrc) external;
 
     /**
-     * @notice Advances a collateral's price: the next price becomes current and a fresh price is read from the source
-     *         to become the new next.
+     * @notice Advances a collateral's price: the next price becomes current and a fresh price is read from
+     *         the source to become the new next.
      * @dev Public, anyone may call, but the 30 minute minimum is always enforced.
      * @param ilkId Identifier of the collateral type.
      */

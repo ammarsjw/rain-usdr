@@ -40,8 +40,8 @@ import { MockPriceSource } from "../mocks/MockPriceSource.sol";
 /**
  * @title BaseTest
  * @author Rain Team
- * @notice Shared test harness that deploys and wires the full USDR system. Concrete test contracts inherit from this
- *         and add their own scenarios.
+ * @notice Shared test harness that deploys and wires the full USDR system. Concrete test contracts inherit
+ *         from this and add their own scenarios.
  */
 abstract contract BaseTest is Test {
     /* ========================== STATE VARIABLES ========================== */
@@ -108,13 +108,14 @@ abstract contract BaseTest is Test {
         dutchAuction = new DutchAuction(RAIN_ILK, vaultEngine);
         circuitBreaker = new CircuitBreaker(RAIN_ILK, osm);
 
-        // Wiring the core. Vault Engine ilks must exist before the PSM registers its ilks: PSM registration opens the
-        // module's dedicated vault in the Vault Engine.
+        // Wiring the core. Vault Engine ilks must exist before the PSM registers its ilks: PSM registration
+        // opens the module's dedicated vault in the Vault Engine.
         vaultEngine.init(RAIN_ILK);
         vaultEngine.init(USDT_ILK);
         vaultEngine.init(USDC_ILK);
 
-        // Permanently pinning the stable (PSM) ilks' stability fee to zero (audit C-1). PSM.init requires this.
+        // Permanently pinning the stable (PSM) ilks' stability fee to zero (audit C-1). PSM.init requires
+        // this.
         vaultEngine.exemptFee(USDT_ILK);
         vaultEngine.exemptFee(USDC_ILK);
 
@@ -155,8 +156,8 @@ abstract contract BaseTest is Test {
         solvencyEngine.file("osm", address(osm));
         osm.grantRole(_READER_ROLE, address(solvencyEngine));
 
-        // Wiring the solvency gate: hard gates (frob, PSM redemption, surplus distribution) and soft refresh hooks
-        // (OSM poke, drip inside the Vault Engine).
+        // Wiring the solvency gate: hard gates (frob, PSM redemption, surplus distribution) and soft refresh
+        // hooks (OSM poke, drip inside the Vault Engine).
         vaultEngine.file("solvencyEngine", address(solvencyEngine));
         psm.file("solvencyEngine", address(solvencyEngine));
         balanceSheet.file("solvencyEngine", address(solvencyEngine));

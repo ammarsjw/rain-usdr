@@ -35,8 +35,8 @@ interface ISolvencyEngine {
     event RemoveVolatileIlk(bytes32 indexed ilkId);
 
     /**
-     * @dev Emitted when the external exposure reporter reverts or reports above the cap, and the conservative cap is
-     *      used instead.
+     * @dev Emitted when the external exposure reporter reverts or reports above the cap, and the conservative
+     *      cap is used instead.
      * @param reported The value reported (`type(uint256).max` when the reporter reverted).
      * @param cap The exposure cap that was applied [wad].
      */
@@ -93,9 +93,10 @@ interface ISolvencyEngine {
     function removeVolatileIlk(bytes32 ilkId) external;
 
     /**
-     * @notice Recomputes the master rule: worst-case loss must stay under the gated fraction of the stable reserve.
-     * @dev NEVER reverts on a breach: it always updates the committed escrow and the {breached} flag so downstream
-     *      accounting can never go stale. A keeper bot is expected to call this regularly.
+     * @notice Recomputes the master rule: worst-case loss must stay under the gated fraction of the stable
+     *         reserve.
+     * @dev NEVER reverts on a breach: it always updates the committed escrow and the {breached} flag so
+     *      downstream accounting can never go stale. A keeper bot is expected to call this regularly.
      * @return loss The worst-case loss under stress [wad].
      * @return reserve The current stable reserve [wad].
      */
@@ -113,8 +114,8 @@ interface ISolvencyEngine {
 
     /**
      * @notice Calculates the most the protocol could lose, assuming a crisis.
-     * @dev Assumes volatile assets marked down 50%, liquidation depth at 35% of normal, and correlated assets crashing
-     *      together, plus any reported prediction market exposure.
+     * @dev Assumes volatile assets marked down 50%, liquidation depth at 35% of normal, and correlated assets
+     *      crashing together, plus any reported prediction market exposure.
      * @return loss The worst-case loss under stress [wad].
      */
     function worstCaseLoss() external view returns (uint256 loss);
@@ -140,7 +141,8 @@ interface ISolvencyEngine {
     function stressDepth() external view returns (uint256);
 
     /**
-     * @notice Returns the reserve fraction above which a worst-case loss flags a breach [wad]. 90% = 0.9 * WAD.
+     * @notice Returns the reserve fraction above which a worst-case loss flags a breach [wad]. 90% = 0.9 *
+     *         WAD.
      */
     function reserveFactor() external view returns (uint256);
 

@@ -14,18 +14,20 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title OracleSecurityModule
  * @author Rain Team
- * @notice The delayed price feed. Holds prices back by {delay} so that if a price is manipulated, there is time to
- *         detect and respond before the system acts on it. Stores two prices per collateral type: the current one
- *         (which the system uses) and the next one (which becomes current after the delay). A single deployed instance
- *         serves every priced collateral: tokens are registered dynamically, each with its own price source.
+ * @notice The delayed price feed. Holds prices back by {delay} so that if a price is manipulated, there is
+ *         time to detect and respond before the system acts on it. Stores two prices per collateral type: the
+ *         current one (which the system uses) and the next one (which becomes current after the delay). A
+ *         single deployed instance serves every priced collateral: tokens are registered dynamically, each
+ *         with its own price source.
  *
- *         The delay is a HARD bound: the last poke's exact timestamp is stored unsnapped, so the next poke is only
- *         accepted a full {HOP} after the previous one. A price entering `nxt` therefore always resides there for at
- *         least {HOP} before it can be promoted to `cur`. There is no boundary alignment and no one-second worst case.
- * @dev A single multi-collateral module keyed by ilk identifier. The per-ilk price source is any {IPriceSource}
- *      implementation, such as a dedicated Uniswap time-weighted average wrapper, a Chainlink feed wrapper, or any
- *      future adapter, so the module never needs to know what kind of oracle backs a token. Sources are switchable by
- *      governance per ilk without any other contract changing.
+ *         The delay is a HARD bound: the last poke's exact timestamp is stored unsnapped, so the next poke is
+ *         only accepted a full {HOP} after the previous one. A price entering `nxt` therefore always resides
+ *         there for at least {HOP} before it can be promoted to `cur`. There is no boundary alignment and no
+ *         one-second worst case.
+ * @dev A single multi-collateral module keyed by ilk identifier. The per-ilk price source is any
+ *      {IPriceSource} implementation, such as a dedicated Uniswap time-weighted average wrapper, a Chainlink
+ *      feed wrapper, or any future adapter, so the module never needs to know what kind of oracle backs a
+ *      token. Sources are switchable by governance per ilk without any other contract changing.
  */
 contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -131,23 +133,24 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
 
         (bytes32 wut, bool ok) = ilk.src.peek();
 
-        // A valid-but-zero price is treated as a failed report: zero is never a real market price, and letting it
-        // propagate would freeze minting via a zero spot while looking like a healthy update to monitoring.
+        // A valid-but-zero price is treated as a failed report: zero is never a real market price, and
+        // letting it propagate would freeze minting via a zero spot while looking like a healthy update to
+        // monitoring.
         if (ok && uint256(wut) != 0) {
             ilk.cur = ilk.nxt;
             ilk.nxt = Feed(uint128(uint256(wut)), 1);
 
-            // Stored UNSNAPPED: snapping down to the HOP boundary would let a poke at boundary+1799 be followed one
-            // second later, collapsing the guaranteed nxt->cur residency to 1 second. The exact timestamp makes {HOP}
-            // a hard minimum interval between pokes.
+            // Stored UNSNAPPED: snapping down to the HOP boundary would let a poke at boundary+1799 be
+            // followed one second later, collapsing the guaranteed nxt->cur residency to 1 second. The exact
+            // timestamp makes {HOP} a hard minimum interval between pokes.
             ilk.delay = uint64(block.timestamp);
 
             emit Poke({ ilkId: ilkId, current: ilk.cur.val, next: ilk.nxt.val });
 
-            // Soft solvency refresh: a price advance is where a breach FIRST becomes visible (the one input nobody
-            // controls), so the breach flag is recomputed immediately rather than waiting for the next keeper cycle.
-            // This NEVER reverts: censoring a price update because it carries bad news is how systems die, so the call
-            // is wrapped and a mis-wired engine can never block the feed.
+            // Soft solvency refresh: a price advance is where a breach FIRST becomes visible (the one input
+            // nobody controls), so the breach flag is recomputed immediately rather than waiting for the next
+            // keeper cycle. This NEVER reverts: censoring a price update because it carries bad news is how
+            // systems die, so the call is wrapped and a mis-wired engine can never block the feed.
             if (solvencyEngine != address(0)) {
                 try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
             }

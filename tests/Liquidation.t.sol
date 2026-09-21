@@ -24,8 +24,8 @@ import { MockAuctionCallee } from "./mocks/MockAuctionCallee.sol";
 /**
  * @title LiquidationTest
  * @author Rain Team
- * @notice Adversarial coverage of the liquidation stack: bark capacity accounting, the M-6 auction breaker and
- *         governance pause, take/redo economics and parameter guards.
+ * @notice Adversarial coverage of the liquidation stack: bark capacity accounting, the M-6 auction breaker
+ *         and governance pause, take/redo economics and parameter guards.
  */
 contract LiquidationTest is BaseTest {
     /* ========================== HELPERS ========================== */
@@ -66,10 +66,10 @@ contract LiquidationTest is BaseTest {
     /* ========================== 1. BARK CAPACITY (hole/dirt) ========================== */
 
     function test_barkRespectsHoleAndDigsFreesCapacity() public {
-        // Both vaults and the bidder are set up BEFORE the crash: _setRainPrice warps hours forward, and the auction
-        // must still be fresh (tail = 1800s) when the take executes. The bidder is funded FIRST: selling stables seeds
-        // the reserve, and frob's hard solvency gate now recomputes the invariant on every draw, so the vaults'
-        // stressed loss must already be covered when they open.
+        // Both vaults and the bidder are set up BEFORE the crash: _setRainPrice warps hours forward, and the
+        // auction must still be fresh (tail = 1800s) when the take executes. The bidder is funded FIRST:
+        // selling stables seeds the reserve, and frob's hard solvency gate now recomputes the invariant on
+        // every draw, so the vaults' stressed loss must already be covered when they open.
         _setRainPrice(1e18);
         _fundBidder(address(0xB1D), 300e6);
         uint256 vaultId = _openVault(user, 800e18, 200e18);
@@ -157,8 +157,9 @@ contract LiquidationTest is BaseTest {
         // Funding the bidder BEFORE the pause: the PSM is pause-gated too, so this must happen while live.
         _fundBidder(address(0xB1D), 200e6);
 
-        // Pausing: in-flight takes must stop (the rev-4 scenario where keepers extracted collateral at bad-feed prices
-        // during a paused incident). The governor is already wired into the auction house in Base.
+        // Pausing: in-flight takes must stop (the rev-4 scenario where keepers extracted collateral at
+        // bad-feed prices during a paused incident). The governor is already wired into the auction house in
+        // Base.
         governor.pause();
 
         (, uint256 price, , ) = dutchAuction.getStatus(id);
@@ -280,8 +281,8 @@ contract LiquidationTest is BaseTest {
 /**
  * @title CircuitBreakerTest
  * @author Rain Team
- * @notice Coverage of the oracle-deviation breaker: activation, calm-period deactivation, trend anchoring, observation
- *         cadence and the liquidation throttle interaction.
+ * @notice Coverage of the oracle-deviation breaker: activation, calm-period deactivation, trend anchoring,
+ *         observation cadence and the liquidation throttle interaction.
  */
 contract CircuitBreakerTest is BaseTest {
     /* ========================== HELPERS ========================== */
@@ -360,9 +361,9 @@ contract CircuitBreakerTest is BaseTest {
         assertTrue(circuitBreaker.active(), "activated on crash");
         assertGt(circuitBreaker.activatedAt(), 0, "activation clock set");
 
-        // The trigger throttles available room to 20% while active. Cap the ilk hole at 1000 rad: throttled room
-        // = 1000 x 0.2 = 200 rad -> dart = 200/1.13 = ~177e18, a genuine partial (art 400e18) whose auction (177 rad)
-        // and remainder (223 rad) both clear the 100 rad dust bar.
+        // The trigger throttles available room to 20% while active. Cap the ilk hole at 1000 rad: throttled
+        // room = 1000 x 0.2 = 200 rad -> dart = 200/1.13 = ~177e18, a genuine partial (art 400e18) whose
+        // auction (177 rad) and remainder (223 rad) both clear the 100 rad dust bar.
         liquidationTrigger.file(RAIN_ILK, "hole", 1000 * _RAD);
 
         uint256 id = liquidationTrigger.bark(vaultId, keeper);
@@ -386,8 +387,8 @@ contract CircuitBreakerTest is BaseTest {
         circuitBreaker.check();
         assertTrue(circuitBreaker.active(), "still deviated -> still active (clock re-anchored)");
 
-        // The price recovers toward the trend... but the trend has also been absorbing crash observations, so drive
-        // enough calm observations that deviation falls under threshold, then wait out the calm period.
+        // The price recovers toward the trend... but the trend has also been absorbing crash observations, so
+        // drive enough calm observations that deviation falls under threshold, then wait out the calm period.
         _setOsmPrice(1e18);
 
         for (uint256 i; i < 12; ++i) {
@@ -462,8 +463,8 @@ contract CircuitBreakerTest is BaseTest {
 /**
  * @title AuctionDepthTest
  * @author Rain Team
- * @notice Deep coverage of the Dutch auction: price decay, flash callbacks, partial-purchase chost adjustment, redo
- *         pricing, yank-to-caller semantics and post-cage behaviour.
+ * @notice Deep coverage of the Dutch auction: price decay, flash callbacks, partial-purchase chost
+ *         adjustment, redo pricing, yank-to-caller semantics and post-cage behaviour.
  */
 contract AuctionDepthTest is BaseTest {
     /* ========================== HELPERS ========================== */
@@ -520,8 +521,8 @@ contract AuctionDepthTest is BaseTest {
         // top = 0.6 * 1.05 = 0.63 ray-scaled.
         assertEq(startPrice, (0.6e18 * 105 * 1e9) / 100, "top = feed x buf");
 
-        // Half tau: half price (linear curve, tau = 3600). At exactly tail seconds the auction is NOT yet resettable
-        // (done requires elapsed > tail); one second later it is.
+        // Half tau: half price (linear curve, tau = 3600). At exactly tail seconds the auction is NOT yet
+        // resettable (done requires elapsed > tail); one second later it is.
         vm.warp(vm.getBlockTimestamp() + 1800);
         (bool needsRedo, uint256 halfPrice, , ) = dutchAuction.getStatus(id);
 
@@ -595,8 +596,8 @@ contract AuctionDepthTest is BaseTest {
     }
 
     function test_partialBelowChostRevertsWhenTabTooSmall() public {
-        // Engineer a tab at exactly chost: any partial would leave a sub-chost remainder and the whole tab is not
-        // above chost, so NoPartialPurchase fires.
+        // Engineer a tab at exactly chost: any partial would leave a sub-chost remainder and the whole tab is
+        // not above chost, so NoPartialPurchase fires.
         _setRainPrice(1e18);
         uint256 vaultId = _openVault(user, 400e18, 100e18);
         _fundBidder(address(0xB1D), 300e6);
@@ -722,8 +723,8 @@ contract AuctionDepthTest is BaseTest {
 /**
  * @title LiquidationAuditTest
  * @author Rain Team
- * @notice Audit regressions exercising the liquidation stack: bark thresholds, dart precision ordering and the Dutch
- *         Auction chost boundary behaviour.
+ * @notice Audit regressions exercising the liquidation stack: bark thresholds, dart precision ordering and
+ *         the Dutch Auction chost boundary behaviour.
  */
 contract LiquidationAuditTest is BaseTest {
     /* ========================== HELPERS ========================== */
@@ -731,8 +732,9 @@ contract LiquidationAuditTest is BaseTest {
     /// @dev Pushes `price` [wad] through the OSM (two pokes) and into the Vault Engine's spot.
     function _setRainPrice(uint256 price) internal {
         rainPriceSource.setPrice(price);
-        // The OSM snaps its delay anchor down to the HOP boundary, so warp to fresh boundaries. Read the clock via the
-        // cheatcode: the compiler may otherwise rematerialize a stale block.timestamp across warps under via-ir.
+        // The OSM snaps its delay anchor down to the HOP boundary, so warp to fresh boundaries. Read the
+        // clock via the cheatcode: the compiler may otherwise rematerialize a stale block.timestamp across
+        // warps under via-ir.
         vm.warp(((vm.getBlockTimestamp() / 1800) + 2) * 1800);
         osm.poke(RAIN_ILK);
         vm.warp(vm.getBlockTimestamp() + 3600);
@@ -786,8 +788,8 @@ contract LiquidationAuditTest is BaseTest {
         uint256 healthyVault = _openVault(user, 800e18, 100e18);
         uint256 riskyVault = _openVault(user, 400e18, 100e18);
 
-        // At 64% of mat for the risky vault, the healthy vault (at 128% of mat) must NOT be barkable while the risky
-        // one is: the 65% barkFactor is evaluated against each vault's own ink/art in isolation.
+        // At 64% of mat for the risky vault, the healthy vault (at 128% of mat) must NOT be barkable while
+        // the risky one is: the 65% barkFactor is evaluated against each vault's own ink/art in isolation.
         _setRainPrice(0.64e18);
 
         vm.expectRevert(ILiquidationTrigger.NotUnsafe.selector);
@@ -883,8 +885,8 @@ contract LiquidationAuditTest is BaseTest {
         collateralAdapter.join(_USDR_ILK, keeper, 250e18);
         vaultEngine.hope(address(dutchAuction));
 
-        // Requesting a slice whose owe would leave a remainder below chost: the purchase must adjust down to leave
-        // exactly chost instead of reverting.
+        // Requesting a slice whose owe would leave a remainder below chost: the purchase must adjust down to
+        // leave exactly chost instead of reverting.
         (, uint256 price, , ) = dutchAuction.getStatus(id);
         uint256 amt = ((tab - chost / 2) / price) + 1;
 
@@ -898,9 +900,9 @@ contract LiquidationAuditTest is BaseTest {
     /* ========================== TAU GUARD (M-8) ========================== */
 
     function test_tauZeroRejected() public {
-        // Audit M-8: tau == 0 makes price() return 0 for every duration — every take reverts, redo cannot recover,
-        // and all auctioned collateral is unsellable until governance re-files. The value must be refused at file
-        // time (Maker's LinearDecrease accepts it; USDR does not).
+        // Audit M-8: tau == 0 makes price() return 0 for every duration — every take reverts, redo cannot
+        // recover, and all auctioned collateral is unsellable until governance re-files. The value must be
+        // refused at file time (Maker's LinearDecrease accepts it; USDR does not).
         vm.expectRevert(InvalidAmount.selector);
         priceCurve.file("tau", 0);
 

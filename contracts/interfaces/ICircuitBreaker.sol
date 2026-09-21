@@ -40,8 +40,8 @@ interface ICircuitBreaker {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Adjusts the deviation threshold {threshold}, the calm period in seconds {calmPeriod}, or the minimum
-     *         spacing between trend observations {obsInterval}.
+     * @notice Adjusts the deviation threshold {threshold}, the calm period in seconds {calmPeriod}, or the
+     *         minimum spacing between trend observations {obsInterval}.
      * @param what Name of the parameter.
      * @param data New value.
      */
@@ -49,8 +49,8 @@ interface ICircuitBreaker {
 
     /**
      * @notice Determines whether prices are moving abnormally and sets the breaker on or off.
-     * @dev Public, anyone can call. Activates above the threshold. Deactivates only once a full calm period has
-     *      elapsed since the last above-threshold reading and the deviation is back under the threshold.
+     * @dev Public, anyone can call. Activates above the threshold. Deactivates only once a full calm period
+     *      has elapsed since the last above-threshold reading and the deviation is back under the threshold.
      */
     function check() external;
 
@@ -80,8 +80,8 @@ interface ICircuitBreaker {
     function threshold() external view returns (uint256);
 
     /**
-     * @notice Returns the calm period in seconds that must elapse after the last above-threshold reading before the
-     *         breaker may deactivate.
+     * @notice Returns the calm period in seconds that must elapse after the last above-threshold reading
+     *         before the breaker may deactivate.
      */
     function calmPeriod() external view returns (uint256);
 
