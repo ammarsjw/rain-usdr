@@ -1,6 +1,6 @@
 {
     "name": "rain-usdr",
-    "version": "1.0.0",
+    "version": "1.0.0-beta.0",
     "description": "USDR (Rain Dollar) multi-collateral over-collateralized stablecoin",
     "license": "MIT",
     "author": "Rain Team",
@@ -40,8 +40,7 @@
         "format-build": "npm run format && npm run build",
         "format-compile": "npm run format && npm run compile",
         "format-lint": "npm run format && npm run lint",
-        "format-lint-build": "npm run format && npm run lint && npm run build",
-        "format-lint-compile": "npm run format && npm run lint && npm run compile",
+        "format-wrap": "npm run format && npm run wrap",
         "lint": "solhint --max-warnings 0 {contracts,tests}/**/*.sol",
         "test": "forge test",
         "test-force": "forge build --force && npm run test",
@@ -49,7 +48,8 @@
         "test-log": "npm run test -- -vv",
         "test-quick": "npm run test -- --no-compile",
         "test-report": "npm run test -- --gas-report",
-        "test-verbose": "npm run test -- -vvvvv"
+        "test-verbose": "npm run test -- -vvvvv",
+        "wrap": "bash scripts/bash/wrap_comments.sh 'contracts/**/*.sol' 'scripts/**/*.js' 'tests/**/*.sol'"
     },
     "dependencies": {
         "@openzeppelin/contracts": "5.4.0"
