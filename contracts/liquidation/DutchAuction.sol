@@ -64,6 +64,12 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     uint256 public stopped;
 
     /// @inheritdoc IDutchAuction
+    uint256 public totalTab;
+
+    /// @inheritdoc IDutchAuction
+    uint256 public totalLot;
+
+    /// @inheritdoc IDutchAuction
     address public vow;
 
     /// @inheritdoc IDutchAuction
@@ -216,6 +222,10 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         sales[id].top = top;
 
+        // Tracking aggregate in-auction exposure so the Solvency Engine can price seized-but-unsettled risk.
+        totalTab += tab;
+        totalLot += lot;
+
         // Incentive to kick the auction: the keeper reward is created as backed-later debt.
         uint256 coin;
 
@@ -359,6 +369,10 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             tab -= owe;
             lot -= slice;
 
+            // The covered debt and sold collateral leave the aggregate in-auction exposure.
+            totalTab -= owe;
+            totalLot -= slice;
+
             // Sending the collateral to the keeper (or their callback contract).
             VAULT_ENGINE.flux(ILK_ID, address(this), who, slice);
 
@@ -378,10 +392,16 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         }
 
         if (lot == 0) {
+            // The lot is exhausted: any unrecovered tab leaves the in-auction exposure here and lands on the
+            // balance sheet as bad debt, where the absorption waterfall (not the solvency term) owns it.
+            totalTab -= tab;
+
             _remove(id);
         } else if (tab == 0) {
             // All the debt is covered and collateral remains: the leftover is returned to the original vault
-            // owner.
+            // owner and leaves the in-auction exposure.
+            totalLot -= lot;
+
             VAULT_ENGINE.flux(ILK_ID, address(this), usr, lot);
 
             _remove(id);
@@ -403,6 +423,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         // CALLER: during emergency settlement the caller is the End, which reclaims the collateral into the
         // the seized vault so the position settles like every other. Handing it to the vault owner here
         // instead would erase the debt side and leak value at settlement.
+        totalTab -= sales[id].tab;
+        totalLot -= sales[id].lot;
+
         dog.digs(ILK_ID, sales[id].tab);
         VAULT_ENGINE.flux(ILK_ID, address(this), msg.sender, sales[id].lot);
 

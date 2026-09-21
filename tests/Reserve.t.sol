@@ -922,4 +922,87 @@ contract ReserveAuditTest is BaseTest {
 
         assertEq(solvencyEngine.worstCaseLoss(), 0, "explicit two-step disable");
     }
+
+    /* ========================== 9. SEIZED-BUT-UNSETTLED RISK (RAINUSDR-1217) ========================== */
+
+    function test_barkCannotLowerWorstCaseLossOrUnlockRedemption() public {
+        // Report RAINUSDR-1217: bark used to zero the ilk's live aggregates via grab, collapsing
+        // worstCaseLoss to 0 and letting buyStable pay the reserve out at par against an unsettled hole. The
+        // seized debt must stay in the loss (remaining auction tab minus the stressed value of the lot) until
+        // take/heal actually covers it.
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 800e18, 200e18);
+        _sellUsdt(keeper, 20e6);
+
+        // Baseline: loss 60 > threshold 18 -> gated.
+        (uint256 loss, ) = solvencyEngine.checkInvariant();
+        assertEq(loss, 60e18, "baseline stressed loss");
+        assertTrue(solvencyEngine.breached(), "gated before the crash");
+
+        // The crash arrives through the OSM. The vault becomes barkable; redemption must still be gated.
+        _setRainPrice(0.6e18);
+
+        vm.startPrank(keeper);
+        usdr.approve(address(psm), 20e18);
+        vm.expectRevert(SolvencyGateActive.selector);
+        psm.buyStable(USDT_ILK, keeper, 20e6);
+        vm.stopPrank();
+
+        // Anyone barks the underwater vault. grab zeros the live urn aggregates, but the seized debt now sits
+        // on the auction as tab and the collateral as lot.
+        liquidationTrigger.bark(vaultId, keeper);
+
+        // The loss must NOT collapse: auction tab (~226 = 200 * 1.13) minus the stressed lot value
+        // (800 * 0.6 * 0.5 * 0.35 = 84) keeps the hole on the books.
+        uint256 lossAfterBark = solvencyEngine.worstCaseLoss();
+        assertGt(lossAfterBark, 0, "bark cannot zero the computed loss");
+        assertGe(lossAfterBark, 100e18, "seized debt stays counted at stressed value");
+
+        // And the gate must hold: par redemption stays blocked while the hole is unsettled.
+        vm.startPrank(keeper);
+        usdr.approve(address(psm), 20e18);
+        vm.expectRevert(SolvencyGateActive.selector);
+        psm.buyStable(USDT_ILK, keeper, 20e6);
+        vm.stopPrank();
+
+        assertEq(reserveAccounting.totalReserve(), 20e18, "reserve untouched");
+    }
+
+    function test_takeCoveringDebtReleasesAuctionRisk() public {
+        // The counterpart guarantee: the auction term must DECAY as take covers the tab, so the protocol is
+        // not wedged in breach after liquidations settle. A keeper buys the whole lot; the loss falls back to
+        // the remaining live-vault risk (zero here) and the gate reopens once the reserve covers what is
+        // left.
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 800e18, 200e18);
+        _sellUsdt(keeper, 20e6);
+
+        _setRainPrice(0.6e18);
+        liquidationTrigger.bark(vaultId, keeper);
+
+        assertGe(solvencyEngine.worstCaseLoss(), 100e18, "hole on the books after bark");
+
+        // Funding the keeper with internal USDR to clear the full tab (suck: test-side shortcut).
+        vaultEngine.suck(address(balanceSheet), keeper, 300 * _RAD);
+
+        // Warping a little so the descending price drops below the keeper's max; then buying the whole lot.
+        vm.warp(vm.getBlockTimestamp() + 600);
+
+        vm.startPrank(keeper);
+        vaultEngine.hope(address(dutchAuction));
+        dutchAuction.take(1, 800e18, 2 * _RAY, keeper, "");
+        vm.stopPrank();
+
+        // The auction exposure is fully released: totalTab and totalLot are zero and the term contributes
+        // nothing.
+        assertEq(dutchAuction.totalTab(), 0, "tab released");
+        assertEq(dutchAuction.totalLot(), 0, "lot released");
+        assertEq(solvencyEngine.worstCaseLoss(), 0, "loss clears once the debt is actually covered");
+
+        // Redemption reopens: loss 0 <= threshold.
+        vm.startPrank(keeper);
+        usdr.approve(address(psm), 20e18);
+        psm.buyStable(USDT_ILK, keeper, 20e6);
+        vm.stopPrank();
+    }
 }

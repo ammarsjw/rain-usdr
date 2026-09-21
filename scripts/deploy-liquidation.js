@@ -182,6 +182,19 @@ const deployLiquidation = async () => {
     // Caching the auction's dust-times-chop threshold now that dust and chop are set.
     await (await dutchAuctionInstance.upchost()).wait();
 
+    // Wiring the auction house into the Solvency Engine so seized-but-unsettled risk (remaining auction tab
+    // minus the stressed value of the collateral still on auction) stays in the worst-case loss: a bark must
+    // never lower the computed loss while the hole is uncovered.
+    const solvencyEngineAddress = process.env.SOLVENCY_ENGINE_ADDRESS;
+    const solvencyEngineInstance = await hardhat.ethers.getContractAt("SolvencyEngine", solvencyEngineAddress);
+    await (
+        await solvencyEngineInstance["file(bytes32,bytes32,address)"](
+            rainIlk,
+            hardhat.ethers.encodeBytes32String("auctionHouse"),
+            dutchAuctionAddress
+        )
+    ).wait();
+
     console.log("Liquidation setup complete");
 
     // Updating env.

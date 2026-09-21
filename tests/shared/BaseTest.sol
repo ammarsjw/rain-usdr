@@ -185,6 +185,11 @@ abstract contract BaseTest is Test {
         dutchAuction.file("calc", address(priceCurve));
         dutchAuction.grantRole(_WARD_ROLE, address(liquidationTrigger));
 
+        // Wiring the auction house into the Solvency Engine so seized-but-unsettled risk stays in the
+        // worst-case loss (deploy-script parity): a bark must never lower the computed loss while the hole is
+        // uncovered.
+        solvencyEngine.file(RAIN_ILK, "auctionHouse", address(dutchAuction));
+
         // Wiring the Governor's emergency pause into the gated entry points (deploy-script parity).
         vaultEngine.file("governor", address(governor));
         psm.file("governor", address(governor));

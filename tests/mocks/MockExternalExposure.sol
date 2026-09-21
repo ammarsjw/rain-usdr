@@ -13,12 +13,12 @@ contract MockExternalExposure is IExternalExposure {
     uint256 public exposure;
     bool public shouldRevert;
 
-    function setExposure(uint256 exposure_) external {
-        exposure = exposure_;
+    function setExposure(uint256 newExposure) external {
+        exposure = newExposure;
     }
 
-    function setShouldRevert(bool shouldRevert_) external {
-        shouldRevert = shouldRevert_;
+    function setShouldRevert(bool newShouldRevertFlag) external {
+        shouldRevert = newShouldRevertFlag;
     }
 
     function reportedExposure() external view returns (uint256) {

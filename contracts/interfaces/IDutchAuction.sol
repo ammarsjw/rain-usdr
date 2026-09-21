@@ -333,6 +333,20 @@ interface IDutchAuction {
     function stopped() external view returns (uint256);
 
     /**
+     * @notice Returns the aggregate USDR debt still to be recovered across all active auctions [rad].
+     *         Increases on kick; decreases as take covers debt, when an exhausted auction's residual moves to
+     *         the balance sheet as bad debt, and on yank.
+     */
+    function totalTab() external view returns (uint256);
+
+    /**
+     * @notice Returns the aggregate collateral held across all active auctions [wad]. Increases on kick;
+     *         decreases as take sells collateral, when a cleared auction's leftover returns to the vault
+     *         owner, and on yank.
+     */
+    function totalLot() external view returns (uint256);
+
+    /**
      * @notice Returns the Governor consulted for the emergency pause. Zero when unset.
      */
     function governor() external view returns (address);

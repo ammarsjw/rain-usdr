@@ -4,6 +4,7 @@ pragma solidity 0.8.30;
 
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 
+import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
 import { IExternalExposure } from "../interfaces/IExternalExposure.sol";
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
@@ -63,7 +64,10 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
     bytes32[] public volatileIlks;
 
     /// @inheritdoc ISolvencyEngine
-    mapping(bytes32 ilkId => bool volatile_) public isVolatile;
+    mapping(bytes32 ilkId => IDutchAuction auctionHouse) public auctionHouse;
+
+    /// @inheritdoc ISolvencyEngine
+    mapping(bytes32 ilkId => bool volatile) public isVolatile;
 
     /* ========================== CONSTRUCTOR ========================== */
 
@@ -154,6 +158,26 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
         }
 
         emit File({ what: what, data: uint256(uint160(data)) });
+    }
+
+    /**
+     * @inheritdoc ISolvencyEngine
+     */
+    function file(bytes32 ilkId, bytes32 what, address data) external onlyRole(_WARD_ROLE) {
+        if (what == "auctionHouse") {
+            // The auction house must serve this exact ilk: a mismatched wiring would price another
+            // collateral's in-auction exposure under this ilk's oracle and silently corrupt the loss
+            // computation.
+            if (data != address(0) && IDutchAuction(data).ILK_ID() != ilkId) {
+                _revert(InvalidBytes.selector);
+            }
+
+            auctionHouse[ilkId] = IDutchAuction(data);
+        } else {
+            _revert(UnrecognizedParameter.selector);
+        }
+
+        emit File({ ilkId: ilkId, what: what, data: uint256(uint160(data)) });
     }
 
     /**
@@ -279,6 +303,30 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
 
             if (ilkDebt > recoverable) {
                 loss += ilkDebt - recoverable;
+            }
+
+            // Seized-but-unsettled risk: debt moved to the liquidation pipeline by grab leaves the live urn
+            // aggregates above, but the shortfall persists until take or heal actually covers it. The
+            // remaining auction tab is charged as debt, credited with the stressed value of the collateral
+            // still on auction (the same markdown and depth applied to live vaults), so a bark can never
+            // lower the computed loss.
+            IDutchAuction house = auctionHouse[ilkId];
+
+            if (address(house) != address(0)) {
+                // Remaining auction debt [wad]: tab [rad] / RAY.
+                uint256 auctionDebt = house.totalTab() / _RAY;
+
+                uint256 auctionLotValue;
+
+                if (has) {
+                    auctionLotValue = (house.totalLot() * uint256(val)) / _WAD;
+                }
+
+                uint256 auctionRecoverable = (((auctionLotValue * stressMarkdown) / _WAD) * stressDepth) / _WAD;
+
+                if (auctionDebt > auctionRecoverable) {
+                    loss += auctionDebt - auctionRecoverable;
+                }
             }
         }
 

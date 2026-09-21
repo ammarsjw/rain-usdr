@@ -13,16 +13,16 @@ contract MockPriceSource is IPriceSource {
     uint256 public price;
     bool public valid = true;
 
-    constructor(uint256 price_) {
-        price = price_;
+    constructor(uint256 newPrice) {
+        price = newPrice;
     }
 
-    function setPrice(uint256 price_) external {
-        price = price_;
+    function setPrice(uint256 newPrice) external {
+        price = newPrice;
     }
 
-    function setValid(bool valid_) external {
-        valid = valid_;
+    function setValid(bool newValidFlag) external {
+        valid = newValidFlag;
     }
 
     function peek() external view returns (bytes32, bool) {

@@ -2,6 +2,7 @@
 
 pragma solidity ^0.8.0;
 
+import { IDutchAuction } from "./IDutchAuction.sol";
 import { IExternalExposure } from "./IExternalExposure.sol";
 import { IOracleSecurityModule } from "./IOracleSecurityModule.sol";
 import { IReserveAccounting } from "./IReserveAccounting.sol";
@@ -21,6 +22,14 @@ interface ISolvencyEngine {
      * @param data New value.
      */
     event File(bytes32 indexed what, uint256 data);
+
+    /**
+     * @dev Emitted when a per-collateral dependency is updated.
+     * @param ilkId Identifier of the collateral type.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
+    event File(bytes32 indexed ilkId, bytes32 indexed what, uint256 data);
 
     /**
      * @dev Emitted when a volatile collateral type is added to the stress calculation.
@@ -77,6 +86,16 @@ interface ISolvencyEngine {
      * @param data New address.
      */
     function file(bytes32 what, address data) external;
+
+    /**
+     * @notice Sets a per-collateral dependency. Currently only {auctionHouse}: the auction house whose
+     *         in-flight exposure is charged to the ilk's worst-case loss. Zero unwires it.
+     * @dev Reverts when the auction house does not serve the given ilk.
+     * @param ilkId Identifier of the collateral type.
+     * @param what Name of the parameter.
+     * @param data New address.
+     */
+    function file(bytes32 ilkId, bytes32 what, address data) external;
 
     /**
      * @notice Adds a volatile collateral type to the stress calculation.
@@ -178,4 +197,11 @@ interface ISolvencyEngine {
      * @param ilkId Identifier of the collateral type.
      */
     function isVolatile(bytes32 ilkId) external view returns (bool);
+
+    /**
+     * @notice Returns the auction house whose in-flight exposure (remaining tab minus the stressed value of
+     *         the collateral still on auction) is charged to the ilk's worst-case loss. Zero when unwired.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function auctionHouse(bytes32 ilkId) external view returns (IDutchAuction);
 }
