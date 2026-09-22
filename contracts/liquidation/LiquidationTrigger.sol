@@ -237,7 +237,17 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             // Partial liquidation edge case logic.
             if (art > dart) {
                 if ((art - dart) * rate < dust) {
-                    // If the leftover vault would be dusty, liquidate it entirely.
+                    // If the leftover vault would be dusty, liquidate it entirely — but only if the FULL
+                    // vault still fits the available room. The bump raises the tab past the amount the room
+                    // cap authorized, so without a re-check it would push dirt beyond hole/globalHole,
+                    // silently overriding the capacity limits the caps exist to enforce (and, while the
+                    // circuit breaker is active, the throttle too). When the full vault does not fit, the
+                    // bark fails rather than corrupting the capacity accounting; the vault becomes
+                    // liquidatable as room frees up.
+                    if (Math.mulDiv(art * rate, milk.chop, _WAD) > room) {
+                        _revert(LiquidationLimitHit.selector);
+                    }
+
                     dart = art;
                 } else {
                     // In a partial liquidation, the resulting auction should be non-dusty.

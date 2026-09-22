@@ -897,6 +897,37 @@ contract LiquidationAuditTest is BaseTest {
         assertEq(tabAfter, chost, "remainder adjusted down to exactly chost");
     }
 
+    /* ========================== 4. CONFIGURATION & CAPACITY GUARDS ========================== */
+
+    function test_dustBumpCannotBlowPastHole() public {
+        // The dust-avoidance bump (liquidate entirely when the leftover would be dusty) must not override
+        // the capacity caps: with room for a 150-rad tab but a 226-rad full vault whose partial leftover
+        // would be dusty, the old code bumped dart to the full vault and pushed dirt past hole. The bark
+        // must instead refuse.
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 800e18, 200e18);
+
+        // room = 150 rad -> dart = 150/1.13 = ~132.7e18; leftover = ~67.3e18 < dust (100e18 at rate RAY),
+        // so the dust bump fires — and the full tab (226 rad) exceeds the room.
+        liquidationTrigger.file(RAIN_ILK, "hole", 150 * _RAD);
+        _setRainPrice(0.6e18);
+
+        vm.expectRevert(ILiquidationTrigger.LiquidationLimitHit.selector);
+        liquidationTrigger.bark(vaultId, keeper);
+
+        // With room for the full vault, the dust bump proceeds normally and dirt stays within the cap.
+        liquidationTrigger.file(RAIN_ILK, "hole", 226 * _RAD);
+        liquidationTrigger.bark(vaultId, keeper);
+
+        (, , uint256 hole, uint256 dirt, ) = liquidationTrigger.ilks(RAIN_ILK);
+        assertLe(dirt, hole, "dirt never exceeds hole");
+        assertEq(dirt, 226 * _RAD, "full-vault tab within capacity");
+
+        (uint256 ink, uint256 art) = vaultEngine.urns(vaultId);
+        assertEq(ink, 0, "fully seized");
+        assertEq(art, 0, "no dusty leftover");
+    }
+
     /* ========================== TAU GUARD (M-8) ========================== */
 
     function test_tauZeroRejected() public {
