@@ -36,6 +36,9 @@ contract PriceConverter is IPriceConverter, AccessControl {
     uint256 public par;
 
     /// @inheritdoc IPriceConverter
+    uint256 public tol;
+
+    /// @inheritdoc IPriceConverter
     uint256 public live;
 
     /// @inheritdoc IPriceConverter
@@ -60,6 +63,12 @@ contract PriceConverter is IPriceConverter, AccessControl {
 
         par = _RAY;
         live = 1;
+
+        // Freshness tolerance for oracle-backed prices: two OSM windows. One window is the normal poke
+        // cadence, so requiring freshness within two tolerates a single missed keeper cycle without freezing
+        // healthy collateral, while a feed that has been stopped or failing for longer than that stops
+        // authorizing new mints.
+        tol = 3600;
     }
 
     /* ========================== FUNCTIONS ========================== */
@@ -101,6 +110,15 @@ contract PriceConverter is IPriceConverter, AccessControl {
             }
 
             par = data;
+        } else if (what == "tol") {
+            // A zero tolerance would mark every oracle-backed price permanently stale, freezing minting
+            // system-wide with no way to repair it after a cage (file requires live == 1). The same
+            // guard-the-bricking-direction standard as par == 0 above.
+            if (data == 0) {
+                _revert(InvalidAmount.selector);
+            }
+
+            tol = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
@@ -172,6 +190,16 @@ contract PriceConverter is IPriceConverter, AccessControl {
             }
 
             (val, has) = ilk.pip.peek(ilkId);
+
+            // Freshness gate: a price is only as trustworthy as its last successful update. The OSM keeps
+            // serving its current price indefinitely — through a stopped feed, a failing source, or an
+            // abandoned keeper — so without an age bound the last pre-incident price would authorize new
+            // minting forever, exactly when the system has lost sight of the market. A price older than the
+            // tolerance is treated the same as an invalid one: the spot zeroes and new minting against this
+            // collateral freezes until the feed recovers and a fresh price lands.
+            if (has && block.timestamp > uint256(ilk.pip.delay(ilkId)) + tol) {
+                has = false;
+            }
         }
 
         // If the price is invalid, the price factor is set to ZERO, freezing new minting against this

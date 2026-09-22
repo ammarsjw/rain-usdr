@@ -200,6 +200,73 @@ contract OracleTest is BaseTest {
         osm.read(RAIN_ILK);
     }
 
+    function test_staleOraclePriceStopsAuthorizingMints() public {
+        // A stopped or failing feed must not leave its last price authorizing mints forever. Establish a
+        // live spot first.
+        rainPriceSource.setPrice(1e18);
+        vm.warp(((vm.getBlockTimestamp() / 1800) + 2) * 1800);
+        osm.poke(RAIN_ILK);
+        vm.warp(vm.getBlockTimestamp() + 1800);
+        osm.poke(RAIN_ILK);
+        priceConverter.poke(RAIN_ILK);
+
+        (, , , uint256 spotBefore, , , , ) = vaultEngine.ilks(RAIN_ILK);
+        assertGt(spotBefore, 0, "live spot established");
+
+        // Incident response stops the feed. The OSM keeps serving the pre-incident price as valid, but once
+        // its age exceeds the tolerance the converter treats it as invalid and freezes minting.
+        osm.stop(RAIN_ILK);
+        vm.warp(vm.getBlockTimestamp() + priceConverter.tol() + 1);
+        priceConverter.poke(RAIN_ILK);
+
+        (, , , uint256 spotAfter, , , , ) = vaultEngine.ilks(RAIN_ILK);
+        assertEq(spotAfter, 0, "stale price no longer authorizes minting");
+
+        // Recovery: the feed restarts, a fresh price lands, and the spot returns.
+        osm.start(RAIN_ILK);
+        osm.poke(RAIN_ILK);
+        priceConverter.poke(RAIN_ILK);
+
+        (, , , uint256 spotRecovered, , , , ) = vaultEngine.ilks(RAIN_ILK);
+        assertGt(spotRecovered, 0, "fresh price restores minting");
+    }
+
+    function test_freshnessWithinToleranceKeepsSpotLive() public {
+        // One missed keeper cycle (a single window) stays within the default tolerance and must NOT freeze
+        // healthy collateral.
+        rainPriceSource.setPrice(1e18);
+        vm.warp(((vm.getBlockTimestamp() / 1800) + 2) * 1800);
+        osm.poke(RAIN_ILK);
+        vm.warp(vm.getBlockTimestamp() + 1800);
+        osm.poke(RAIN_ILK);
+
+        vm.warp(vm.getBlockTimestamp() + priceConverter.tol());
+        priceConverter.poke(RAIN_ILK);
+
+        (, , , uint256 spot, , , , ) = vaultEngine.ilks(RAIN_ILK);
+        assertGt(spot, 0, "price at exactly the tolerance boundary is still fresh");
+    }
+
+    function test_fixedIlksAreExemptFromFreshness() public {
+        // Fixed-price ilks have no oracle and no age; the gate must not touch them.
+        vm.warp(vm.getBlockTimestamp() + 365 days);
+        priceConverter.poke(USDT_ILK);
+
+        (, , , uint256 spot, , , , ) = vaultEngine.ilks(USDT_ILK);
+        assertEq(spot, _RAY, "fixed $1 unaffected by staleness gate");
+    }
+
+    function test_tolZeroRejected() public {
+        // A zero tolerance would mark every oracle-backed price permanently stale, and file's live-gate
+        // means it could never be repaired after a cage.
+        vm.expectRevert(InvalidAmount.selector);
+        priceConverter.file("tol", 0);
+
+        // Sane values pass.
+        priceConverter.file("tol", 7200);
+        assertEq(priceConverter.tol(), 7200, "tolerance updated");
+    }
+
     /* ========================== 2. PRICE CONVERTER ========================== */
 
     function test_matBelowRayRejected() public {

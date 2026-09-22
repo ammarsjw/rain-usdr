@@ -82,9 +82,9 @@ interface IPriceConverter {
     function file(bytes32 ilkId, bytes32 what, address pip) external;
 
     /**
-     * @notice Updates a global parameter {par}.
+     * @notice Updates a global parameter {par} or {tol}.
      * @param what Name of the parameter.
-     * @param data New value [ray].
+     * @param data New value ([ray] for {par}, [seconds] for {tol}).
      */
     function file(bytes32 what, uint256 data) external;
 
@@ -122,6 +122,13 @@ interface IPriceConverter {
      * @notice Returns the target dollar value of USDR [ray]. Fixed at 1.0.
      */
     function par() external view returns (uint256);
+
+    /**
+     * @notice Returns the freshness tolerance for oracle-backed prices [seconds]. An oracle price whose last
+     *         successful update is older than this is treated as invalid: the price factor zeroes and new
+     *         minting against the collateral freezes until a fresh price lands.
+     */
+    function tol() external view returns (uint256);
 
     /**
      * @notice Returns the liveness flag. `1` while live, `0` after shutdown.
