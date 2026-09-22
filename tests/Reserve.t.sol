@@ -247,6 +247,10 @@ contract ReserveTest is BaseTest {
         usdt.approve(address(psm), amt);
         psm.sellStable(USDT_ILK, who, amt);
         vm.stopPrank();
+
+        // Advance one block so the inflow counts as settled reserve: same-block inflow is discounted from
+        // the effective reserve (audit H05), and tests warp time without rolling blocks.
+        vm.roll(vm.getBlockNumber() + 1);
     }
 
     /* ========================== 1. DIRECT OSM PRICING ========================== */
@@ -527,6 +531,53 @@ contract ReserveTest is BaseTest {
         vaultEngine.frob(vaultId, user, user, 0, int256(1e18));
     }
 
+    function test_flashInflowCannotStepOverSolvencyGate() public {
+        // Audit H05 regression: the breach test's denominator (and freeSlack) must ignore same-block reserve
+        // inflow. Before the fix, a flash-loaned sellStable -> buyStable round trip inflated totalReserve,
+        // passed buyStable's inline checkInvariant against the inflated figure, redeemed at par during a
+        // live breach, and left the protocol breached with LESS reserve.
+        //
+        // Breach setup: open at $2 (stressed value covers the debt), crash to $1. Loss = 200 - 900*0.5*0.35
+        // = 42.5; reserve 20 -> threshold 18 -> breached.
+        _setRainPrice(2e18);
+        _openVault(user, 900e18, 200e18);
+        _sellUsdt(keeper, 20e6);
+        _setRainPrice(1e18);
+
+        solvencyEngine.checkInvariant();
+        assertTrue(solvencyEngine.breached(), "live breach stands");
+
+        // The attack: deposit a large amount in THIS block (sellStable is deliberately ungated) and try to
+        // redeem in the same transaction. Note: no vm.roll here — that is the point.
+        address attacker = address(0xA77);
+        usdt.mint(attacker, 100e6);
+
+        vm.startPrank(attacker);
+        usdt.approve(address(psm), 100e6);
+        psm.sellStable(USDT_ILK, attacker, 100e6);
+
+        // totalReserve is 120 now, which would pass the naive test (threshold 108 > loss 42.5). But the
+        // effective reserve is still 20: the gate holds and the round trip dies.
+        usdr.approve(address(psm), 100e18);
+        vm.expectRevert(SolvencyGateActive.selector);
+        psm.buyStable(USDT_ILK, attacker, 100e6);
+        vm.stopPrank();
+
+        // From the NEXT block onward the same deposit is settled reserve and counts in full: the invariant
+        // genuinely holds (reserve 120, threshold 108 >= 42.5), so the gate lifts for everyone — an honest
+        // inflow is delayed exactly one block, never punished.
+        vm.roll(vm.getBlockNumber() + 1);
+
+        solvencyEngine.checkInvariant();
+        assertFalse(solvencyEngine.breached(), "settled inflow restores the invariant");
+
+        // Redemption reopens, bounded by the buffered slack (escrow 42.5/0.9 = 47.2, slack = 120 - 47.2).
+        vm.startPrank(attacker);
+        usdr.approve(address(psm), 10e18);
+        psm.buyStable(USDT_ILK, attacker, 10e6);
+        vm.stopPrank();
+    }
+
     function test_drainingFullFreeSlackLeavesInvariantSatisfied() public {
         // Audit H03 regression: the escrow is committed at loss / reserveFactor (the same coverage the
         // breach test demands), so redeemers drawing the ENTIRE free slack leave reserve == loss / 0.9 and
@@ -719,6 +770,10 @@ contract ReserveAuditTest is BaseTest {
         usdt.approve(address(psm), amt);
         psm.sellStable(USDT_ILK, who, amt);
         vm.stopPrank();
+
+        // Advance one block so the inflow counts as settled reserve: same-block inflow is discounted from
+        // the effective reserve (audit H05), and tests warp time without rolling blocks.
+        vm.roll(vm.getBlockNumber() + 1);
     }
 
     /* ========================== 1. PSM ROUND TRIP ========================== */

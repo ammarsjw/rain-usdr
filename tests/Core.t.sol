@@ -959,6 +959,10 @@ contract StabilityFeeTest is BaseTest {
         usdt.approve(address(psm), 100e6);
         psm.sellStable(USDT_ILK, address(this), 100e6);
 
+        // Advance one block so the inflow counts as settled reserve (audit H05: same-block inflow is
+        // discounted from the effective reserve).
+        vm.roll(vm.getBlockNumber() + 1);
+
         uint256 vaultId = _openRainVault(address(this), 800e18, 190e18);
 
         vaultEngine.file(RAIN_ILK, "duty", DUTY_100PCT);

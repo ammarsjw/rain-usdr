@@ -298,6 +298,10 @@ contract SettlementTest is BaseTest {
         usdt.approve(address(psm), amt);
         psm.sellStable(USDT_ILK, who, amt);
         vm.stopPrank();
+
+        // Advance one block so the inflow counts as settled reserve: same-block inflow is discounted from
+        // the effective reserve (audit H05), and tests warp time without rolling blocks.
+        vm.roll(vm.getBlockNumber() + 1);
     }
 
     /* ========================== 1. LIFECYCLE ========================== */

@@ -238,6 +238,10 @@ abstract contract BaseTest is Test {
             usdt.approve(address(psm), seedAmount);
             psm.sellStable(USDT_ILK, reserveSeeder, seedAmount);
             vm.stopPrank();
+
+            // Advance one block so the seed counts as settled reserve: same-block inflow is discounted from
+            // the effective reserve (audit H05), and tests warp time without rolling blocks.
+            vm.roll(vm.getBlockNumber() + 1);
         }
     }
 

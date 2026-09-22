@@ -27,6 +27,12 @@ contract ReserveAccounting is IReserveAccounting, AccessControl {
     /// @inheritdoc IReserveAccounting
     uint256 public committedEscrow;
 
+    /// @inheritdoc IReserveAccounting
+    uint256 public sameBlockInflow;
+
+    /// @inheritdoc IReserveAccounting
+    uint256 public lastInflowBlock;
+
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
@@ -48,6 +54,17 @@ contract ReserveAccounting is IReserveAccounting, AccessControl {
     function recordIncrease(uint256 wad) external onlyRole(_RECORDER_ROLE) {
         totalReserve += wad;
 
+        // Same-block inflow tracking (audit H05): an inflow only counts toward the solvency breach test and
+        // the free slack from the NEXT block onward. Without this, a flash-loaned sellStable -> buyStable
+        // round trip inflates the breach test's denominator (and widens free slack) inside one transaction,
+        // stepping over the gate at will. The accumulator resets when the block advances.
+        if (block.number != lastInflowBlock) {
+            sameBlockInflow = 0;
+            lastInflowBlock = block.number;
+        }
+
+        sameBlockInflow += wad;
+
         emit RecordIncrease({ wad: wad, totalReserve: totalReserve });
     }
 
@@ -56,6 +73,13 @@ contract ReserveAccounting is IReserveAccounting, AccessControl {
      */
     function recordDecrease(uint256 wad) external onlyRole(_RECORDER_ROLE) {
         totalReserve -= wad;
+
+        // Same-block inflow tracking (audit H05): an outflow un-counts fresh same-block inflow first, so a
+        // deposit-then-withdraw round trip nets to zero rather than leaving phantom "settled" inflow behind.
+        // Only the portion exceeding the fresh inflow touches the settled figure.
+        if (block.number == lastInflowBlock && sameBlockInflow != 0) {
+            sameBlockInflow = wad >= sameBlockInflow ? 0 : sameBlockInflow - wad;
+        }
 
         // The reserve must never drop below the committed escrow: freeSlack() would underflow and every
         // consumer of the split (redemption above all) would revert. The PSM checks freeSlack before
@@ -85,8 +109,25 @@ contract ReserveAccounting is IReserveAccounting, AccessControl {
     /**
      * @inheritdoc IReserveAccounting
      */
+    function effectiveReserve() public view returns (uint256) {
+        // The reserve figure a solvency judgment may trust THIS block (audit H05): fresh same-block inflow is
+        // discounted, so a flash-loaned deposit cannot widen the breach test's denominator or the free slack
+        // inside the transaction that made it. From the next block onward the inflow counts in full.
+        uint256 fresh = block.number == lastInflowBlock ? sameBlockInflow : 0;
+
+        return totalReserve - fresh;
+    }
+
+    /**
+     * @inheritdoc IReserveAccounting
+     */
     function freeSlack() external view returns (uint256) {
-        // Never negative, because `updateCommittedEscrow` forbids committing more than exists.
-        return totalReserve - committedEscrow;
+        // Measured against the effective (same-block-inflow-discounted) reserve, so redemption capacity
+        // cannot be expanded by a deposit made in the same transaction (audit H05). Floored at zero: the
+        // escrow is bounded by the SETTLED reserve, which can exceed the effective figure right after an
+        // inflow.
+        uint256 effective = effectiveReserve();
+
+        return effective > committedEscrow ? effective - committedEscrow : 0;
     }
 }

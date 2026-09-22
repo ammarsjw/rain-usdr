@@ -229,7 +229,11 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      */
     function checkInvariant() external returns (uint256 loss, uint256 reserve) {
         loss = worstCaseLoss();
-        reserve = RESERVE_ACCOUNTING.totalReserve();
+
+        // The breach test is judged against the EFFECTIVE reserve (audit H05): fresh same-block inflow is
+        // discounted, so a flash-loaned sellStable cannot widen the denominator inside the transaction that
+        // made it and step over the gate. From the next block onward the inflow counts in full.
+        reserve = RESERVE_ACCOUNTING.effectiveReserve();
 
         // Surfacing exposure-reporter anomalies for monitoring: a revert or an above-cap report both fall
         // back to the conservative cap inside {worstCaseLoss}; here the anomaly is made visible.

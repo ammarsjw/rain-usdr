@@ -80,4 +80,23 @@ interface IReserveAccounting {
      * @notice Returns the amount committed to guaranteed obligations, the settlement escrow [wad].
      */
     function committedEscrow() external view returns (uint256);
+
+    /**
+     * @notice Returns the reserve figure a solvency judgment may trust this block [wad]: the total reserve
+     *         minus any inflow recorded in the current block. Fresh inflow only counts from the next block
+     *         onward, so a flash-loaned deposit cannot widen the breach test's denominator or the free slack
+     *         inside the transaction that made it (audit H05).
+     */
+    function effectiveReserve() external view returns (uint256);
+
+    /**
+     * @notice Returns the reserve inflow recorded in the current block [wad]. Stale (from an earlier block)
+     *         when {lastInflowBlock} is not the current block.
+     */
+    function sameBlockInflow() external view returns (uint256);
+
+    /**
+     * @notice Returns the block number of the most recent {recordIncrease}.
+     */
+    function lastInflowBlock() external view returns (uint256);
 }
