@@ -366,6 +366,18 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
             _revert(FixAlreadyDefined.selector);
         }
 
+        // Every in-flight auction on this ilk must be reclaimed (skip) before the redemption price is fixed:
+        // skip raises the settlement snapshot (art) by the reinstated debt, and fix is one-shot. Fixing the
+        // price while auctions are still pending would permanently understate it and strand the collateral
+        // later yanked into this contract. After cage(ilkId) the auction house is caged, so skip is the only
+        // way its active list can drain. Ilks with no auction house (e.g. PSM stables) have nothing to wait
+        // for.
+        (address clipAddress, , , , ) = liquidationTrigger.ilks(ilkId);
+
+        if (clipAddress != address(0) && IDutchAuction(clipAddress).count() != 0) {
+            _revert(AuctionsPending.selector);
+        }
+
         (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
         // The redeemable collateral for this ilk is its snapshotted debt valued at the settlement price,

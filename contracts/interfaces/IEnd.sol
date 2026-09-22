@@ -148,6 +148,12 @@ interface IEnd {
     error FixAlreadyDefined();
 
     /**
+     * @dev Indicates that the ilk's auction house still holds active auctions, which must be reclaimed (skip)
+     *      before the redemption price can be fixed.
+     */
+    error AuctionsPending();
+
+    /**
      * @dev Indicates that the redemption price has not been computed yet.
      */
     error FixNotDefined();

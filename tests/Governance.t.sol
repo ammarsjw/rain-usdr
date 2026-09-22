@@ -483,6 +483,61 @@ contract SettlementTest is BaseTest {
         end.cash(RAIN_ILK, 1e18);
     }
 
+    function test_flowBlockedWhileAuctionsPending() public {
+        // flow permanently fixes the redemption price from the settlement snapshot, and skip is what adds a
+        // reclaimed auction's debt back into that snapshot. Before this guard, calling flow ahead of skip
+        // fixed the price from the reduced snapshot forever — the collateral yanked into End afterwards was
+        // stranded and every redeemer was shorted. flow must refuse while the ilk's auction house still holds
+        // active auctions.
+        _setRainPrice(1e18);
+
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
+        _sellUsdt(keeper, 100e6);
+
+        _setRainPrice(0.6e18);
+        uint256 auctionId = liquidationTrigger.bark(vaultId, keeper);
+        uint256 barkEra = vm.getBlockTimestamp();
+
+        end.cage();
+        end.cage(RAIN_ILK);
+        end.cage(USDT_ILK);
+
+        (, , uint256 psmVaultId) = psm.ilks(USDT_ILK);
+        end.skim(psmVaultId);
+
+        // Thaw is reachable with the auction still pending (bark-era sin released, wait = 0 harness).
+        balanceSheet.flog(barkEra);
+
+        end.thaw();
+
+        // The premature flow — the exploit's step — is refused while the auction is unreclaimed.
+        vm.expectRevert(IEnd.AuctionsPending.selector);
+        end.flow(RAIN_ILK);
+
+        // Ilks with no auction house (PSM stables) are unaffected by the guard.
+        end.flow(USDT_ILK);
+        assertGt(end.fix(USDT_ILK), 0, "stable ilk flows freely");
+
+        // After skip + skim the guard lifts and the fix is computed on the FULL snapshot.
+        end.skip(RAIN_ILK, auctionId);
+        end.skim(vaultId);
+        balanceSheet.heal(vaultEngine.usdr(address(balanceSheet)));
+
+        end.flow(RAIN_ILK);
+
+        (, , uint256 rate, , , , , ) = vaultEngine.ilks(RAIN_ILK);
+        uint256 wad = (((uint256(113e18) * rate) / _RAY) * end.tag(RAIN_ILK)) / _RAY;
+        uint256 expectedFix = ((wad - end.gap(RAIN_ILK)) * _RAY) / (end.debt() / _RAY);
+
+        assertEq(end.fix(RAIN_ILK), expectedFix, "fix computed on the full snapshot after skip");
+
+        // Conservation holds: redeeming the entire fixed debt at fix drains what End actually holds.
+        uint256 held = vaultEngine.collateral(RAIN_ILK, address(end));
+        uint256 claimable = ((end.debt() / _RAY) * end.fix(RAIN_ILK)) / _RAY;
+
+        assertApproxEqAbs(claimable, held, 1e6, "nothing stranded");
+    }
+
     function test_freeRevertsForNonOwnerAndIndebtedVault() public {
         _setRainPrice(1e18);
         uint256 vaultId = _openVault(user, 400e18, 100e18);
