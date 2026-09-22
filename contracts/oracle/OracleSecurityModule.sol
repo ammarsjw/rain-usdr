@@ -144,10 +144,15 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
 
         // A valid-but-zero price is treated as a failed report: zero is never a real market price, and
         // letting it propagate would freeze minting via a zero spot while looking like a healthy update to
-        // monitoring.
-        if (ok && uint256(wut) != 0) {
+        // monitoring. The value is also validated at the width it will be STORED at: the feed narrows to
+        // uint128 on assignment, so a wider report would otherwise be silently truncated to an unrelated
+        // number — and a report that is an exact multiple of 2**128 would store the very zero the guard
+        // exists to keep out. An out-of-range report takes the failure path, keeping the previous price in
+        // place and surfacing the anomaly for monitoring.
+        uint256 val = uint256(wut);
+        if (ok && val != 0 && val <= type(uint128).max) {
             ilk.cur = ilk.nxt;
-            ilk.nxt = Feed(uint128(uint256(wut)), 1);
+            ilk.nxt = Feed(uint128(val), 1);
 
             // Stored UNSNAPPED: snapping down to the HOP boundary would let a poke at boundary+1799 be
             // followed one second later, collapsing the guaranteed nxt->cur residency to 1 second. The exact

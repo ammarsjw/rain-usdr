@@ -147,6 +147,30 @@ contract OracleTest is BaseTest {
         assertEq(uint256(nxtVal), 1e18, "new source's price queued under the full delay");
     }
 
+    function test_osmOutOfRangeReportTreatedAsFailedReport() public {
+        // The feed stores prices at uint128 width. A wider report must take the failure path, not be
+        // silently truncated — an exact multiple of 2**128 would otherwise store the very zero the
+        // zero-price guard exists to keep out.
+        _warpToBoundary(0);
+        rainPriceSource.setPrice(uint256(type(uint128).max) + 1);
+
+        vm.expectEmit(true, true, false, false);
+        emit IOracleSecurityModule.PokeFailed(RAIN_ILK, address(rainPriceSource));
+        osm.poke(RAIN_ILK);
+
+        (, bool hasNxt) = osm.peep(RAIN_ILK);
+        assertFalse(hasNxt, "out-of-range price rejected");
+
+        // The exact width boundary is still a valid price.
+        vm.warp(vm.getBlockTimestamp() + 1800);
+        rainPriceSource.setPrice(type(uint128).max);
+        osm.poke(RAIN_ILK);
+
+        (bytes32 nxtVal, bool ok) = osm.peep(RAIN_ILK);
+        assertTrue(ok, "boundary value accepted");
+        assertEq(uint256(nxtVal), type(uint128).max, "stored exactly");
+    }
+
     function test_osmInvalidSourceEmitsPokeFailedWithoutReverting() public {
         _warpToBoundary(0);
         rainPriceSource.setValid(false);
