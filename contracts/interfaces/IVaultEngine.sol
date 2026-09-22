@@ -103,6 +103,14 @@ interface IVaultEngine {
     event File(bytes32 indexed ilkId, bytes32 indexed what, uint256 data);
 
     /**
+     * @dev Emitted when a per-collateral address parameter is updated.
+     * @param ilkId Identifier of the collateral type.
+     * @param what Name of the parameter.
+     * @param addr New address.
+     */
+    event File(bytes32 indexed ilkId, bytes32 indexed what, address addr);
+
+    /**
      * @dev Emitted when a user's free collateral balance is adjusted.
      * @param ilkId Identifier of the collateral type.
      * @param user Account whose balance is adjusted.
@@ -196,6 +204,11 @@ interface IVaultEngine {
      */
     error VaultNotFound();
 
+    /**
+     * @dev Indicates that the ilk is exclusively bound to a single owner and the caller is not it.
+     */
+    error IlkExclusive();
+
     /* ========================== SOLVENCY GATE / PAUSE ========================== */
 
     /**
@@ -256,6 +269,13 @@ interface IVaultEngine {
     function noFee(bytes32 ilkId) external view returns (bool);
 
     /**
+     * @notice Returns the single legitimate vault owner an ilk is exclusively bound to (a PSM stable ilk is
+     *         bound to its PSM). Zero when unbound: anyone may open vaults on the ilk.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function exclusiveTo(bytes32 ilkId) external view returns (address);
+
+    /**
      * @notice Returns the registered collateral type identifier at `index`. Ilks are appended at {init} and
      *         never removed; the array lets {cage} (and off-chain consumers) enumerate every ilk.
      * @param index Position in the registration order.
@@ -303,6 +323,18 @@ interface IVaultEngine {
      * @param data New value.
      */
     function file(bytes32 ilkId, bytes32 what, uint256 data) external;
+
+    /**
+     * @notice Sets a per-collateral address parameter. Currently only {exclusiveTo}: binds the ilk to a
+     *         single legitimate vault owner (a PSM stable ilk is bound to its PSM). Zero unbinds it.
+     * @dev Reverts when the ilk is uninitialized, or when a nonzero binding is filed onto an ilk that already
+     *      carries debt (vault ownership is immutable, so pre-existing foreign vaults would survive the
+     *      binding).
+     * @param ilkId Identifier of the collateral type.
+     * @param what Name of the parameter.
+     * @param data New address.
+     */
+    function file(bytes32 ilkId, bytes32 what, address data) external;
 
     /**
      * @notice Opens a new vault bound to a collateral type and returns its id.

@@ -6,7 +6,14 @@ import { IBalanceSheet } from "../contracts/interfaces/IBalanceSheet.sol";
 import { IPegStabilityModule } from "../contracts/interfaces/IPegStabilityModule.sol";
 import { IReserveAccounting } from "../contracts/interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../contracts/interfaces/ISolvencyEngine.sol";
-import { InvalidAmount, InvalidDuty, SolvencyGateActive, UnrecognizedParameter } from "../contracts/shared/Errors.sol";
+import { IVaultEngine } from "../contracts/interfaces/IVaultEngine.sol";
+import {
+    InvalidAmount,
+    InvalidAssignment,
+    InvalidDuty,
+    SolvencyGateActive,
+    UnrecognizedParameter
+} from "../contracts/shared/Errors.sol";
 import { _RAD, _RAY, _RECORDER_ROLE, _WAD } from "../contracts/shared/Constants.sol";
 
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -1004,5 +1011,68 @@ contract ReserveAuditTest is BaseTest {
         usdr.approve(address(psm), 20e18);
         psm.buyStable(USDT_ILK, keeper, 20e6);
         vm.stopPrank();
+    }
+
+    /* ========================== 10. EXCLUSIVE STABLE ILKS (RAINUSDR-1218) ========================== */
+
+    function test_personalVaultOnStableIlkIsRejected() public {
+        // Report RAINUSDR-1218: anyone could open a personal USDT-A vault, frob 1:1 debt that never passes
+        // through recordIncrease, and buyStable the PSM's honest inventory out from under sellers. The stable
+        // ilks are now exclusively bound to the PSM, so the attack dies at open.
+        usdt.mint(user, 100e6);
+
+        vm.startPrank(user);
+        usdt.approve(address(collateralAdapter), 100e6);
+        collateralAdapter.join(USDT_ILK, user, 100e6);
+
+        // The attack's step 2 is rejected at open: the ilk is bound to the PSM.
+        vm.expectRevert(IVaultEngine.IlkExclusive.selector);
+        vaultEngine.open(USDT_ILK, user);
+        vm.stopPrank();
+
+        // Opening FOR the PSM from an attacker also fails (both usr and caller must be the bound owner).
+        vm.prank(user);
+        vm.expectRevert(IVaultEngine.IlkExclusive.selector);
+        vaultEngine.open(USDT_ILK, address(psm));
+
+        // USDC-A carries the same binding.
+        vm.prank(user);
+        vm.expectRevert(IVaultEngine.IlkExclusive.selector);
+        vaultEngine.open(USDC_ILK, user);
+
+        // Unbound volatile ilks stay permissionless.
+        vm.prank(user);
+        vaultEngine.open(RAIN_ILK, user);
+    }
+
+    function test_psmRoundTripUnaffectedByExclusiveBinding() public {
+        // The report's control scenario: the PSM's own flow through its bound ilks must be untouched by the
+        // binding — sell, redeem, exact 1:1, reserve unwinds to zero.
+        _sellUsdt(user, 100e6);
+
+        assertEq(usdr.balanceOf(user), 100e18, "sell unaffected");
+        assertEq(reserveAccounting.totalReserve(), 100e18, "reserve recorded");
+
+        vm.startPrank(user);
+        usdr.approve(address(psm), 100e18);
+        psm.buyStable(USDT_ILK, user, 100e6);
+        vm.stopPrank();
+
+        assertEq(usdt.balanceOf(user), 100e6, "redeem unaffected");
+        assertEq(reserveAccounting.totalReserve(), 0, "reserve fully unwound");
+    }
+
+    function test_exclusiveBindingRefusedOnIlkWithDebt() public {
+        // The binding's own guard: filing a nonzero binding onto an ilk that already carries debt would claim
+        // an exclusivity the ledger lacks (pre-existing foreign vaults survive it). RAIN-A carries debt here.
+        _setRainPrice(1e18);
+        _openVault(user, 800e18, 200e18);
+
+        vm.expectRevert(InvalidAssignment.selector);
+        vaultEngine.file(RAIN_ILK, "exclusiveTo", address(psm));
+
+        // Unbinding (zero) is always legal, and rebinding a debt-free ilk works.
+        vaultEngine.file(USDT_ILK, "exclusiveTo", address(0));
+        vaultEngine.file(USDT_ILK, "exclusiveTo", address(psm));
     }
 }

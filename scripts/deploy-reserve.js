@@ -68,6 +68,24 @@ const deployReserve = async () => {
     await (await psmInstance.init(usdcIlk)).wait();
     await (await reserveAccountingInstance.grantRole(RECORDER_ROLE, psmAddress)).wait();
 
+    // Binding the stable ilks exclusively to the PSM (RAINUSDR-1218): without this, anyone could open a
+    // personal vault on a 1:1 ilk and frob debt that never passes through recordIncrease, then redeem the
+    // minted USDR against the module's genuine inventory and strand honest sellers.
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,address)"](
+            usdtIlk,
+            hardhat.ethers.encodeBytes32String("exclusiveTo"),
+            psmAddress
+        )
+    ).wait();
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,address)"](
+            usdcIlk,
+            hardhat.ethers.encodeBytes32String("exclusiveTo"),
+            psmAddress
+        )
+    ).wait();
+
     // Registering RAIN as a volatile collateral in the solvency stress calculation and wiring the direct OSM
     // price source (worst-case loss reads prices straight from the OSM, never spot * mat).
     await (await solvencyEngineInstance.addVolatileIlk(rainIlk)).wait();
