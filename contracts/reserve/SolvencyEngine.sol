@@ -248,9 +248,17 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
         // free slack can never go stale (a stale escrow would let redemptions overpay).
         breached = loss > (reserve * reserveFactor) / _WAD;
 
-        // Keeping the reserve split accurate. The escrow is capped at the full reserve so accounting never
-        // reverts.
-        RESERVE_ACCOUNTING.updateCommittedEscrow(loss > reserve ? reserve : loss);
+        // Keeping the reserve split accurate. The escrow is committed at the SAME coverage the breach test
+        // demands (loss / reserveFactor, not the raw loss): the breach test requires the reserve to exceed
+        // the loss by the buffer, so the dollars reserved against that loss must include the buffer too.
+        // Committing the raw loss lets permissionless redemption drain free slack down to exactly `loss`,
+        // where the very next breach test (loss > loss * reserveFactor) is true by construction — ordinary
+        // user behaviour walks the protocol into a self-inflicted breach. With the buffered escrow,
+        // exhausting free slack leaves reserve == loss / reserveFactor and the invariant precisely
+        // satisfied. Still capped at the full reserve so accounting never reverts.
+        uint256 required = (loss * _WAD) / reserveFactor;
+
+        RESERVE_ACCOUNTING.updateCommittedEscrow(required > reserve ? reserve : required);
 
         emit InvariantChecked({ reserve: reserve, worstCaseLoss: loss, passed: !breached });
     }

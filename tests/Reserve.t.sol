@@ -292,20 +292,25 @@ contract ReserveTest is BaseTest {
     /* ========================== 2. LAZY REDEMPTION GATE ========================== */
 
     function test_redemptionGateHoldsWithoutAnyKeeper() public {
-        // Reserve shrinkage with the keeper dead: buyStable itself must detect the breach. The vault opens
-        // legally against a covering reserve (loss 60 <= 0.9 * 100); a successful redemption then drains the
-        // free slack (40), and because its lazy recompute runs BEFORE recordDecrease, the stored flag still
-        // says healthy while the remaining reserve (60) no longer covers the loss (threshold 54 < 60).
+        // A loss spike with the keeper dead: buyStable itself must detect the breach. The vault opens
+        // legally against a covering reserve (loss 60 <= 0.9 * 100). Since H03, draining free slack can no
+        // longer create a breach (the escrow carries the buffer), so the spike arrives through the external
+        // exposure reporter — a source with NO refresh hook: the stored flag stays healthy while the true
+        // loss (60 + 40 = 100) exceeds the threshold (90).
         _setRainPrice(1e18);
         _sellUsdt(keeper, 100e6);
         _openVault(user, 800e18, 200e18);
 
-        vm.startPrank(keeper);
-        usdr.approve(address(psm), 40e18);
-        psm.buyStable(USDT_ILK, keeper, 40e6);
-        vm.stopPrank();
+        MockExternalExposure exposure = new MockExternalExposure();
+        solvencyEngine.file("exposureCap", 40e18);
+        solvencyEngine.file("externalExposure", address(exposure));
 
-        // NOTE: No checkInvariant call anywhere since the reserve shrank. The stale flag says healthy.
+        solvencyEngine.checkInvariant();
+        assertFalse(solvencyEngine.breached(), "healthy before the spike");
+
+        exposure.setExposure(40e18);
+
+        // NOTE: No checkInvariant call anywhere since the spike. The stale flag says healthy.
         assertFalse(solvencyEngine.breached(), "flag stale-healthy");
 
         vm.startPrank(keeper);
@@ -427,8 +432,10 @@ contract ReserveTest is BaseTest {
         _openVault(user, 800e18, 200e18);
         solvencyEngine.checkInvariant();
 
+        // The escrow carries the reserve-factor buffer (H03): committed = loss / 0.9, so slack = 100 -
+        // 66.666... The buffer guarantees that fully drained slack leaves the invariant satisfied.
         uint256 slack = reserveAccounting.freeSlack();
-        assertEq(slack, 40e18, "reserve 100 - escrow 60");
+        assertEq(slack, 100e18 - (60e18 * 1e18) / uint256(0.9e18), "reserve 100 - buffered escrow 66.67");
 
         // Redeeming more than slack reverts (breach flag is off here: loss 60 <= threshold 90).
         vm.startPrank(keeper);
@@ -437,29 +444,35 @@ contract ReserveTest is BaseTest {
         psm.buyStable(USDT_ILK, keeper, 50e6);
 
         // Redeeming within slack succeeds.
-        usdr.approve(address(psm), 40e18);
-        psm.buyStable(USDT_ILK, keeper, 40e6);
+        usdr.approve(address(psm), 33e18);
+        psm.buyStable(USDT_ILK, keeper, 33e6);
         vm.stopPrank();
     }
 
     /* ========================== 8. SOLVENCY GATE HOOKS ========================== */
 
     function test_frobHardGateHoldsWithoutAnyKeeper() public {
-        // The vault opens legally against a covering reserve (loss 190 - 800*0.5*0.35 = 50 <= 0.9 * 100);
-        // the keeper then redeems the free slack (50), shrinking the reserve to 50 (threshold 45 < 50). The
-        // redemption's lazy recompute runs BEFORE recordDecrease, so the stored flag still says healthy:
-        // frob itself must detect the breach. The 800/190 shape leaves mat headroom (cap 200) so the +1
-        // draw below reaches the solvency gate instead of dying at the safety check.
+        // A loss spike with the keeper dead: frob itself must detect the breach. The vault opens legally
+        // against a covering reserve (loss 190 - 800*0.5*0.35 = 50 <= 0.9 * 100). Since H03, draining free
+        // slack can no longer create a breach (the escrow carries the buffer), so the spike arrives through
+        // the external exposure reporter — a source with NO refresh hook: the stored flag stays healthy
+        // while the true loss (50 + 45 = 95) exceeds the threshold (90). The 800/190 shape leaves mat
+        // headroom (cap 200) so the +1 draw below reaches the solvency gate instead of dying at the safety
+        // check.
         _setRainPrice(1e18);
         _sellUsdt(keeper, 100e6);
         uint256 vaultId = _openVault(user, 800e18, 190e18);
 
-        vm.startPrank(keeper);
-        usdr.approve(address(psm), 50e18);
-        psm.buyStable(USDT_ILK, keeper, 50e6);
-        vm.stopPrank();
+        MockExternalExposure exposure = new MockExternalExposure();
+        solvencyEngine.file("exposureCap", 45e18);
+        solvencyEngine.file("externalExposure", address(exposure));
 
-        // NOTE: No checkInvariant call anywhere since the reserve shrank. The stale flag says healthy.
+        solvencyEngine.checkInvariant();
+        assertFalse(solvencyEngine.breached(), "healthy before the spike");
+
+        exposure.setExposure(45e18);
+
+        // NOTE: No checkInvariant call anywhere since the spike. The stale flag says healthy.
         assertFalse(solvencyEngine.breached(), "flag stale-healthy");
 
         // Drawing more debt is blocked.
@@ -514,21 +527,64 @@ contract ReserveTest is BaseTest {
         vaultEngine.frob(vaultId, user, user, 0, int256(1e18));
     }
 
-    function test_distributeSurplusHardGateBlocksWhileBreached() public {
-        balanceSheet.file("humpFloor", 1 * _RAD);
-        balanceSheet.file("buybackReceiver", address(0xB0B));
-
-        // The vault opens legally against a covering reserve (loss 60 <= 0.9 * 100); the keeper then redeems
-        // the free slack (40), leaving reserve 60 against threshold 54: breached, while the flag (refreshed
-        // BEFORE recordDecrease) still says healthy. Surplus sits above target.
+    function test_drainingFullFreeSlackLeavesInvariantSatisfied() public {
+        // Audit H03 regression: the escrow is committed at loss / reserveFactor (the same coverage the
+        // breach test demands), so redeemers drawing the ENTIRE free slack leave reserve == loss / 0.9 and
+        // the next breach test (loss > reserve * 0.9 == loss) stays false. Before the fix, the raw-loss
+        // escrow let ordinary redemption walk the protocol into a self-inflicted breach.
         _setRainPrice(1e18);
         _sellUsdt(keeper, 100e6);
         _openVault(user, 800e18, 200e18);
 
+        // Loss 60 -> buffered escrow 66.666..., slack 33.333...
+        solvencyEngine.checkInvariant();
+
+        uint256 slack = reserveAccounting.freeSlack();
+        assertEq(slack, 100e18 - (60e18 * 1e18) / uint256(0.9e18), "buffered slack");
+
+        // Redeem every whole unit of the free slack (PSM moves in 6-decimal steps).
+        uint256 slack6 = slack / 1e12;
+
         vm.startPrank(keeper);
-        usdr.approve(address(psm), 40e18);
-        psm.buyStable(USDT_ILK, keeper, 40e6);
+        usdr.approve(address(psm), slack6 * 1e12);
+        psm.buyStable(USDT_ILK, keeper, slack6);
         vm.stopPrank();
+
+        // The invariant is exactly satisfied, NOT breached: reserve ~= loss / 0.9, threshold ~= loss.
+        (uint256 loss, uint256 reserve) = solvencyEngine.checkInvariant();
+        assertEq(loss, 60e18, "loss unchanged");
+        assertGe((reserve * 0.9e18) / 1e18, loss, "threshold still covers the loss");
+        assertFalse(solvencyEngine.breached(), "drained slack does not self-inflict a breach");
+
+        // And the system stays fully operational: another redemption attempt fails only on slack (best
+        // effort), never on the solvency gate.
+        vm.startPrank(keeper);
+        usdr.approve(address(psm), 1e18);
+        vm.expectRevert(IPegStabilityModule.InsufficientFreeSlack.selector);
+        psm.buyStable(USDT_ILK, keeper, 1e6);
+        vm.stopPrank();
+    }
+
+    function test_distributeSurplusHardGateBlocksWhileBreached() public {
+        balanceSheet.file("humpFloor", 1 * _RAD);
+        balanceSheet.file("buybackReceiver", address(0xB0B));
+
+        // The vault opens legally against a covering reserve (loss 60 <= 0.9 * 100). Since H03, draining
+        // free slack can no longer create a breach (the escrow carries the buffer), so the breach arrives
+        // through the external exposure reporter — a source with NO refresh hook: the stored flag stays
+        // healthy while the true loss (60 + 40 = 100) exceeds the threshold (90). Surplus sits above target.
+        _setRainPrice(1e18);
+        _sellUsdt(keeper, 100e6);
+        _openVault(user, 800e18, 200e18);
+
+        MockExternalExposure exposure = new MockExternalExposure();
+        solvencyEngine.file("exposureCap", 40e18);
+        solvencyEngine.file("externalExposure", address(exposure));
+
+        solvencyEngine.checkInvariant();
+        assertFalse(solvencyEngine.breached(), "healthy before the spike");
+
+        exposure.setExposure(40e18);
 
         vaultEngine.suck(address(this), address(balanceSheet), 10 * _RAD);
 
@@ -538,9 +594,8 @@ contract ReserveTest is BaseTest {
         vm.expectRevert(SolvencyGateActive.selector);
         balanceSheet.distributeSurplus();
 
-        // Once the reserve covers the stressed loss again (60 + 40 = 100, threshold 90 >= 60), distribution
-        // flows again.
-        _sellUsdt(keeper, 40e6);
+        // Once the spike clears (loss back to 60, threshold 90 >= 60), distribution flows again.
+        exposure.setExposure(0);
 
         assertEq(balanceSheet.distributeSurplus(), 9 * _RAD, "released after recovery");
     }
