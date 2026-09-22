@@ -84,8 +84,8 @@ interface IGovernor {
 
     /**
      * @dev Indicates that the change's execution window has closed. A queued change is executable only
-     *      between its eta and eta plus the grace window; after that it must be re-scheduled through the
-     *      full timelock.
+     *      between its eta and eta plus the grace window; after that it must be re-scheduled through the full
+     *      timelock.
      */
     error ChangeExpired();
 

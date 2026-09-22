@@ -115,8 +115,8 @@ interface ILiquidationTrigger {
     error NotUnsafe();
 
     /**
-     * @dev Indicates that the ilk's liquidation parameters (clip, chop, barkFactor) are not fully
-     *      configured, so no vault on it can be liquidated.
+     * @dev Indicates that the ilk's liquidation parameters (clip, chop, barkFactor) are not fully configured,
+     *      so no vault on it can be liquidated.
      */
     error IlkNotConfigured();
 

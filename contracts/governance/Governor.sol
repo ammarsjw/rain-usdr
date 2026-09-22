@@ -116,18 +116,18 @@ contract Governor is IGovernor, AccessControl {
         }
 
         // The execution window must still be open. Without an expiry, a queued change stays executable
-        // forever: a stale, forgotten entry — scheduled under assumptions long invalidated — could be fired
-        // years later by anyone, since execution is deliberately permissionless. Bounding the window means a
-        // change is only ever applied close to the context it was reviewed in; anything older must go back
-        // through the full timelock.
+        // forever: a stale, forgotten entry — scheduled under assumptions long invalidated — could be
+        // fired years later by anyone, since execution is deliberately permissionless. Bounding the window
+        // means a change is only ever applied close to the context it was reviewed in; anything older must go
+        // back through the full timelock.
         if (block.timestamp > change.eta + GRACE) {
             _revert(ChangeExpired.selector);
         }
 
-        // The target must carry code at EXECUTION time. A raw call to a code-less address succeeds
-        // vacuously, so a target destroyed (or scheduled before deployment and never deployed) would let the
-        // change "execute" while doing nothing — marked done, invisible to watchers, and silently absent
-        // from the protocol's actual configuration.
+        // The target must carry code at EXECUTION time. A raw call to a code-less address succeeds vacuously,
+        // so a target destroyed (or scheduled before deployment and never deployed) would let the change
+        // "execute" while doing nothing — marked done, invisible to watchers, and silently absent from the
+        // protocol's actual configuration.
         if (change.target.code.length == 0) {
             _revert(TargetNotContract.selector);
         }
