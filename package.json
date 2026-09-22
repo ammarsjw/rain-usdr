@@ -49,7 +49,7 @@
         "test-quick": "npm run test -- --no-compile",
         "test-report": "npm run test -- --gas-report",
         "test-verbose": "npm run test -- -vvvvv",
-        "wrap": "bash scripts/bash/wrap_comments.sh 'contracts/**/*.sol' 'scripts/**/*.js' 'tests/**/*.sol'"
+        "wrap": "bash scripts/bash/wrap_comments.sh -f 'contracts/**/*.sol' 'scripts/**/*.js' 'tests/**/*.sol'"
     },
     "dependencies": {
         "@openzeppelin/contracts": "5.4.0"
