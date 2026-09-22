@@ -31,6 +31,12 @@ import { MockExternalExposure } from "./mocks/MockExternalExposure.sol";
  *         fill-before-burn surplus rule and the dynamic hump target.
  */
 contract BalanceSheetTest is BaseTest {
+    /// @dev This suite asserts exact hump-target and reserve figures, so the shared baseline seed would skew
+    ///      them. No test here opens a volatile vault, so an empty starting reserve is safe.
+    function _baselineReserve() internal pure override returns (uint256) {
+        return 0;
+    }
+
     /* ========================== 1. FILE ========================== */
 
     function test_fileParametersAndGuards() public {
@@ -207,6 +213,13 @@ contract BalanceSheetTest is BaseTest {
 contract ReserveTest is BaseTest {
     /* ========================== HELPERS ========================== */
 
+    /// @dev This suite constructs exact reserve arithmetic (precise breach thresholds, free-slack figures and
+    ///      round-trip accounting), so the shared baseline seed would skew every assertion. The reserve starts
+    ///      empty and each test funds exactly what its scenario requires.
+    function _baselineReserve() internal pure override returns (uint256) {
+        return 0;
+    }
+
     function _setRainPrice(uint256 price) internal {
         rainPriceSource.setPrice(price);
         vm.warp(((vm.getBlockTimestamp() / 1800) + 2) * 1800);
@@ -242,6 +255,10 @@ contract ReserveTest is BaseTest {
         // THE rev-4 headline scenario. Loss must be identical before and after a mat change with no poke: the
         // engine prices collateral straight from the OSM, so mat desynchronization cannot bend it.
         _setRainPrice(1e18);
+
+        // Reserve covers the stressed loss of the opening draw (60 <= 0.9 * 100): the gate measures the
+        // post-change position, so the vault must be openable legally before the loss is measured.
+        _sellUsdt(keeper, 100e6);
         _openVault(user, 800e18, 200e18);
 
         uint256 lossBefore = solvencyEngine.worstCaseLoss();
@@ -258,6 +275,10 @@ contract ReserveTest is BaseTest {
 
     function test_worstCaseLossFailsClosedOnUnavailablePrice() public {
         _setRainPrice(1e18);
+
+        // Reserve covers the opening draw's stressed loss (post-state gate); worstCaseLoss itself is
+        // reserve-independent, so the assertions below are unaffected.
+        _sellUsdt(keeper, 100e6);
         _openVault(user, 800e18, 200e18);
 
         assertEq(solvencyEngine.worstCaseLoss(), 60e18, "priced loss");
@@ -271,12 +292,20 @@ contract ReserveTest is BaseTest {
     /* ========================== 2. LAZY REDEMPTION GATE ========================== */
 
     function test_redemptionGateHoldsWithoutAnyKeeper() public {
-        // Price collapse with the keeper dead: buyStable itself must detect the breach.
+        // Reserve shrinkage with the keeper dead: buyStable itself must detect the breach. The vault opens
+        // legally against a covering reserve (loss 60 <= 0.9 * 100); a successful redemption then drains the
+        // free slack (40), and because its lazy recompute runs BEFORE recordDecrease, the stored flag still
+        // says healthy while the remaining reserve (60) no longer covers the loss (threshold 54 < 60).
         _setRainPrice(1e18);
+        _sellUsdt(keeper, 100e6);
         _openVault(user, 800e18, 200e18);
-        _sellUsdt(keeper, 20e6);
 
-        // NOTE: No checkInvariant call anywhere. The stale flag says healthy.
+        vm.startPrank(keeper);
+        usdr.approve(address(psm), 40e18);
+        psm.buyStable(USDT_ILK, keeper, 40e6);
+        vm.stopPrank();
+
+        // NOTE: No checkInvariant call anywhere since the reserve shrank. The stale flag says healthy.
         assertFalse(solvencyEngine.breached(), "flag stale-healthy");
 
         vm.startPrank(keeper);
@@ -336,8 +365,11 @@ contract ReserveTest is BaseTest {
 
     function test_recordDecreaseCannotBreachEscrow() public {
         _setRainPrice(1e18);
-        _openVault(user, 800e18, 200e18);
+
+        // Fund first: the post-state gate requires the reserve to cover the opening draw's stressed loss
+        // (60 <= 0.9 * 100). The escrow assertions below are order-independent.
         _sellUsdt(keeper, 100e6);
+        _openVault(user, 800e18, 200e18);
 
         // Commit the full reserve as escrow via a breach-level loss.
         solvencyEngine.checkInvariant();
@@ -413,13 +445,21 @@ contract ReserveTest is BaseTest {
     /* ========================== 8. SOLVENCY GATE HOOKS ========================== */
 
     function test_frobHardGateHoldsWithoutAnyKeeper() public {
-        // No reserve at all. The FIRST draw passes: the gate recomputes on pre-frob state, where loss is
-        // still 0.
+        // The vault opens legally against a covering reserve (loss 190 - 800*0.5*0.35 = 50 <= 0.9 * 100);
+        // the keeper then redeems the free slack (50), shrinking the reserve to 50 (threshold 45 < 50). The
+        // redemption's lazy recompute runs BEFORE recordDecrease, so the stored flag still says healthy:
+        // frob itself must detect the breach. The 800/190 shape leaves mat headroom (cap 200) so the +1
+        // draw below reaches the solvency gate instead of dying at the safety check.
         _setRainPrice(1e18);
-        uint256 vaultId = _openVault(user, 800e18, 200e18);
+        _sellUsdt(keeper, 100e6);
+        uint256 vaultId = _openVault(user, 800e18, 190e18);
 
-        // Now the ilk carries a stressed loss of 60 against a zero reserve. NOTE: No checkInvariant call
-        // anywhere, the stale flag still says healthy and frob itself must detect the breach.
+        vm.startPrank(keeper);
+        usdr.approve(address(psm), 50e18);
+        psm.buyStable(USDT_ILK, keeper, 50e6);
+        vm.stopPrank();
+
+        // NOTE: No checkInvariant call anywhere since the reserve shrank. The stale flag says healthy.
         assertFalse(solvencyEngine.breached(), "flag stale-healthy");
 
         // Drawing more debt is blocked.
@@ -447,18 +487,28 @@ contract ReserveTest is BaseTest {
 
     function test_frobGateClearsOnceReserveCovers() public {
         // 199 of debt against 800 RAIN leaves mat headroom for one more 1-USDR draw (cap at spot 0.25 is
-        // 200).
+        // 200). Stressed loss = 199 - 800*0.5*0.35 = 59, so the vault opens legally against a covering
+        // reserve (59 <= 0.9 * 150 = 135).
         _setRainPrice(1e18);
+        _sellUsdt(keeper, 150e6);
         uint256 vaultId = _openVault(user, 800e18, 199e18);
 
-        // Blocked against an empty reserve (stressed loss 199 - 70 = 129 > 0).
+        // The keeper redeems 84 of the free slack (150 - escrow 59 = 91): the reserve falls to 66 against a
+        // threshold of 59.4, below the post-draw loss of 60, while the flag (refreshed BEFORE the
+        // recordDecrease) still says healthy.
+        vm.startPrank(keeper);
+        usdr.approve(address(psm), 84e18);
+        psm.buyStable(USDT_ILK, keeper, 84e6);
+        vm.stopPrank();
+
+        // Blocked against the thinned reserve: post-draw loss 60 > 0.9 * 66 = 59.4.
         vm.prank(user);
         vm.expectRevert(SolvencyGateActive.selector);
         vaultEngine.frob(vaultId, user, user, 0, int256(1e18));
 
-        // Seeding the reserve past the stressed loss (129 / 0.9 ~ 144) reopens the gate with no keeper
-        // involved.
-        _sellUsdt(keeper, 150e6);
+        // Seeding the reserve past the post-draw stressed loss (60 / 0.9 ~ 66.7; 66 + 20 = 86) reopens the
+        // gate with no keeper involved.
+        _sellUsdt(keeper, 20e6);
 
         vm.prank(user);
         vaultEngine.frob(vaultId, user, user, 0, int256(1e18));
@@ -468,9 +518,18 @@ contract ReserveTest is BaseTest {
         balanceSheet.file("humpFloor", 1 * _RAD);
         balanceSheet.file("buybackReceiver", address(0xB0B));
 
-        // A stressed loss of 60 against an empty reserve: breached. Surplus sits above target.
+        // The vault opens legally against a covering reserve (loss 60 <= 0.9 * 100); the keeper then redeems
+        // the free slack (40), leaving reserve 60 against threshold 54: breached, while the flag (refreshed
+        // BEFORE recordDecrease) still says healthy. Surplus sits above target.
         _setRainPrice(1e18);
+        _sellUsdt(keeper, 100e6);
         _openVault(user, 800e18, 200e18);
+
+        vm.startPrank(keeper);
+        usdr.approve(address(psm), 40e18);
+        psm.buyStable(USDT_ILK, keeper, 40e6);
+        vm.stopPrank();
+
         vaultEngine.suck(address(this), address(balanceSheet), 10 * _RAD);
 
         // NOTE: Stale flag says healthy; distributeSurplus recomputes and must refuse to ship value out.
@@ -479,17 +538,19 @@ contract ReserveTest is BaseTest {
         vm.expectRevert(SolvencyGateActive.selector);
         balanceSheet.distributeSurplus();
 
-        // Once the reserve covers the stressed loss, distribution flows again.
-        _sellUsdt(keeper, 100e6);
+        // Once the reserve covers the stressed loss again (60 + 40 = 100, threshold 90 >= 60), distribution
+        // flows again.
+        _sellUsdt(keeper, 40e6);
 
         assertEq(balanceSheet.distributeSurplus(), 9 * _RAD, "released after recovery");
     }
 
     function test_pokeSoftRefreshFlagsBreachWithoutReverting() public {
-        // Healthy at $1: loss 60 <= threshold 90.
+        // Healthy at $1: loss 60 <= threshold 90. Fund first: the post-state gate requires the reserve to
+        // cover the opening draw's stressed loss.
         _setRainPrice(1e18);
-        _openVault(user, 800e18, 200e18);
         _sellUsdt(keeper, 100e6);
+        _openVault(user, 800e18, 200e18);
 
         solvencyEngine.checkInvariant();
         assertFalse(solvencyEngine.breached(), "healthy at 1.0");
@@ -505,15 +566,18 @@ contract ReserveTest is BaseTest {
     }
 
     function test_dripSoftRefreshFlagsBreachWithoutReverting() public {
-        // Healthy but tight: loss 60, reserve 68, threshold 61.2.
+        // Healthy but tight: loss 190 - 900*0.5*0.35 = 32.5, reserve 57, threshold 51.3. Fund first: the
+        // post-state gate requires the reserve to cover the opening draw's stressed loss (32.5 <= 51.3).
+        // The 900/190 shape leaves mat headroom (cap 225) so the post-accrual +1 draw below reaches the
+        // solvency gate instead of dying at the safety check (tab ~211 <= 225).
         _setRainPrice(1e18);
-        uint256 vaultId = _openVault(user, 800e18, 200e18);
-        _sellUsdt(keeper, 68e6);
+        _sellUsdt(keeper, 57e6);
+        uint256 vaultId = _openVault(user, 900e18, 190e18);
 
         solvencyEngine.checkInvariant();
         assertFalse(solvencyEngine.breached(), "healthy before accrual");
 
-        // ~10% APY. A year of fees pushes the debt to ~220 and the loss to ~80 > 61.2: accrual alone must
+        // ~10% APY. A year of fees pushes the debt to ~209 and the loss to ~51.5 > 51.3: accrual alone must
         // surface the breach, with no keeper and no user action.
         vaultEngine.file(RAIN_ILK, "duty", 1000000003022265980097387650);
         vm.warp(vm.getBlockTimestamp() + 365 days);
@@ -559,6 +623,13 @@ contract ReserveTest is BaseTest {
  */
 contract ReserveAuditTest is BaseTest {
     /* ========================== HELPERS ========================== */
+
+    /// @dev This suite asserts exact reserve figures (round trips, snapshots, breach thresholds), so the
+    ///      shared baseline seed would skew every assertion. The reserve starts empty; tests that open
+    ///      volatile vaults either fund first or open at a price where the stressed value covers the debt.
+    function _baselineReserve() internal pure override returns (uint256) {
+        return 0;
+    }
 
     /// @dev Pushes `price` [wad] through the OSM (two pokes) and into the Vault Engine's spot.
     function _setRainPrice(uint256 price) internal {
@@ -621,14 +692,20 @@ contract ReserveAuditTest is BaseTest {
     /* ========================== 2. SOLVENCY ========================== */
 
     function test_solvencyBreachGatesAndRestores() public {
-        _setRainPrice(1e18);
-        uint256 vaultId = _openVault(user, 800e18, 200e18);
+        // Open at $2, where the stressed value (900 * 2 * 0.5 * 0.35 = 315) covers the debt: loss 0, so the
+        // post-state gate passes with an empty reserve. The breach then arrives through a genuine crash. The
+        // 900/200 shape leaves mat headroom at $1 (cap 225) so the +1 draw below reaches the solvency gate
+        // instead of dying at the safety check.
+        _setRainPrice(2e18);
+        uint256 vaultId = _openVault(user, 900e18, 200e18);
 
-        // Loss = 200 - 800 * 0.5 * 0.35 = 60 USDR. Reserve = 20 -> threshold 18 -> breached.
         _sellUsdt(keeper, 20e6);
 
+        // The crash to $1: loss = 200 - 900 * 0.5 * 0.35 = 42.5 USDR. Reserve = 20 -> threshold 18 -> breached.
+        _setRainPrice(1e18);
+
         (uint256 loss, uint256 reserve) = solvencyEngine.checkInvariant();
-        assertEq(loss, 60e18, "worst-case loss priced from collateral");
+        assertEq(loss, 42.5e18, "worst-case loss priced from collateral");
         assertEq(reserve, 20e18, "reserve");
         assertTrue(solvencyEngine.breached(), "breached");
 
@@ -649,7 +726,7 @@ contract ReserveAuditTest is BaseTest {
         psm.buyStable(USDT_ILK, keeper, 5e6);
         vm.stopPrank();
 
-        // Reserve-increasing PSM flow stays open. Reserve becomes 100 -> threshold 90 > loss (59 after the
+        // Reserve-increasing PSM flow stays open. Reserve becomes 100 -> threshold 90 > loss (41.5 after the
         // wipe), and the next redemption's lazy recompute clears the breach by itself, again no keeper
         // needed.
         _sellUsdt(keeper, 80e6);
@@ -667,6 +744,11 @@ contract ReserveAuditTest is BaseTest {
 
     function test_worstCaseLossScalesWithCollateral() public {
         _setRainPrice(1e18);
+
+        // Fund first: the post-state gate requires the reserve to cover the opening draw's stressed loss
+        // (100 - 400*0.5*0.35 = 30 <= 0.9 * 40 = 36). The assertions below read only worstCaseLoss, which is
+        // reserve-independent.
+        _sellUsdt(keeper, 40e6);
         uint256 vaultId = _openVault(user, 400e18, 100e18);
 
         uint256 lossAt400 = solvencyEngine.worstCaseLoss();
@@ -937,9 +1019,12 @@ contract ReserveAuditTest is BaseTest {
         // worstCaseLoss to 0 and letting buyStable pay the reserve out at par against an unsettled hole. The
         // seized debt must stay in the loss (remaining auction tab minus the stressed value of the lot) until
         // take/heal actually covers it.
-        _setRainPrice(1e18);
+        // Open at $2, where the stressed value (280) covers the debt (loss 0): the post-state gate passes
+        // with a thin reserve. The breach then arrives through a genuine crash to $1.
+        _setRainPrice(2e18);
         uint256 vaultId = _openVault(user, 800e18, 200e18);
         _sellUsdt(keeper, 20e6);
+        _setRainPrice(1e18);
 
         // Baseline: loss 60 > threshold 18 -> gated.
         (uint256 loss, ) = solvencyEngine.checkInvariant();
@@ -979,8 +1064,9 @@ contract ReserveAuditTest is BaseTest {
         // The counterpart guarantee: the auction term must DECAY as take covers the tab, so the protocol is
         // not wedged in breach after liquidations settle. A keeper buys the whole lot; the loss falls back to
         // the remaining live-vault risk (zero here) and the gate reopens once the reserve covers what is
-        // left.
-        _setRainPrice(1e18);
+        // left. Opened at $2 (stressed value 280 covers the debt: loss 0) so the post-state gate passes with
+        // a thin reserve.
+        _setRainPrice(2e18);
         uint256 vaultId = _openVault(user, 800e18, 200e18);
         _sellUsdt(keeper, 20e6);
 
@@ -1065,7 +1151,9 @@ contract ReserveAuditTest is BaseTest {
     function test_exclusiveBindingRefusedOnIlkWithDebt() public {
         // The binding's own guard: filing a nonzero binding onto an ilk that already carries debt would claim
         // an exclusivity the ledger lacks (pre-existing foreign vaults survive it). RAIN-A carries debt here.
-        _setRainPrice(1e18);
+        // Opened at $2 so the stressed value covers the debt (loss 0) and the post-state gate passes with an
+        // empty reserve — only the presence of debt matters to the assertion.
+        _setRainPrice(2e18);
         _openVault(user, 800e18, 200e18);
 
         vm.expectRevert(InvalidAssignment.selector);
@@ -1081,10 +1169,12 @@ contract ReserveAuditTest is BaseTest {
     function test_debtFreeVaultCannotSuppressWorstCaseLoss() public {
         // Report RAINUSDR-1224, the no-attacker variant: an idle vault holding collateral against no debt
         // used to be netted against every other vault's shortfall, silently disarming the invariant. Only
-        // backed ink may count.
-        _setRainPrice(1e18);
+        // backed ink may count. Open at $2 (stressed value 280 covers the debt: loss 0, gate passes on a
+        // thin reserve), then crash to $1 for the loss-60 baseline.
+        _setRainPrice(2e18);
         _openVault(user, 800e18, 200e18);
         _sellUsdt(keeper, 20e6);
+        _setRainPrice(1e18);
 
         (uint256 loss, ) = solvencyEngine.checkInvariant();
         assertEq(loss, 60e18, "baseline stressed loss");
@@ -1124,6 +1214,9 @@ contract ReserveAuditTest is BaseTest {
     function test_backedInkTracksDebtBoundaryCrossings() public {
         // The aggregate's lifecycle: ink counts from the moment the vault takes on debt (the ENTIRE ink, not
         // just the delta), follows ink deltas while debted, and leaves in full when the debt is cleared.
+        // Funded first: the post-state gate requires the reserve to cover each draw's stressed loss (peak 60
+        // <= 0.9 * 100); the assertions below read backedInk and worstCaseLoss only, both reserve-independent.
+        _sellUsdt(keeper, 100e6);
         _setRainPrice(1e18);
 
         // A debt-free vault contributes nothing.
@@ -1166,7 +1259,9 @@ contract ReserveAuditTest is BaseTest {
     function test_barkKeepsBackedInkConsistent() public {
         // grab crosses the same boundary: a bark seizes the vault's whole debt and collateral, so its ink
         // must leave the backed aggregate (the auction term from RAINUSDR-1217 then owns that risk).
-        _setRainPrice(1e18);
+        // Opened at $2 (stressed value 280 covers the debt: loss 0) so the post-state gate passes with a
+        // thin reserve; the crash to $0.6 below makes the vault barkable as before.
+        _setRainPrice(2e18);
         uint256 vaultId = _openVault(user, 800e18, 200e18);
         _sellUsdt(keeper, 20e6);
 

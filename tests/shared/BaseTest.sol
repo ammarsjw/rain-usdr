@@ -222,5 +222,30 @@ abstract contract BaseTest is Test {
 
         // Caching the auction's dust-times-chop threshold now that dust and chop are set.
         dutchAuction.upchost();
+
+        // Seeding a baseline stable reserve (launch-sequence parity): reserve capacity must exist before
+        // volatile borrowing, because the solvency gate measures the post-change position of every draw.
+        // Without this, the first volatile draw in any test breaches the invariant against an empty reserve.
+        // Suites that construct exact reserve arithmetic override {_baselineReserve} to opt out and manage
+        // reserve state themselves.
+        uint256 seedAmount = _baselineReserve();
+
+        if (seedAmount != 0) {
+            address reserveSeeder = address(0x5EED);
+            usdt.mint(reserveSeeder, seedAmount);
+
+            vm.startPrank(reserveSeeder);
+            usdt.approve(address(psm), seedAmount);
+            psm.sellStable(USDT_ILK, reserveSeeder, seedAmount);
+            vm.stopPrank();
+        }
+    }
+
+    /// @dev Baseline stable reserve seeded at the end of setUp, in USDT units (6 decimals). 1,000 USDT
+    ///      covers the stressed loss of every vault the suites open. Override to 0 in suites that assert
+    ///      exact reserve figures.
+    function _baselineReserve() internal pure virtual returns (uint256) {
+        return 1_000e6;
     }
 }
+

@@ -501,23 +501,6 @@ contract VaultEngine is IVaultEngine, AccessControl {
             _revert(SystemPaused.selector);
         }
 
-        // Solvency gate (HARD breach): risk-increasing changes (drawing debt or withdrawing collateral)
-        // against VOLATILE collateral are blocked while the reserve invariant is breached. The invariant is
-        // RECOMPUTED here rather than trusting the keeper-maintained flag: a stale flag (keeper down during a
-        // price collapse) would otherwise let a draw slip through against reserves that can no longer cover
-        // the stressed loss. Repayment (dart < 0) and collateral top-ups (dink > 0) always remain available
-        // because they reduce risk. Stable (PSM) ilks are exempt: PSM inflows are reserve-increasing and must
-        // never be gated, while PSM redemptions are gated inside the PSM itself.
-        if (
-            (dart > 0 || dink < 0) && solvencyEngine != address(0) && ISolvencyEngine(solvencyEngine).isVolatile(ilkId)
-        ) {
-            ISolvencyEngine(solvencyEngine).checkInvariant();
-
-            if (ISolvencyEngine(solvencyEngine).isBreached()) {
-                _revert(SolvencyGateActive.selector);
-            }
-        }
-
         // Backed-ink tracking: only collateral in vaults that actually carry debt may count toward the
         // solvency stress calculation. Collateral in a debt-free vault can never pay another vault's debt
         // (liquidation surplus returns to the vault's own owner), so it must contribute nothing to the
@@ -586,6 +569,35 @@ contract VaultEngine is IVaultEngine, AccessControl {
 
         urns[vaultId] = urn;
         ilks[ilkId] = ilk;
+
+        // Solvency gate (HARD breach): risk-increasing changes (drawing debt or withdrawing collateral)
+        // against VOLATILE collateral are blocked while the reserve invariant is breached. The gate runs
+        // AFTER the ledger writes so the invariant measures the post-change position: evaluated on the
+        // pre-change aggregates, the one transaction that causes a breach is the one transaction the gate
+        // never stops — the draw passes on the old numbers, mutates the ledger, and leaves the protocol
+        // breached with the proceeds already in circulation. Reverting here unwinds the whole mutation, so
+        // ordering the check last is safe. The invariant is RECOMPUTED rather than trusting the
+        // keeper-maintained flag: a stale flag (keeper down during a price collapse) would otherwise let a
+        // draw slip through against reserves that can no longer cover the stressed loss. Repayment
+        // (dart < 0) and collateral top-ups (dink > 0) always remain available because they reduce risk.
+        // Stable (PSM) ilks are exempt: PSM inflows are reserve-increasing and must never be gated, while
+        // PSM redemptions are gated inside the PSM itself.
+        if (solvencyEngine != address(0) && ISolvencyEngine(solvencyEngine).isVolatile(ilkId)) {
+            if (dart > 0 || dink < 0) {
+                ISolvencyEngine(solvencyEngine).checkInvariant();
+
+                if (ISolvencyEngine(solvencyEngine).isBreached()) {
+                    _revert(SolvencyGateActive.selector);
+                }
+            } else if (dink > 0) {
+                // Deposit leg: refresh the invariant WITHOUT gating on the result. A pure collateral top-up
+                // reduces risk and must never be blocked, but the committed escrow must track collateral
+                // moving in as well as out — otherwise the escrow that redemption is served against follows
+                // only one direction of collateral movement. Non-fatal so a mis-wired engine can never block
+                // a risk-reducing operation.
+                try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
+            }
+        }
 
         emit Frob({ ilkId: ilkId, vaultId: vaultId, v: v, w: w, dink: dink, dart: dart });
     }

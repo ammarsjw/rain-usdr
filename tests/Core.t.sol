@@ -34,6 +34,13 @@ import { MockFeeOnTransferERC20 } from "./mocks/MockFeeOnTransferERC20.sol";
  *         permissions and vault lifecycle.
  */
 contract VaultEngineCoreTest is BaseTest {
+    /// @dev This suite asserts global conservation figures (e.g. debt == 0 after a round trip), which the
+    ///      shared baseline seed would skew. TEST-A is not a volatile ilk, so no draw here faces the
+    ///      solvency gate and an empty starting reserve is safe.
+    function _baselineReserve() internal pure override returns (uint256) {
+        return 0;
+    }
+
     bytes32 internal constant TEST_ILK = "TEST-A";
 
     address internal alice = address(0xA11CE);
@@ -945,6 +952,12 @@ contract StabilityFeeTest is BaseTest {
         // RAIN priced at 1: spot = 0.25 (mat 400%). A vault at 800 ink / 190 art is safe with headroom, then
         // fees push it below the bark threshold with NO price move.
         _setRainPrice(1e18);
+
+        // Seed the stable reserve BEFORE the draw: the solvency gate measures the post-change position, so
+        // the opening draw itself must be covered by the reserve (stressed loss ~50e18 at these numbers).
+        usdt.mint(address(this), 100e6);
+        usdt.approve(address(psm), 100e6);
+        psm.sellStable(USDT_ILK, address(this), 100e6);
 
         uint256 vaultId = _openRainVault(address(this), 800e18, 190e18);
 
