@@ -105,7 +105,16 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
             _revert(InvalidAddress.selector);
         }
 
-        _ilks[ilkId].src = newSrc;
+        Ilk storage ilk = _ilks[ilkId];
+        ilk.src = newSrc;
+
+        // The queued next price still belongs to the outgoing source. Leaving it in place would let the first
+        // poke after the switch promote the abandoned source's value into `cur` — precisely the value a
+        // rotation away from a misbehaving or compromised source is meant to retire. Clearing the queue means
+        // the new source must report twice (once into `nxt`, once promoted) before its price becomes current,
+        // preserving the delayed-feed guarantee across the switch. The current price is kept: it was already
+        // promoted under the full delay and consumers depend on its availability.
+        ilk.nxt = Feed(0, 0);
 
         emit Change({ ilkId: ilkId, src: address(newSrc) });
     }

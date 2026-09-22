@@ -8,6 +8,7 @@ import { InvalidAddress, InvalidAmount, NotLive } from "../contracts/shared/Erro
 import { _RAY, _READER_ROLE } from "../contracts/shared/Constants.sol";
 
 import { BaseTest } from "./shared/BaseTest.sol";
+import { MockPriceSource } from "./mocks/MockPriceSource.sol";
 
 /* ========================== ORACLE (OSM & PRICE CONVERTER) ========================== */
 
@@ -109,6 +110,41 @@ contract OracleTest is BaseTest {
 
         (, bool hasNxt) = osm.peep(RAIN_ILK);
         assertFalse(hasNxt, "zero price rejected");
+    }
+
+    function test_osmChangeClearsQueuedNextPrice() public {
+        // Rotating the price source must retire the outgoing source's QUEUED price. Otherwise the first
+        // poke after the switch promotes the abandoned source's value into cur — the exact value a rotation
+        // away from a compromised source is meant to retire.
+        _warpToBoundary(0);
+        rainPriceSource.setPrice(1e18);
+        osm.poke(RAIN_ILK); // Queues 1e18 (honest baseline) into nxt.
+
+        vm.warp(vm.getBlockTimestamp() + 1800);
+        rainPriceSource.setPrice(9e18); // Compromised source queues a malicious price...
+        osm.poke(RAIN_ILK); // ...into nxt (1e18 promotes to cur).
+
+        // Governance rotates to a fresh, honest source.
+        MockPriceSource honestSource = new MockPriceSource(1e18);
+        osm.change(RAIN_ILK, honestSource);
+
+        // The malicious queued price is gone; the fully-delayed current price survives.
+        (, bool hasNxt) = osm.peep(RAIN_ILK);
+        assertFalse(hasNxt, "queued price from the retired source wiped");
+
+        (bytes32 curVal, bool hasCur) = osm.peek(RAIN_ILK);
+        assertTrue(hasCur, "current price kept across the rotation");
+        assertEq(uint256(curVal), 1e18, "current price unchanged");
+
+        // The next poke queues the NEW source's price into nxt — it does not promote anything malicious.
+        vm.warp(vm.getBlockTimestamp() + 1800);
+        osm.poke(RAIN_ILK);
+
+        (curVal, ) = osm.peek(RAIN_ILK);
+        assertEq(uint256(curVal), 0, "empty queue promoted, never the retired source's 9e18");
+
+        (bytes32 nxtVal, ) = osm.peep(RAIN_ILK);
+        assertEq(uint256(nxtVal), 1e18, "new source's price queued under the full delay");
     }
 
     function test_osmInvalidSourceEmitsPokeFailedWithoutReverting() public {
