@@ -189,6 +189,20 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
 
         bytes32 ilkId = VAULT_ENGINE.ilkOf(vaultId);
 
+        // The ilk's liquidation parameters must be fully configured. An ilk listed in the Vault Engine but
+        // never configured here is borrowable yet unliquidatable: a zero barkFactor makes the unsafe check
+        // refuse every vault, a zero clip has no auction house to kick, and a zero chop would zero the
+        // divisor in the room calculation. Each failure mode surfaces as an unrelated revert (or silent
+        // no-op) — this guard turns the misconfiguration into one typed, monitorable error at the entry
+        // point instead.
+        {
+            IlkLiquidation memory pre = ilks[ilkId];
+
+            if (pre.clip == address(0) || pre.chop < _WAD || pre.barkFactor == 0) {
+                _revert(IlkNotConfigured.selector);
+            }
+        }
+
         // Accrue the stability fee first so the unsafe check, the tab and the auction all snapshot the true
         // accrued debt at the current rate.
         VAULT_ENGINE.drip(ilkId);

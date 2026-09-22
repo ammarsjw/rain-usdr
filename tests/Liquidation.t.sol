@@ -3,6 +3,7 @@
 pragma solidity 0.8.30;
 
 import { CircuitBreaker } from "../contracts/liquidation/CircuitBreaker.sol";
+import { LiquidationTrigger } from "../contracts/liquidation/LiquidationTrigger.sol";
 import { IDutchAuction } from "../contracts/interfaces/IDutchAuction.sol";
 import { ILiquidationTrigger } from "../contracts/interfaces/ILiquidationTrigger.sol";
 import { IOracleSecurityModule } from "../contracts/interfaces/IOracleSecurityModule.sol";
@@ -898,6 +899,22 @@ contract LiquidationAuditTest is BaseTest {
     }
 
     /* ========================== 4. CONFIGURATION & CAPACITY GUARDS ========================== */
+
+    function test_barkUnconfiguredIlkReverts() public {
+        // An ilk listed in the Vault Engine but never configured on the trigger is borrowable yet
+        // unliquidatable: zero barkFactor refuses every vault, zero clip has nothing to kick, zero chop
+        // zeroes a divisor. The misconfiguration must surface as one typed error at the entry point.
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
+        _setRainPrice(0.6e18);
+
+        LiquidationTrigger freshTrigger = new LiquidationTrigger(vaultEngine);
+        freshTrigger.file("globalHole", 10_000 * _RAD);
+        freshTrigger.file("balanceSheet", address(balanceSheet));
+
+        vm.expectRevert(ILiquidationTrigger.IlkNotConfigured.selector);
+        freshTrigger.bark(vaultId, keeper);
+    }
 
     function test_dustBumpCannotBlowPastHole() public {
         // The dust-avoidance bump (liquidate entirely when the leftover would be dusty) must not override
