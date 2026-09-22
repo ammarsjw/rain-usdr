@@ -124,6 +124,14 @@ contract Governor is IGovernor, AccessControl {
             _revert(ChangeExpired.selector);
         }
 
+        // The target must carry code at EXECUTION time. A raw call to a code-less address succeeds
+        // vacuously, so a target destroyed (or scheduled before deployment and never deployed) would let the
+        // change "execute" while doing nothing — marked done, invisible to watchers, and silently absent
+        // from the protocol's actual configuration.
+        if (change.target.code.length == 0) {
+            _revert(TargetNotContract.selector);
+        }
+
         change.executed = true;
 
         bool success;

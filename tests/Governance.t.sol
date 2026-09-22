@@ -148,6 +148,20 @@ contract GovernanceTest is BaseTest {
         assertEq(line, 150_000 * _RAD, "change applied at the grace boundary");
     }
 
+    function test_executeRejectsCodelessTarget() public {
+        // A raw call to a code-less address succeeds vacuously: the change would be marked executed while
+        // doing nothing. The target must carry code at execution time.
+        uint256 id = governor.schedule(
+            address(0xDEAD),
+            abi.encodeWithSignature("file(bytes32,uint256)", bytes32("globalLine"), uint256(1))
+        );
+
+        vm.warp(vm.getBlockTimestamp() + 48 hours);
+
+        vm.expectRevert(IGovernor.TargetNotContract.selector);
+        governor.execute(id);
+    }
+
     /* ========================== 3. REAL PAUSE AUTO-EXPIRY ========================== */
 
     function test_pauseAutoExpiresForConsumers() public {
