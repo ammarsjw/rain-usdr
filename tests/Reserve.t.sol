@@ -959,8 +959,8 @@ contract ReserveAuditTest is BaseTest {
         // on the auction as tab and the collateral as lot.
         liquidationTrigger.bark(vaultId, keeper);
 
-        // The loss must NOT collapse: auction tab (~226 = 200 * 1.13) minus the stressed lot value
-        // (800 * 0.6 * 0.5 * 0.35 = 84) keeps the hole on the books.
+        // The loss must NOT collapse: auction tab (~226 = 200 * 1.13) minus the stressed lot value (800 * 0.6
+        // * 0.5 * 0.35 = 84) keeps the hole on the books.
         uint256 lossAfterBark = solvencyEngine.worstCaseLoss();
         assertGt(lossAfterBark, 0, "bark cannot zero the computed loss");
         assertGe(lossAfterBark, 100e18, "seized debt stays counted at stressed value");

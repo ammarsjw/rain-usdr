@@ -68,9 +68,9 @@ const deployReserve = async () => {
     await (await psmInstance.init(usdcIlk)).wait();
     await (await reserveAccountingInstance.grantRole(RECORDER_ROLE, psmAddress)).wait();
 
-    // Binding the stable ilks exclusively to the PSM (RAINUSDR-1218): without this, anyone could open a
-    // personal vault on a 1:1 ilk and frob debt that never passes through recordIncrease, then redeem the
-    // minted USDR against the module's genuine inventory and strand honest sellers.
+    // Binding the stable ilks exclusively to the PSM: without this, anyone could open a personal vault on a
+    // 1:1 ilk and frob debt that never passes through recordIncrease, then redeem the minted USDR against the
+    // module's genuine inventory and strand honest sellers.
     await (
         await vaultEngineInstance["file(bytes32,bytes32,address)"](
             usdtIlk,

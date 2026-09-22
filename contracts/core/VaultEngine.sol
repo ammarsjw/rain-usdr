@@ -332,7 +332,7 @@ contract VaultEngine is IVaultEngine, AccessControl {
         // Exclusive-ilk binding: an ilk bound to a single legitimate owner (a PSM stable ilk is bound to its
         // PSM) rejects every other vault owner. Without this, anyone could open a personal vault on a 1:1 ilk
         // and frob debt 1:1 that never passes through the PSM's recordIncrease, then redeem the minted USDR
-        // against the module's genuine inventory and strand honest sellers (RAINUSDR-1218).
+        // against the module's genuine inventory and strand honest sellers.
         if (exclusiveTo[ilkId] != address(0) && (exclusiveTo[ilkId] != usr || exclusiveTo[ilkId] != msg.sender)) {
             _revert(IlkExclusive.selector);
         }
@@ -518,13 +518,13 @@ contract VaultEngine is IVaultEngine, AccessControl {
             }
         }
 
-        // Backed-ink tracking (RAINUSDR-1224): only collateral in vaults that actually carry debt may count
-        // toward the solvency stress calculation. Collateral in a debt-free vault can never pay another
-        // vault's debt (liquidation surplus returns to the vault's own owner), so it must contribute nothing
-        // to the recoverable value. The aggregate is maintained here on the debt-zero boundary crossings:
-        // the vault's PRE-write ink leaves the aggregate when it was debted, and its POST-write ink enters
-        // when it is debted after — which handles all four combinations (stay debted, enter, exit, stay
-        // debt-free) uniformly, including a repay-and-withdraw in the same call.
+        // Backed-ink tracking: only collateral in vaults that actually carry debt may count toward the
+        // solvency stress calculation. Collateral in a debt-free vault can never pay another vault's debt
+        // (liquidation surplus returns to the vault's own owner), so it must contribute nothing to the
+        // recoverable value. The aggregate is maintained here on the debt-zero boundary crossings: the
+        // vault's PRE-write ink leaves the aggregate when it was debted, and its POST-write ink enters when
+        // it is debted after — which handles all four combinations (stay debted, enter, exit, stay debt-free)
+        // uniformly, including a repay-and-withdraw in the same call.
         bool hadDebt = urn.art != 0;
         uint256 prevInk = urn.ink;
 
@@ -605,10 +605,10 @@ contract VaultEngine is IVaultEngine, AccessControl {
         Urn storage urn = urns[vaultId];
         Ilk storage ilk = ilks[ilkId];
 
-        // Backed-ink tracking (RAINUSDR-1224): grab crosses the same debt-zero boundary as frob (a bark
-        // seizes the vault's entire debt and collateral; emergency settlement seizes partials), so the
-        // eligible aggregate is maintained identically: pre-write ink leaves when the vault was debted,
-        // post-write ink enters when it is debted after.
+        // Backed-ink tracking: grab crosses the same debt-zero boundary as frob (a bark seizes the vault's
+        // entire debt and collateral; emergency settlement seizes partials), so the eligible aggregate is
+        // maintained identically: pre-write ink leaves when the vault was debted, post-write ink enters when
+        // it is debted after.
         bool hadDebt = urn.art != 0;
         uint256 prevInk = urn.ink;
 

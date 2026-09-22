@@ -3,10 +3,10 @@ const hardhat = require("hardhat");
 /**
  * Verifies the post-deployment risk-parameter surface.
  *
- * Complements verify-roles.js (access control) with a systemic gate against the recurring
- * "correct code, never configured" class (rev-2 hump, rev-4 exposureCap, rev-5 buybackReceiver):
- * every governance risk parameter must be either explicitly set or intentionally default, and
- * every intentional default is asserted here so a drive-by change is caught too.
+ * Complements verify-roles.js (access control) with a systemic gate against the recurring "correct code,
+ * never configured" class (rev-2 hump, rev-4 exposureCap, rev-5 buybackReceiver): every governance risk
+ * parameter must be either explicitly set or intentionally default, and every intentional default is asserted
+ * here so a drive-by change is caught too.
  *
  * Exits non-zero loudly on any mismatch.
  */

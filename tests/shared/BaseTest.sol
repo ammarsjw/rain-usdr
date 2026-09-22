@@ -124,8 +124,8 @@ abstract contract BaseTest is Test {
         psm.init(USDT_ILK);
         psm.init(USDC_ILK);
 
-        // Binding the stable ilks exclusively to the PSM (RAINUSDR-1218, deploy-script parity): no personal
-        // vaults on the 1:1 ilks.
+        // Binding the stable ilks exclusively to the PSM (deploy-script parity): no personal vaults on the
+        // 1:1 ilks.
         vaultEngine.file(USDT_ILK, "exclusiveTo", address(psm));
         vaultEngine.file(USDC_ILK, "exclusiveTo", address(psm));
         governor = new Governor(48 hours);

@@ -294,11 +294,10 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
             (bytes32 val, bool has) = osm.peek(ilkId);
 
             if (has) {
-                // Backed ink only (RAINUSDR-1224): collateral in a debt-free vault can never pay another
-                // vault's debt (liquidation surplus returns to the vault's own owner), so pricing the
-                // recoverable value from the raw global ink would let an idle or flash-deposited vault
-                // suppress the loss and disarm the gates. Only collateral in vaults that actually carry
-                // debt is credited.
+                // Backed ink only: collateral in a debt-free vault can never pay another vault's debt
+                // (liquidation surplus returns to the vault's own owner), so pricing the recoverable value
+                // from the raw global ink would let an idle or flash-deposited vault suppress the loss and
+                // disarm the gates. Only collateral in vaults that actually carry debt is credited.
                 collateralValue = (VAULT_ENGINE.backedInk(ilkId) * uint256(val)) / _WAD;
             }
 
