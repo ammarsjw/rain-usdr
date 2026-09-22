@@ -101,6 +101,53 @@ contract GovernanceTest is BaseTest {
         governor.execute(id);
     }
 
+    function test_staleQueuedChangeExpires() public {
+        // A queued change must not stay executable forever. Without an expiry, a stale, forgotten entry —
+        // scheduled under assumptions long invalidated — could be fired years later by anyone, since
+        // execution is permissionless.
+        vaultEngine.grantRole(_WARD_ROLE, address(governor));
+
+        uint256 id = governor.schedule(
+            address(vaultEngine),
+            abi.encodeWithSignature("file(bytes32,bytes32,uint256)", RAIN_ILK, bytes32("line"), 200_000 * _RAD)
+        );
+
+        // Still executable at the very end of the grace window.
+        vm.warp(vm.getBlockTimestamp() + 48 hours + governor.GRACE());
+        // ...but expired one second past it.
+        vm.warp(vm.getBlockTimestamp() + 1);
+        vm.expectRevert(IGovernor.ChangeExpired.selector);
+        governor.execute(id);
+
+        // The change is dead permanently; only a fresh schedule (full timelock) can apply it now.
+        uint256 fresh = governor.schedule(
+            address(vaultEngine),
+            abi.encodeWithSignature("file(bytes32,bytes32,uint256)", RAIN_ILK, bytes32("line"), 200_000 * _RAD)
+        );
+
+        vm.warp(vm.getBlockTimestamp() + 48 hours);
+        governor.execute(fresh);
+
+        (, , , , uint256 line, , , ) = vaultEngine.ilks(RAIN_ILK);
+        assertEq(line, 200_000 * _RAD, "re-scheduled change applied");
+    }
+
+    function test_executeWithinGraceWindowStillWorks() public {
+        // The boundary itself (eta + GRACE exactly) is still executable — the window closes strictly after.
+        vaultEngine.grantRole(_WARD_ROLE, address(governor));
+
+        uint256 id = governor.schedule(
+            address(vaultEngine),
+            abi.encodeWithSignature("file(bytes32,bytes32,uint256)", RAIN_ILK, bytes32("line"), 150_000 * _RAD)
+        );
+
+        vm.warp(vm.getBlockTimestamp() + 48 hours + governor.GRACE());
+        governor.execute(id);
+
+        (, , , , uint256 line, , , ) = vaultEngine.ilks(RAIN_ILK);
+        assertEq(line, 150_000 * _RAD, "change applied at the grace boundary");
+    }
+
     /* ========================== 3. REAL PAUSE AUTO-EXPIRY ========================== */
 
     function test_pauseAutoExpiresForConsumers() public {

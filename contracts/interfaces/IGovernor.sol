@@ -83,6 +83,19 @@ interface IGovernor {
     error DelayNotElapsed();
 
     /**
+     * @dev Indicates that the change's execution window has closed. A queued change is executable only
+     *      between its eta and eta plus the grace window; after that it must be re-scheduled through the
+     *      full timelock.
+     */
+    error ChangeExpired();
+
+    /**
+     * @dev Indicates that the change's target carries no code, so the call would succeed vacuously without
+     *      doing anything.
+     */
+    error TargetNotContract();
+
+    /**
      * @dev Indicates that the scheduled call reverted during execution.
      */
     error ExecutionFailed();
@@ -137,6 +150,13 @@ interface IGovernor {
      * @notice Returns the maximum pause duration in seconds, after which anyone can un-pause.
      */
     function PAUSE_MAX() external view returns (uint256);
+
+    /**
+     * @notice Returns the execution grace window in seconds. A queued change is executable only between its
+     *         eta and eta plus this window; after that it expires and must be re-scheduled through the full
+     *         timelock.
+     */
+    function GRACE() external view returns (uint256);
 
     /**
      * @notice Returns the mandatory timelock delay in seconds.

@@ -29,6 +29,9 @@ contract Governor is IGovernor, AccessControl {
     uint256 public constant PAUSE_MAX = 72 hours;
 
     /// @inheritdoc IGovernor
+    uint256 public constant GRACE = 14 days;
+
+    /// @inheritdoc IGovernor
     uint256 public immutable delay;
 
     /// @inheritdoc IGovernor
@@ -110,6 +113,15 @@ contract Governor is IGovernor, AccessControl {
         // The delay must have fully elapsed.
         if (block.timestamp < change.eta) {
             _revert(DelayNotElapsed.selector);
+        }
+
+        // The execution window must still be open. Without an expiry, a queued change stays executable
+        // forever: a stale, forgotten entry — scheduled under assumptions long invalidated — could be fired
+        // years later by anyone, since execution is deliberately permissionless. Bounding the window means a
+        // change is only ever applied close to the context it was reviewed in; anything older must go back
+        // through the full timelock.
+        if (block.timestamp > change.eta + GRACE) {
+            _revert(ChangeExpired.selector);
         }
 
         change.executed = true;
