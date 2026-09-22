@@ -278,7 +278,10 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             _revert(NullAuction.selector);
         }
 
-        if (dart > 2 ** 255 || dink > 2 ** 255) {
+        // The signed range's magnitude bound is int256.max (2**255 - 1): a value of exactly 2**255 passes a
+        // strict `> 2**255` check but overflows the int256 cast below, surfacing as a raw arithmetic panic
+        // instead of the typed error. The guard is therefore inclusive of the boundary.
+        if (dart >= 2 ** 255 || dink >= 2 ** 255) {
             _revert(Overflow.selector);
         }
 
