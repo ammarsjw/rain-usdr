@@ -538,6 +538,59 @@ contract SettlementTest is BaseTest {
         assertApproxEqAbs(claimable, held, 1e6, "nothing stranded");
     }
 
+    function test_flowBlockedUntilEveryVaultIsSkimmed() public {
+        // Report A.1 (RAINUSDR-1244): gap[ilkId] is accumulated lazily per vault in skim, so fixing the
+        // redemption price while any debt-bearing vault is unskimmed locks fix against an understated
+        // shortfall — the early redeemer over-collects and later redeemers' cash reverts. flow must refuse
+        // until pendingArt reaches zero.
+        _setRainPrice(1e18);
+
+        // The reserve must exist before the second draw: two 100-art vaults carry 60 of stressed loss, which
+        // breaches against an empty reserve and the solvency gate would refuse vault B's frob.
+        _sellUsdt(keeper, 100e6);
+
+        uint256 vaultA = _openVault(user, 400e18, 100e18);
+        uint256 vaultB = _openVault(keeper, 400e18, 100e18);
+
+        // Both vaults are underwater at the settlement price.
+        _setRainPrice(0.2e18);
+
+        end.cage();
+        end.cage(RAIN_ILK);
+        end.cage(USDT_ILK);
+
+        assertEq(end.pendingArt(RAIN_ILK), 200e18, "both vaults await skim");
+
+        // Only vault A is skimmed: the shortfall is incomplete.
+        end.skim(vaultA);
+        (, , uint256 psmVaultId) = psm.ilks(USDT_ILK);
+        end.skim(psmVaultId);
+
+        end.thaw();
+
+        // The premature flow — the report's exploit step — is refused.
+        vm.expectRevert(IEnd.SkimsPending.selector);
+        end.flow(RAIN_ILK);
+
+        // After the second skim the guard lifts and fix is computed on the COMPLETE shortfall.
+        end.skim(vaultB);
+        assertEq(end.pendingArt(RAIN_ILK), 0, "all debt settled");
+
+        end.flow(RAIN_ILK);
+
+        (, , uint256 rate, , , , , ) = vaultEngine.ilks(RAIN_ILK);
+        uint256 wad = (((uint256(200e18) * rate) / _RAY) * end.tag(RAIN_ILK)) / _RAY;
+        uint256 expectedFix = ((wad - end.gap(RAIN_ILK)) * _RAY) / (end.debt() / _RAY);
+
+        assertEq(end.fix(RAIN_ILK), expectedFix, "fix computed on the complete gap");
+
+        // Conservation: redeeming the entire fixed debt at fix drains exactly what End holds.
+        uint256 held = vaultEngine.collateral(RAIN_ILK, address(end));
+        uint256 claimable = ((end.debt() / _RAY) * end.fix(RAIN_ILK)) / _RAY;
+
+        assertApproxEqAbs(claimable, held, 1e6, "no over-payment, nothing stranded");
+    }
+
     function test_freeRevertsForNonOwnerAndIndebtedVault() public {
         _setRainPrice(1e18);
         uint256 vaultId = _openVault(user, 400e18, 100e18);

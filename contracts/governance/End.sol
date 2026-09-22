@@ -78,6 +78,9 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
     mapping(bytes32 ilkId => uint256 snapshotArt) public art;
 
     /// @inheritdoc IEnd
+    mapping(bytes32 ilkId => uint256 unskimmedArt) public pendingArt;
+
+    /// @inheritdoc IEnd
     mapping(bytes32 ilkId => uint256 redemptionPrice) public fix;
 
     /// @inheritdoc IEnd
@@ -182,6 +185,11 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
 
         art[ilkId] = globalArt;
 
+        // Settlement-completeness accumulator: the debt that still awaits skim. Initialized to the snapshot,
+        // raised by skip (reinstated auction debt), lowered by skim as vaults settle. flow requires it at
+        // zero so the shortfall (gap) is complete before the redemption price is fixed.
+        pendingArt[ilkId] = globalArt;
+
         // Halting this collateral's auction house: after global settlement the auction price keeps decaying
         // while the settlement price below is fixed forever, so any still-running auction becomes a risk-free
         // arbitrage against USDR redeemers once the curve crosses break-even and collateral bought there
@@ -251,6 +259,9 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         // redemption price and stranding the difference in this contract forever.
         art[ilkId] += restoredArt;
 
+        // The reinstated debt also awaits skim, so it raises the completeness accumulator by the same amount.
+        pendingArt[ilkId] += restoredArt;
+
         // Overflow guards on the signed casts.
         if (int256(lot) < 0 || int256(restoredArt) < 0) {
             _revert(InvalidAmount.selector);
@@ -281,6 +292,11 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         uint256 wad = Math.min(ink, owe);
 
         gap[ilkId] += owe - wad;
+
+        // The settled debt leaves the completeness accumulator: once every debt-bearing vault has been
+        // skimmed (pendingArt == 0), the shortfall (gap) is complete and flow may fix the redemption price.
+        // Zero-debt or repeat skims lower it by nothing.
+        pendingArt[ilkId] -= urnArt;
 
         // Overflow guards on the signed casts.
         if (int256(wad) < 0 || int256(urnArt) < 0) {
@@ -393,6 +409,15 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
 
         if (clipAddress != address(0) && IDutchAuction(clipAddress).count() != 0) {
             _revert(AuctionsPending.selector);
+        }
+
+        // Settlement-completeness guard: every debt-bearing vault on this ilk must have been skimmed before
+        // the redemption price is fixed. An unskimmed underwater vault leaves gap[ilkId] understated, so a
+        // premature flow would lock fix too favorable — the early redeemer over-collects from the pot and
+        // later redeemers' cash reverts against an emptied pool. Skim is permissionless, so anyone can drive
+        // this to zero.
+        if (pendingArt[ilkId] != 0) {
+            _revert(SkimsPending.selector);
         }
 
         (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);

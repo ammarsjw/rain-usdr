@@ -149,6 +149,12 @@ interface IEnd {
     error AuctionsPending();
 
     /**
+     * @dev Indicates that debt-bearing vaults on the ilk have not all been skimmed yet, so the shortfall
+     *      (gap) is incomplete and the redemption price cannot be fixed.
+     */
+    error SkimsPending();
+
+    /**
      * @dev Indicates that the redemption price has not been computed yet.
      */
     error FixNotDefined();
@@ -295,6 +301,14 @@ interface IEnd {
      * @param ilkId Identifier of the collateral type.
      */
     function art(bytes32 ilkId) external view returns (uint256);
+
+    /**
+     * @notice Returns a collateral type's normalized debt still awaiting {skim} [wad]. Initialized at its
+     *         {cage}, raised by {skip}, lowered by {skim}; must be zero before {flow} fixes the redemption
+     *         price.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function pendingArt(bytes32 ilkId) external view returns (uint256);
 
     /**
      * @notice Returns a collateral type's final redemption price [ray]. Zero until {flow}.
