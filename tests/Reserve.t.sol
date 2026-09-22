@@ -1075,4 +1075,110 @@ contract ReserveAuditTest is BaseTest {
         vaultEngine.file(USDT_ILK, "exclusiveTo", address(0));
         vaultEngine.file(USDT_ILK, "exclusiveTo", address(psm));
     }
+
+    /* ========================== 11. BACKED-INK ONLY (RAINUSDR-1224) ========================== */
+
+    function test_debtFreeVaultCannotSuppressWorstCaseLoss() public {
+        // Report RAINUSDR-1224, the no-attacker variant: an idle vault holding collateral against no debt
+        // used to be netted against every other vault's shortfall, silently disarming the invariant. Only
+        // backed ink may count.
+        _setRainPrice(1e18);
+        _openVault(user, 800e18, 200e18);
+        _sellUsdt(keeper, 20e6);
+
+        (uint256 loss, ) = solvencyEngine.checkInvariant();
+        assertEq(loss, 60e18, "baseline stressed loss");
+        assertTrue(solvencyEngine.breached(), "gated");
+
+        // A whale parks 1,200 RAIN in a debt-free vault (no frob trickery needed: dink > 0, dart == 0 is
+        // always allowed). The loss and the gate must not move.
+        address whale = address(0xD0D0);
+        rain.mint(whale, 1200e18);
+
+        vm.startPrank(whale);
+        rain.approve(address(collateralAdapter), 1200e18);
+        collateralAdapter.join(RAIN_ILK, whale, 1200e18);
+        uint256 whaleVault = vaultEngine.open(RAIN_ILK, whale);
+        vaultEngine.frob(whaleVault, whale, whale, int256(1200e18), 0);
+        vm.stopPrank();
+
+        assertEq(solvencyEngine.worstCaseLoss(), 60e18, "idle collateral suppresses nothing");
+
+        // Redemption stays gated: the whale's deposit released no escrow.
+        vm.startPrank(keeper);
+        usdr.approve(address(psm), 20e18);
+        vm.expectRevert(SolvencyGateActive.selector);
+        psm.buyStable(USDT_ILK, keeper, 20e6);
+        vm.stopPrank();
+
+        // The whale's withdrawal is blocked by the standing gate policy: ANY risk-increasing frob on a
+        // volatile ilk is refused while breached, even one whose ink was never counted. This is the gate
+        // doing its job, not a defect — the whale entered during a breach and exits when it clears.
+        vm.prank(whale);
+        vm.expectRevert(SolvencyGateActive.selector);
+        vaultEngine.frob(whaleVault, whale, whale, -int256(1200e18), 0);
+
+        assertEq(solvencyEngine.worstCaseLoss(), 60e18, "loss unmoved either way");
+    }
+
+    function test_backedInkTracksDebtBoundaryCrossings() public {
+        // The aggregate's lifecycle: ink counts from the moment the vault takes on debt (the ENTIRE ink, not
+        // just the delta), follows ink deltas while debted, and leaves in full when the debt is cleared.
+        _setRainPrice(1e18);
+
+        // A debt-free vault contributes nothing.
+        rain.mint(user, 900e18);
+        vm.startPrank(user);
+        rain.approve(address(collateralAdapter), 900e18);
+        collateralAdapter.join(RAIN_ILK, user, 900e18);
+        uint256 vaultId = vaultEngine.open(RAIN_ILK, user);
+        vaultEngine.frob(vaultId, user, user, int256(800e18), 0);
+        vm.stopPrank();
+
+        assertEq(vaultEngine.backedInk(RAIN_ILK), 0, "debt-free ink not counted");
+
+        // Taking on debt pulls the whole 800 in.
+        vm.prank(user);
+        vaultEngine.frob(vaultId, user, user, 0, int256(200e18));
+
+        assertEq(vaultEngine.backedInk(RAIN_ILK), 800e18, "entire ink counted on crossing into debt");
+
+        // A top-up while debted moves the delta.
+        vm.prank(user);
+        vaultEngine.frob(vaultId, user, user, int256(100e18), 0);
+
+        assertEq(vaultEngine.backedInk(RAIN_ILK), 900e18, "delta while debted");
+
+        // Clearing the debt removes the vault's entire remaining ink.
+        vm.prank(user);
+        vaultEngine.frob(vaultId, user, user, 0, -int256(200e18));
+
+        assertEq(vaultEngine.backedInk(RAIN_ILK), 0, "full ink leaves on crossing out of debt");
+
+        // And the loss math agrees end to end: with debt and 900 backed ink, loss = 200 - 900*0.5*0.35.
+        vm.prank(user);
+        vaultEngine.frob(vaultId, user, user, 0, int256(200e18));
+
+        assertEq(vaultEngine.backedInk(RAIN_ILK), 900e18, "re-entry counts the full ink again");
+        assertEq(solvencyEngine.worstCaseLoss(), 200e18 - 157.5e18, "loss priced from backed ink");
+    }
+
+    function test_barkKeepsBackedInkConsistent() public {
+        // grab crosses the same boundary: a bark seizes the vault's whole debt and collateral, so its ink
+        // must leave the backed aggregate (the auction term from RAINUSDR-1217 then owns that risk).
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 800e18, 200e18);
+        _sellUsdt(keeper, 20e6);
+
+        assertEq(vaultEngine.backedInk(RAIN_ILK), 800e18, "backed before bark");
+
+        _setRainPrice(0.6e18);
+        liquidationTrigger.bark(vaultId, keeper);
+
+        assertEq(vaultEngine.backedInk(RAIN_ILK), 0, "seized ink leaves the backed aggregate");
+
+        // No double counting: the live-vault term contributes nothing (no live debt), and the auction term
+        // carries the seized exposure alone.
+        assertGe(solvencyEngine.worstCaseLoss(), 100e18, "auction term owns the seized risk");
+    }
 }

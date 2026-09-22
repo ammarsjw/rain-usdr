@@ -83,6 +83,9 @@ contract VaultEngine is IVaultEngine, AccessControl {
     mapping(bytes32 ilkId => address owner) public exclusiveTo;
 
     /// @inheritdoc IVaultEngine
+    mapping(bytes32 ilkId => uint256 ink) public backedInk;
+
+    /// @inheritdoc IVaultEngine
     uint256 public vaultCount;
 
     /// @inheritdoc IVaultEngine
@@ -515,10 +518,28 @@ contract VaultEngine is IVaultEngine, AccessControl {
             }
         }
 
+        // Backed-ink tracking (RAINUSDR-1224): only collateral in vaults that actually carry debt may count
+        // toward the solvency stress calculation. Collateral in a debt-free vault can never pay another
+        // vault's debt (liquidation surplus returns to the vault's own owner), so it must contribute nothing
+        // to the recoverable value. The aggregate is maintained here on the debt-zero boundary crossings:
+        // the vault's PRE-write ink leaves the aggregate when it was debted, and its POST-write ink enters
+        // when it is debted after — which handles all four combinations (stay debted, enter, exit, stay
+        // debt-free) uniformly, including a repay-and-withdraw in the same call.
+        bool hadDebt = urn.art != 0;
+        uint256 prevInk = urn.ink;
+
         urn.ink = Math.add(urn.ink, dink);
         urn.art = Math.add(urn.art, dart);
         ilk.globalArt = Math.add(ilk.globalArt, dart);
         ilk.globalInk = Math.add(ilk.globalInk, dink);
+
+        if (hadDebt) {
+            backedInk[ilkId] -= prevInk;
+        }
+
+        if (urn.art != 0) {
+            backedInk[ilkId] += urn.ink;
+        }
 
         // NOTE: With a variable `rate` (stability fees), `dtab`/`tab` are exact rad values but no longer
         // exact multiples of RAY. `tab = rate * art` [rad] is compared against `dust` [rad] directly, which
@@ -584,10 +605,25 @@ contract VaultEngine is IVaultEngine, AccessControl {
         Urn storage urn = urns[vaultId];
         Ilk storage ilk = ilks[ilkId];
 
+        // Backed-ink tracking (RAINUSDR-1224): grab crosses the same debt-zero boundary as frob (a bark
+        // seizes the vault's entire debt and collateral; emergency settlement seizes partials), so the
+        // eligible aggregate is maintained identically: pre-write ink leaves when the vault was debted,
+        // post-write ink enters when it is debted after.
+        bool hadDebt = urn.art != 0;
+        uint256 prevInk = urn.ink;
+
         urn.ink = Math.add(urn.ink, dink);
         urn.art = Math.add(urn.art, dart);
         ilk.globalArt = Math.add(ilk.globalArt, dart);
         ilk.globalInk = Math.add(ilk.globalInk, dink);
+
+        if (hadDebt) {
+            backedInk[ilkId] -= prevInk;
+        }
+
+        if (urn.art != 0) {
+            backedInk[ilkId] += urn.ink;
+        }
 
         int256 dtab = Math.mul(ilk.rate, dart);
 

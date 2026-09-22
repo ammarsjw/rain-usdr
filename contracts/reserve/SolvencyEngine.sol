@@ -280,7 +280,7 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
         for (uint256 i; i < volatileIlksLength; ++i) {
             bytes32 ilkId = volatileIlks[i];
 
-            (uint256 globalArt, uint256 globalInk, uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
+            (uint256 globalArt, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
             // Total debt against this collateral [wad]: art [wad] * rate [ray] / RAY.
             uint256 ilkDebt = (globalArt * rate) / _RAY;
@@ -294,7 +294,12 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
             (bytes32 val, bool has) = osm.peek(ilkId);
 
             if (has) {
-                collateralValue = (globalInk * uint256(val)) / _WAD;
+                // Backed ink only (RAINUSDR-1224): collateral in a debt-free vault can never pay another
+                // vault's debt (liquidation surplus returns to the vault's own owner), so pricing the
+                // recoverable value from the raw global ink would let an idle or flash-deposited vault
+                // suppress the loss and disarm the gates. Only collateral in vaults that actually carry
+                // debt is credited.
+                collateralValue = (VAULT_ENGINE.backedInk(ilkId) * uint256(val)) / _WAD;
             }
 
             // Stressed recoverable value: collateral value marked down by the stress markdown [wad] and the

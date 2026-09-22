@@ -276,6 +276,15 @@ interface IVaultEngine {
     function exclusiveTo(bytes32 ilkId) external view returns (address);
 
     /**
+     * @notice Returns the aggregate collateral held in vaults that currently carry debt [wad]. Collateral in
+     *         a debt-free vault can never pay another vault's debt (liquidation surplus returns to the
+     *         vault's own owner), so only this backed portion may count toward the solvency stress
+     *         calculation.
+     * @param ilkId Identifier of the collateral type.
+     */
+    function backedInk(bytes32 ilkId) external view returns (uint256);
+
+    /**
      * @notice Returns the registered collateral type identifier at `index`. Ilks are appended at {init} and
      *         never removed; the array lets {cage} (and off-chain consumers) enumerate every ilk.
      * @param index Position in the registration order.
