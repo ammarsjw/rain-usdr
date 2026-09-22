@@ -523,8 +523,8 @@ contract VaultEngine is IVaultEngine, AccessControl {
         // (liquidation surplus returns to the vault's own owner), so it must contribute nothing to the
         // recoverable value. The aggregate is maintained here on the debt-zero boundary crossings: the
         // vault's PRE-write ink leaves the aggregate when it was debted, and its POST-write ink enters when
-        // it is debted after — which handles all four combinations (stay debted, enter, exit, stay debt-free)
-        // uniformly, including a repay-and-withdraw in the same call.
+        // it is debted after — which handles all four combinations (stay debted, enter, exit, stay
+        // debt-free) uniformly, including a repay-and-withdraw in the same call.
         bool hadDebt = urn.art != 0;
         uint256 prevInk = urn.ink;
 
