@@ -483,12 +483,12 @@ contract SettlementTest is BaseTest {
         end.cash(RAIN_ILK, 1e18);
     }
 
-    function test_flowBlockedWhileAuctionsPending() public {
-        // flow permanently fixes the redemption price from the settlement snapshot, and skip is what adds a
-        // reclaimed auction's debt back into that snapshot. Before this guard, calling flow ahead of skip
-        // fixed the price from the reduced snapshot forever — the collateral yanked into End afterwards was
-        // stranded and every redeemer was shorted. flow must refuse while the ilk's auction house still holds
-        // active auctions.
+    function test_settlementBlockedWhileAuctionsPending() public {
+        // thaw fixes the total debt and flow permanently fixes the redemption price, while skip is what adds
+        // a reclaimed auction's debt back into the settlement snapshot (and sucks fresh surplus/debt onto the
+        // ledger). Before these guards, running thaw/flow ahead of skip froze the accounting on the reduced
+        // state forever — the collateral yanked into End afterwards was stranded and every redeemer was
+        // shorted. Both must refuse while any auction house still holds active auctions.
         _setRainPrice(1e18);
 
         uint256 vaultId = _openVault(user, 400e18, 100e18);
@@ -505,23 +505,23 @@ contract SettlementTest is BaseTest {
         (, , uint256 psmVaultId) = psm.ilks(USDT_ILK);
         end.skim(psmVaultId);
 
-        // Thaw is reachable with the auction still pending (bark-era sin released, wait = 0 harness).
         balanceSheet.flog(barkEra);
+
+        // The premature thaw — freezing the total debt with an auction unreclaimed — is refused.
+        vm.expectRevert(IEnd.AuctionsPending.selector);
+        end.thaw();
+
+        // After skip + skim the guard lifts: thaw fixes the debt and flow computes the fix on the FULL
+        // snapshot. The residual surplus (the skip-sucked 13% penalty margin) is netted out of the fixed
+        // debt, so no heal-to-zero is required.
+        end.skip(RAIN_ILK, auctionId);
+        end.skim(vaultId);
 
         end.thaw();
 
-        // The premature flow — the exploit's step — is refused while the auction is unreclaimed.
-        vm.expectRevert(IEnd.AuctionsPending.selector);
-        end.flow(RAIN_ILK);
-
-        // Ilks with no auction house (PSM stables) are unaffected by the guard.
+        // Ilks with no auction house (PSM stables) flow freely.
         end.flow(USDT_ILK);
         assertGt(end.fix(USDT_ILK), 0, "stable ilk flows freely");
-
-        // After skip + skim the guard lifts and the fix is computed on the FULL snapshot.
-        end.skip(RAIN_ILK, auctionId);
-        end.skim(vaultId);
-        balanceSheet.heal(vaultEngine.usdr(address(balanceSheet)));
 
         end.flow(RAIN_ILK);
 
@@ -564,23 +564,30 @@ contract SettlementTest is BaseTest {
         assertEq(ink, 0, "vault emptied");
     }
 
-    function test_thawGuardsSurplusAndWait() public {
+    function test_thawNetsResidualSurplusOutOfFixedDebt() public {
+        // Report RAINUSDR-1235 (vector 1): stability fees accrue as surplus with NO matching sin, so when the
+        // book is mostly repaid before shutdown the residual surplus is unhealable — a heal-to-zero
+        // requirement would brick thaw (and with it all of settlement) forever. thaw instead nets the
+        // residual surplus out of the fixed debt, pricing redemption against the packable supply.
         _setRainPrice(1e18);
         _sellUsdt(keeper, 50e6);
 
-        // Surplus on the balance sheet blocks thaw (matched sin lands on the balance sheet too, so it can
-        // heal).
+        // Unmatched surplus on the balance sheet (as fee accrual would create: usdr with no sin behind it).
         vaultEngine.suck(address(balanceSheet), address(balanceSheet), 5 * _RAD);
+        balanceSheet.heal(5 * _RAD);
+        // suck parks the sin on 0xFEE and the surplus on the Balance Sheet — unmatched surplus, exactly the
+        // shape fee accrual creates (the Balance Sheet cannot heal sin it does not hold).
+        vaultEngine.suck(address(0xFEE), address(balanceSheet), 5 * _RAD);
 
         end.cage();
 
-        vm.expectRevert(IEnd.SurplusNotZero.selector);
-        end.thaw();
-
-        // Healing the surplus away (matched sin exists from the suck above).
-        balanceSheet.heal(5 * _RAD);
+        // Thaw succeeds despite the unhealable surplus, netting it out of the fixed debt.
+        uint256 surplus = vaultEngine.usdr(address(balanceSheet));
+        assertGt(surplus, 0, "residual surplus stands");
 
         end.thaw();
-        assertGt(end.debt(), 0, "debt fixed after heal");
+
+        assertEq(end.debt(), vaultEngine.debt() - surplus, "debt fixed net of residual surplus");
+        assertGt(end.debt(), 0, "packable supply outstanding");
     }
 }

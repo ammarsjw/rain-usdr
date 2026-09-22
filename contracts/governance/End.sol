@@ -33,7 +33,8 @@ import { _revert } from "../shared/Globals.sol";
  *      3. `skip(ilkId, id)` - reclaim in-flight auctions into the vaults they were seized from.
  *         `skim(vaultId)` - settle each vault: confiscate collateral covering its debt, cancel the debt.
  *      4. `free(vaultId)` - vault owners reclaim leftover collateral (their vault must carry no debt).
- *      5. `thaw()` - after the cooldown, with the Balance Sheet's surplus healed away, fix the total debt.
+ *      5. `thaw()` - after the cooldown, with every in-flight auction reclaimed, fix the total debt (net of
+ *         the Balance Sheet's residual surplus, so redemption prices against the packable supply).
  *      6. `flow(ilkId)` - compute each collateral type's final redemption price.
  *      7. `pack(wad)` - USDR holders deposit internal USDR into a redemption bag.
  *      8. `cash(ilkId, wad)` - holders redeem each collateral type pro-rata against their bag.
@@ -338,18 +339,34 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
             _revert(DebtAlreadyFixed.selector);
         }
 
-        // The Balance Sheet's surplus must be fully healed against bad debt first, so redemption is computed
-        // against the true outstanding supply. Queued sin unlocks for healing once the Balance Sheet's own
-        // wait elapses. This contract's wait needs to be set accordingly.
-        if (VAULT_ENGINE.usdr(address(balanceSheet)) != 0) {
-            _revert(SurplusNotZero.selector);
-        }
-
         if (block.timestamp < when + wait) {
             _revert(WaitNotElapsed.selector);
         }
 
-        debt = VAULT_ENGINE.debt();
+        // Every in-flight auction must be reclaimed (skip) before the total debt is fixed: skip sucks the
+        // auction's tab as fresh surplus and debt, so a skip landing after this snapshot would inflate the
+        // ledger past the fixed total and desynchronize the netting below. After cage(ilkId) each auction
+        // house is caged, so skip is the only way its active list drains. Ilks with no auction house (e.g.
+        // PSM stables) have nothing to wait for.
+        uint256 length = VAULT_ENGINE.ilkIdsLength();
+
+        for (uint256 i; i < length; ++i) {
+            (address clipAddress, , , , ) = liquidationTrigger.ilks(VAULT_ENGINE.ilkIds(i));
+
+            if (clipAddress != address(0) && IDutchAuction(clipAddress).count() != 0) {
+                _revert(AuctionsPending.selector);
+            }
+        }
+
+        // The redemption supply is the total debt NET of the Balance Sheet's residual surplus. Requiring the
+        // surplus to be healed to zero instead would brick settlement forever: stability fees accrue as
+        // surplus with NO matching sin, so when the book is mostly repaid before shutdown the post-skim sin
+        // can be smaller than the surplus and the residual is unhealable (and distributeSurplus cannot move
+        // amounts under the hump floor). Netting is exact either way — heal burns surplus and debt equally,
+        // so the difference is invariant to how much healing ran — and it prices redemption against the
+        // PACKABLE supply: the Balance Sheet never packs its own balance, so counting it in the denominator
+        // would understate every fix and strand the difference in this contract forever.
+        debt = VAULT_ENGINE.debt() - VAULT_ENGINE.usdr(address(balanceSheet));
 
         emit Thaw({ debt: debt });
     }

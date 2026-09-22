@@ -128,11 +128,6 @@ interface IEnd {
     error WaitNotElapsed();
 
     /**
-     * @dev Indicates that the Balance Sheet still holds surplus that must be healed or distributed first.
-     */
-    error SurplusNotZero();
-
-    /**
      * @dev Indicates that the total debt has already been fixed.
      */
     error DebtAlreadyFixed();
@@ -217,7 +212,9 @@ interface IEnd {
 
     /**
      * @notice Phase 5: fixes the total outstanding debt after the cooldown, opening redemption.
-     * @dev The Balance Sheet's surplus must be fully healed away first.
+     * @dev Every in-flight auction must be reclaimed (skip) first. The fixed debt is the Vault Engine's total
+     *      debt NET of the Balance Sheet's residual surplus, so redemption is priced against the packable
+     *      supply regardless of how much healing ran.
      */
     function thaw() external;
 
