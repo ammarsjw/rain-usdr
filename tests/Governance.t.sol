@@ -201,10 +201,25 @@ contract GovernanceTest is BaseTest {
 
         governor.pause();
 
-        // frob blocked, including repayment (full stop is stricter than the solvency gate).
+        // frob blocked for risk-INCREASING changes only (audit M01): a draw and a withdrawal both revert...
         vm.prank(user);
         vm.expectRevert(SystemPaused.selector);
-        vaultEngine.frob(vaultId, user, user, 0, -int256(1e18));
+        vaultEngine.frob(vaultId, user, user, 0, int256(1e18));
+
+        vm.prank(user);
+        vm.expectRevert(SystemPaused.selector);
+        vaultEngine.frob(vaultId, user, user, -int256(1e18), 0);
+
+        // ...while the owner can still DEFEND the position through the pause: collateral top-ups stay open
+        // (repayment is asserted after the bark check below — the vault must still carry debt for the bark
+        // assertion to be meaningful, and partial repayment would trip the dust floor: debt is exactly at
+        // the 100-RAD dust minimum).
+        rain.mint(user, 10e18);
+        vm.startPrank(user);
+        rain.approve(address(collateralAdapter), 10e18);
+        collateralAdapter.join(RAIN_ILK, user, 10e18);
+        vaultEngine.frob(vaultId, user, user, int256(10e18), 0);
+        vm.stopPrank();
 
         // PSM blocked both ways.
         usdt.mint(keeper, 10e6);
@@ -217,6 +232,12 @@ contract GovernanceTest is BaseTest {
         // bark blocked.
         vm.expectRevert(SystemPaused.selector);
         liquidationTrigger.bark(vaultId, keeper);
+
+        // Repayment stays open through the pause (audit M01): repaying in FULL (art -> 0 passes the dust
+        // floor; the debt sits exactly at the 100-RAD dust minimum, so a partial repay would revert
+        // DustAmount, not SystemPaused).
+        vm.prank(user);
+        vaultEngine.frob(vaultId, user, user, 0, -int256(100e18));
     }
 
     function test_unpauseAuthBeforeAndAfterWindow() public {

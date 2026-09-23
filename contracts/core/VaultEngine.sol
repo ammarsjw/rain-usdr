@@ -495,9 +495,14 @@ contract VaultEngine is IVaultEngine, AccessControl {
             _revert(IlkNotInitialized.selector);
         }
 
-        // Emergency pause check (full stop): when the Governor is wired and paused, all vault modifications
-        // are blocked. Unlike the solvency gate below, this stops risk-decreasing operations too.
-        if (governor != address(0) && IGovernor(governor).paused()) {
+        // Emergency pause check, scoped to RISK-INCREASING changes (audit M01): drawing debt or withdrawing
+        // collateral is blocked while the Governor is paused, but collateral top-ups and repayments always
+        // stay open. The pause does not stop the inputs that decide liquidatability — drip keeps accruing
+        // rate (it runs above this check) and PriceConverter.poke keeps tracking the market — so a full stop
+        // would lock owners out of defending positions that deteriorate through the window, then hand the
+        // first unblocked block to keepers and charge owners the chop penalty on a deterioration they were
+        // structurally prevented from correcting. Same carve-out shape as the solvency gate below.
+        if ((dart > 0 || dink < 0) && governor != address(0) && IGovernor(governor).paused()) {
             _revert(SystemPaused.selector);
         }
 
