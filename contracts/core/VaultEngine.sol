@@ -192,6 +192,16 @@ contract VaultEngine is IVaultEngine, AccessControl {
                 _revert(InvalidAddress.selector);
             }
 
+            // Accrue every ilk to the OUTGOING recipient first (audit R07): fees are credited at accrual
+            // time, not earning time, so reassigning without settling would pay the entire elapsed window —
+            // earned under the old recipient — to the new one. Same non-fatal shape as cage and the duty
+            // branch: one pathological ilk can never lock the parameter.
+            uint256 length = ilkIds.length;
+
+            for (uint256 i; i < length; ++i) {
+                try this.drip(ilkIds[i]) {} catch {}
+            }
+
             feeRecipient = data;
         } else {
             _revert(UnrecognizedParameter.selector);
@@ -400,7 +410,13 @@ contract VaultEngine is IVaultEngine, AccessControl {
         // never brick accrual, and it is skipped when no fee accrued (rad == 0) since the loss is then
         // unchanged.
         if (rad != 0 && solvencyEngine != address(0)) {
-            try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
+            // Low-level call rather than try/catch (audit L02): a try with a `returns` clause omits the
+            // code-existence check, so against a code-less target the empty-returndata decode reverts in THIS
+            // frame and the catch never runs — a mistyped solvencyEngine would brick every drip, and frob
+            // with it. The result is discarded, so no decode is needed at all: a code-less target returns
+            // success with empty data and the refresh degrades to the no-op it was always meant to be.
+            (bool ok, ) = solvencyEngine.call(abi.encodeCall(ISolvencyEngine.checkInvariant, ()));
+            ok;
         }
     }
 
@@ -552,6 +568,15 @@ contract VaultEngine is IVaultEngine, AccessControl {
         // Permission checks: the vault is either less risky than before, or its owner consents; collateral is
         // either not being taken, or its source consents; internal USDR is either not being drawn down, or
         // the destination consents.
+        // Exclusive-ilk vaults are ALWAYS owner-gated (audit L08): the risk-decreasing carve-out below lets
+        // any third party repay a vault, which on a PSM vault silently strands the reserve — its art falls
+        // while its ink and totalReserve stay, so redemptions above the reduced art underflow forever and
+        // every consumer of totalReserve sizes itself against inventory that cannot be redeemed. The module
+        // must consent to every change to its own vault, including "helpful" ones.
+        if (exclusiveTo[ilkId] != address(0) && !_wish(owner, msg.sender)) {
+            _revert(NotAllowed.selector);
+        }
+
         if (!(Math.both(dart <= 0, dink >= 0) || _wish(owner, msg.sender))) {
             _revert(NotAllowed.selector);
         }
@@ -588,7 +613,13 @@ contract VaultEngine is IVaultEngine, AccessControl {
         // Stable (PSM) ilks are exempt: PSM inflows are reserve-increasing and must never be gated, while
         // PSM redemptions are gated inside the PSM itself.
         if (solvencyEngine != address(0) && ISolvencyEngine(solvencyEngine).isVolatile(ilkId)) {
-            if (dart > 0 || dink < 0) {
+            // Debt-free carve-out (audit M16): a withdrawal from a vault whose POST-change debt is zero is
+            // never gated. backedInk already excludes debt-free vaults from the loss model's recoverable
+            // value, so this collateral was never counted as capacity offsetting another vault's shortfall —
+            // freezing it would trap a debt-free depositor behind unrelated positions that cannot yet be
+            // liquidated, with no unilateral exit. Draws (dart > 0) are always gated on the post-change
+            // state, and withdrawals from indebted vaults are evaluated against their post-change position.
+            if (dart > 0 || (dink < 0 && urn.art != 0)) {
                 ISolvencyEngine(solvencyEngine).checkInvariant();
 
                 if (ISolvencyEngine(solvencyEngine).isBreached()) {
@@ -598,9 +629,11 @@ contract VaultEngine is IVaultEngine, AccessControl {
                 // Deposit leg: refresh the invariant WITHOUT gating on the result. A pure collateral top-up
                 // reduces risk and must never be blocked, but the committed escrow must track collateral
                 // moving in as well as out — otherwise the escrow that redemption is served against follows
-                // only one direction of collateral movement. Non-fatal so a mis-wired engine can never block
-                // a risk-reducing operation.
-                try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
+                // only one direction of collateral movement. Low-level call rather than try/catch (audit
+                // L02): a try with a `returns` clause reverts in THIS frame against a code-less target, so a
+                // mis-wired engine would block the one operation that must never be blocked.
+                (bool ok, ) = solvencyEngine.call(abi.encodeCall(ISolvencyEngine.checkInvariant, ()));
+                ok;
             }
         }
 

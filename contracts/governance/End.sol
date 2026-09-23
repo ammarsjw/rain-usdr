@@ -119,7 +119,14 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
             _revert(NotLive.selector);
         }
 
-        if (what == "wait") {
+                if (what == "wait") {
+            // The settlement cooldown is bounded to one year (audit L10): wait gates thaw, so a fat-fingered
+            // value (e.g. seconds mistyped as milliseconds) would strand emergency settlement — and this
+            // setter requires live == 1, so after cage the value could never be repaired.
+            if (data > 365 days) {
+                _revert(InvalidAmount.selector);
+            }
+
             wait = data;
         } else {
             _revert(UnrecognizedParameter.selector);
@@ -300,6 +307,18 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
             _revert(TagNotDefined.selector);
         }
 
+                // No vault on this ilk may settle while any of its auctions is in flight (audit M12): a capacity-
+        // limited partial liquidation leaves residual surplus in the vault while the penalty-bearing leg sits
+        // in the auction house. skim+free before skip would release that surplus, and skip's restored leg
+        // would then record an isolated deficit in gap that the released surplus should have offset —
+        // permanently shifting the shortfall to every redeemer via a lower fix. O(1) phase barrier: the caged
+        // auction house must be fully drained by skip before any vault on the ilk settles.
+        (address clipAddress, , , , ) = liquidationTrigger.ilks(ilkId);
+
+        if (clipAddress != address(0) && IDutchAuction(clipAddress).count() != 0) {
+            _revert(AuctionsPending.selector);
+        }
+
         (uint256 ink, uint256 urnArt) = VAULT_ENGINE.urns(vaultId);
         (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
 
@@ -349,7 +368,15 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
             _revert(ArtNotZero.selector);
         }
 
-        bytes32 ilkId = VAULT_ENGINE.ilkOf(vaultId);
+                bytes32 ilkId = VAULT_ENGINE.ilkOf(vaultId);
+
+        // Same phase barrier as skim (audit M12): free releases surplus collateral, so it must equally wait
+        // for every in-flight auction on the ilk to be reclaimed by skip first.
+        (address clipAddress, , , , ) = liquidationTrigger.ilks(ilkId);
+
+        if (clipAddress != address(0) && IDutchAuction(clipAddress).count() != 0) {
+            _revert(AuctionsPending.selector);
+        }
 
         // Overflow guard on the signed cast.
         if (int256(ink) < 0) {

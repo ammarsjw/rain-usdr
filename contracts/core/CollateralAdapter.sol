@@ -188,7 +188,18 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
             }
 
             VAULT_ENGINE.slip(ilkId, msg.sender, -int256(wad));
+
+            // Mirror of join's delta check (audit L01): the ledger was just debited the full amount, so the
+            // token must deliver exactly that. A token that enables a fee after listing (USDT's dormant
+            // switch) fails loudly in both directions instead of short-changing withdrawers while the
+            // adapter's accounting records a full withdrawal.
+            uint256 balanceBefore = ilk.token.balanceOf(address(this));
+
             ilk.token.safeTransfer(user, amount);
+
+            if (balanceBefore - ilk.token.balanceOf(address(this)) != amount) {
+                _revert(FeeOnTransferToken.selector);
+            }
         }
 
         emit Exit({ ilkId: ilkId, user: user, amount: amount });

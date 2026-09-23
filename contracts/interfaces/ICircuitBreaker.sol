@@ -104,4 +104,12 @@ interface ICircuitBreaker {
      * @notice Reports whether the breaker is currently active, meaning liquidations are being throttled.
      */
     function active() external view returns (bool);
+
+    /**
+     * @notice Monotonically increasing activation identifier (audit M15): incremented only on an
+     *         inactive-to-active transition, never on re-anchoring while already active. Consumers key their
+     *         per-incident liquidation allowance on this id.
+     * @return The current activation id.
+     */
+    function activationId() external view returns (uint256);
 }

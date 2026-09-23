@@ -9,7 +9,7 @@ import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, NotLive, SolvencyGateActive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, NotLive, SolvencyGateActive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -99,8 +99,24 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         if (what == "humpFloor") {
             humpFloor = data;
         } else if (what == "humpRate") {
+            // The buffer rate lives in (0, WAD] (audit L10): humpTarget scales the reserve by humpRate/WAD,
+            // so a value far above WAD (e.g. a ray mistyped for a wad) produces a target no surplus can ever
+            // reach — distributeSurplus then silently returns zero forever, a no-op that monitoring built on
+            // failed transactions never sees. Zero would make the dynamic term vanish, silently reducing the
+            // buffer to the static floor alone.
+            if (data == 0 || data > _WAD) {
+                _revert(InvalidAmount.selector);
+            }
+
             humpRate = data;
         } else if (what == "wait") {
+            // The bad-debt queue delay is bounded to one year (audit L10): wait gates flog, so a
+            // fat-fingered value (e.g. seconds mistyped as milliseconds) would strand every queued sin
+            // until the value is refiled.
+            if (data > 365 days) {
+                _revert(InvalidAmount.selector);
+            }
+
             wait = data;
         } else {
             _revert(UnrecognizedParameter.selector);

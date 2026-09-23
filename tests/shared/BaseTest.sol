@@ -83,10 +83,11 @@ abstract contract BaseTest is Test {
         usdc = new MockERC20("USD Coin", "USDC", 6);
         rainPriceSource = new MockPriceSource(1 * _WAD);
 
-        // Deploying the core.
-        usdr = new USDR();
+        // Deploying the core. Order matters for the immutable minter (audit L11): the Vault Engine and the
+        // Collateral Adapter deploy first, then USDR takes the adapter as its sole minter at construction.
         vaultEngine = new VaultEngine();
         collateralAdapter = new CollateralAdapter(vaultEngine);
+        usdr = new USDR(address(collateralAdapter));
         collateralAdapter.init(_USDR_ILK, IERC20Metadata(address(usdr)));
         collateralAdapter.init(RAIN_ILK, IERC20Metadata(address(rain)));
         collateralAdapter.init(USDT_ILK, IERC20Metadata(address(usdt)));

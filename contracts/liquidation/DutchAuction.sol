@@ -63,6 +63,20 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     /// @inheritdoc IDutchAuction
     uint256 public stopped;
 
+    /// @notice Fraction of an auction's initial tab available as its lifetime redo-reward budget [wad]
+    ///         (audit M17): every redo pays tip + tab * chip without reducing tab, so an untaken auction —
+    ///         breaker level 2, a keeper outage, or an illiquid market — would otherwise mint the same reward
+    ///         after every tail interval without bound (50 resets at the launch chip of 2% mint 100% of the
+    ///         auction debt as bad debt). The budget caps only the PAYOUT: resets themselves stay callable so
+    ///         a stale auction can always refresh its price. Defaults to 10% of the initial tab.
+    uint256 public redoRewardCap;
+
+    /// @dev Lifetime redo-reward budget per auction, fixed at kick (audit M17). Cleared in _remove.
+    mapping(uint256 id => uint256 budget) private _redoBudget;
+
+    /// @dev Cumulative redo rewards paid per auction (audit M17). Cleared in _remove.
+    mapping(uint256 id => uint256 paid) private _redoPaid;
+
     /// @inheritdoc IDutchAuction
     uint256 public totalTab;
 
@@ -77,6 +91,7 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
     /// @inheritdoc IDutchAuction
     ILiquidationTrigger public dog;
+    
 
     /// @inheritdoc IDutchAuction
     IOracleSecurityModule public pip;
@@ -113,7 +128,15 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         ILK_ID = ilkId_;
         VAULT_ENGINE = vaultEngine_;
 
-        buf = _RAY;
+        // The starting-price markup defaults to the documented 5% (audit R05): kick and redo document the
+        // starting price as market plus markup, and a buf of exactly RAY silently starts every auction AT
+        // market — each moment of decay then sells below it, costing vault owners residual collateral and
+        // the protocol recovery, with no signal distinguishing that from a deliberate no-markup house.
+        buf = (_RAY * 105) / 100;
+
+        // Lifetime redo-reward budget default (audit M17): 10% of the initial tab.
+        redoRewardCap = _WAD / 10;
+
         live = 1;
     }
 
@@ -128,7 +151,23 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         }
 
         if (what == "buf") {
+            // The markup must be at least RAY (audit L10 + R05): a buf below RAY would START every auction
+            // below market, guaranteeing under-recovery, and a zero buf makes kick revert ZeroTopPrice for
+            // every liquidation.
+            if (data < _RAY) {
+                _revert(InvalidAmount.selector);
+            }
+
             buf = data;
+        } else if (what == "redoRewardCap") {
+            // The lifetime redo-reward budget fraction lives in [0, WAD] (audit M17): above WAD would budget
+            // more than the auction's own tab. Zero is allowed — it disables redo rewards entirely while
+            // resets stay callable.
+            if (data > _WAD) {
+                _revert(InvalidAmount.selector);
+            }
+
+            redoRewardCap = data;
         } else if (what == "tail") {
             // A zero tail would leave the reset-time disjunct of done permanently false at configuration
             // level (audit M06 hardening): tail is the auction's lifetime bound and must be set.
@@ -148,12 +187,29 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
             cusp = data;
         } else if (what == "chip") {
+            // Checked narrowing (audit L10): an out-of-range value is rejected rather than silently truncated
+            // to an unrelated number while the File event reports the value that was requested — leaving
+            // monitoring showing a parameter the contract does not hold.
+            if (data > type(uint64).max) {
+                _revert(InvalidAmount.selector);
+            }
+
             chip = uint64(data);
         } else if (what == "tip") {
+            // Checked narrowing (audit L10), same rationale as chip.
+            if (data > type(uint192).max) {
+                _revert(InvalidAmount.selector);
+            }
+
             tip = uint192(data);
         } else if (what == "stopped") {
             // Breaker levels: 0 = normal, 1 = no new kicks, 2 = no new kicks or takes, 3 = no kicks, takes or
-            // redos. Yank always stays available for settlement.
+            // redos. Yank always stays available for settlement. Values above 3 are outside the documented
+            // range and rejected (audit L10).
+            if (data > 3) {
+                _revert(InvalidAmount.selector);
+            }
+
             stopped = data;
         } else {
             _revert(UnrecognizedParameter.selector);
@@ -238,6 +294,11 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
         sales[id].top = top;
 
+        // Fixing the auction's lifetime redo-reward budget from its initial tab (audit M17): every redo pays
+        // from this budget and _remove clears it, so an untaken auction can never mint more than the
+        // configured fraction of its own debt in cumulative reset rewards.
+        _redoBudget[id] = (tab * redoRewardCap) / _WAD;
+
         // Tracking aggregate in-auction exposure so the Solvency Engine can price seized-but-unsettled risk.
         totalTab += tab;
         totalLot += lot;
@@ -307,7 +368,22 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
             if (tab >= chost && lot * feedPrice >= chost) {
                 coin = tip + (tab * chip) / _WAD;
 
-                VAULT_ENGINE.suck(vow, kpr, coin);
+                // Lifetime budget cap (audit M17): the payout is bounded by what remains of the budget fixed
+                // at kick, so repeated resets of one untaken auction (breaker level 2, keeper outage,
+                // illiquid market) cannot mint unbounded USDR and matching bad debt. Only the PAYOUT is
+                // capped — the reset itself proceeds so a stale auction can always refresh its price, and a
+                // zero coin simply skips the suck.
+                uint256 remaining = _redoBudget[id] > _redoPaid[id] ? _redoBudget[id] - _redoPaid[id] : 0;
+
+                if (coin > remaining) {
+                    coin = remaining;
+                }
+
+                if (coin > 0) {
+                    _redoPaid[id] += coin;
+
+                    VAULT_ENGINE.suck(vow, kpr, coin);
+                }
             }
         }
 
@@ -542,6 +618,11 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         }
 
         active.pop();
+
+        // Clearing the redo-reward budget accounting with the sale (audit M17): auction ids are never
+        // reused, but stale entries would still bloat state forever.
+        delete _redoBudget[id];
+        delete _redoPaid[id];
 
         delete sales[id];
     }

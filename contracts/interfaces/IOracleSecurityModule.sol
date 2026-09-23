@@ -38,6 +38,13 @@ interface IOracleSecurityModule {
     event File(bytes32 indexed what, address addr);
 
     /**
+     * @dev Emitted when a numeric parameter is adjusted (audit M11).
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
+    event File(bytes32 indexed what, uint256 data);
+
+    /**
      * @dev Emitted when a collateral's price updates are frozen.
      * @param ilkId Identifier of the collateral type.
      */
@@ -100,6 +107,28 @@ interface IOracleSecurityModule {
      * @param data New address.
      */
     function file(bytes32 what, address data) external;
+
+    /**
+     * @notice Adjusts a numeric parameter: `maxAge`, the maximum age of a promoted price before it stops
+     *         being served (audit M11). Zero is rejected — it would mark every price permanently stale.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
+    function file(bytes32 what, uint256 data) external;
+
+    /**
+     * @notice Maximum age [seconds] of a promoted price before peek reports has = false and read reverts
+     *         (audit M11). Measured from the last successful promotion timestamp ({delay}).
+     * @return The maximum age in seconds.
+     */
+    function maxAge() external view returns (uint256);
+
+    /**
+     * @notice The authorized Price Converter (audit M14), called synchronously after every successful
+     *         promotion and after void so the cached spot can never lag a promoted price.
+     * @return The Price Converter address.
+     */
+    function priceConverter() external view returns (address);
 
     /**
      * @notice Freezes a collateral's price updates.

@@ -21,6 +21,9 @@ import {
     InvalidAddress,
     InvalidAmount,
     SolvencyGateActive,
+    StableIlkCapExceeded,
+    StableIlkHalted,
+    StableIlkSpotNotPar,
     SystemPaused,
     UnrecognizedParameter
 } from "../shared/Errors.sol";
@@ -41,6 +44,16 @@ import { _revert } from "../shared/Globals.sol";
 contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC20Metadata;
+
+    /* ========================== EVENTS ========================== */
+
+    /**
+     * @dev Emitted when a per-ilk admission parameter is adjusted (audit M13).
+     * @param ilkId Identifier of the stable collateral type.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
+    event FileIlk(bytes32 indexed ilkId, bytes32 indexed what, uint256 data);
 
     /* ========================== STATE VARIABLES ========================== */
 
@@ -64,6 +77,19 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
 
     /// @inheritdoc IPegStabilityModule
     mapping(bytes32 ilkId => Ilk ilk) public ilks;
+
+    /// @notice Per-ilk deposit halt (audit M13): a guardian or governance can stop sellStable for one
+    ///         stablecoin the moment it trades outside its depeg threshold, so a below-peg asset cannot keep
+    ///         minting USDR at par and be exchanged for the sound reserve. Redemptions (buyStable) stay open:
+    ///         halting them would punish honest holders, and redemption policy under existing impairment is a
+    ///         separate design decision documented in the finding.
+    mapping(bytes32 ilkId => uint256 halted) public halted;
+
+    /// @notice Per-ilk exposure ceiling on the PSM's stable inventory [wad, 18 decimals] (audit M13): bounds
+    ///         how much of one stablecoin the reserve can absorb, so a depeg event is capped at the ceiling
+    ///         rather than the whole reserve. Zero means no deposits are admitted (the conservative default
+    ///         for a newly registered ilk until governance sizes the ceiling).
+    mapping(bytes32 ilkId => uint256 cap) public cap;
 
     /* ========================== CONSTRUCTOR ========================== */
 
@@ -149,6 +175,29 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
     }
 
     /**
+     * @notice Adjusts a per-ilk admission parameter (audit M13): `halted` (nonzero stops sellStable for the
+     *         ilk) or `cap` (exposure ceiling on the ilk's stable inventory [wad]; zero admits no deposits).
+     * @param ilkId Identifier of the stable collateral type.
+     * @param what Name of the parameter.
+     * @param data New value.
+     */
+    function file(bytes32 ilkId, bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
+        if (address(ilks[ilkId].token) == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
+        if (what == "halted") {
+            halted[ilkId] = data;
+        } else if (what == "cap") {
+            cap[ilkId] = data;
+        } else {
+            _revert(UnrecognizedParameter.selector);
+        }
+
+        emit FileIlk({ ilkId: ilkId, what: what, data: data });
+    }
+
+    /**
      * @inheritdoc IPegStabilityModule
      */
     function sellStable(bytes32 ilkId, address user, uint256 stableAmt) external nonReentrant {
@@ -166,6 +215,22 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
         // stables INCREASES the reserve, so it remains available during a solvency breach.
         if (governor != address(0) && IGovernor(governor).paused()) {
             _revert(SystemPaused.selector);
+        }
+
+        // Admission controls (audit M13): a halted ilk admits no deposits — a below-peg stablecoin must not
+        // keep minting USDR at par and be exchanged for the sound reserve. Redemptions stay open.
+        if (halted[ilkId] != 0) {
+            _revert(StableIlkHalted.selector);
+        }
+
+        // Exposure ceiling (audit M13): the PSM's inventory of THIS stablecoin, measured as its vault's
+        // collateral, must stay under the configured cap after the deposit, bounding how much of one asset
+        // the reserve can absorb (a depeg event is then capped at the ceiling rather than the whole reserve).
+        // A zero cap admits nothing: the conservative default until governance sizes the ceiling.
+        (uint256 psmInk, ) = VAULT_ENGINE.urns(ilk.vaultId);
+
+        if (psmInk + stableAmt * ilk.to18ConversionFactor > cap[ilkId]) {
+            _revert(StableIlkCapExceeded.selector);
         }
 
         // Defense-in-depth: the 1:1 frob below is only correct at `rate == RAY`. The fee exemption enforced
@@ -253,10 +318,19 @@ contract PegStabilityModule is IPegStabilityModule, AccessControl, ReentrancyGua
      * @param ilkId Identifier of the stable collateral type.
      */
     function _requireRatePar(bytes32 ilkId) private view {
-        (, , uint256 rate, , , , , ) = VAULT_ENGINE.ilks(ilkId);
+        (, , uint256 rate, uint256 spot, , , , ) = VAULT_ENGINE.ilks(ilkId);
 
         if (rate != _RAY) {
             _revert(StableIlkRateNotPar.selector);
+        }
+
+        // The 1:1 frob depends on a par spot exactly as it depends on a par rate (audit L09): both legs move
+        // ink and art by the same figure, so the safety check reduces to spot >= RAY. Below par the deposit
+        // leg reverts NotSafe while redemption (risk-decreasing) keeps paying out — the direction that drains
+        // the reserve. Asserting here surfaces a converter misconfiguration as a typed error at the module
+        // boundary instead of a generic safety-check revert.
+        if (spot != _RAY) {
+            _revert(StableIlkSpotNotPar.selector);
         }
     }
 }

@@ -63,3 +63,23 @@ error FeeRecipientNotSet();
  * @dev Indicates that the solvency invariant is breached and reserve-decreasing operations are gated.
  */
 error SolvencyGateActive();
+
+/**
+ * @dev Indicates that a delayed price is older than the configured maximum age (audit M11).
+ */
+error StalePrice();
+
+/**
+ * @dev Indicates that a stable (PSM) ilk's cached spot is not exactly par (audit L09).
+ */
+error StableIlkSpotNotPar();
+
+/**
+ * @dev Indicates that deposits for a stable (PSM) ilk are halted by governance (audit M13).
+ */
+error StableIlkHalted();
+
+/**
+ * @dev Indicates that a deposit would push a stable (PSM) ilk past its exposure ceiling (audit M13).
+ */
+error StableIlkCapExceeded();

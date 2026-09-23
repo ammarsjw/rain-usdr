@@ -5,10 +5,11 @@ pragma solidity 0.8.30;
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
+import { IPriceConverter } from "../interfaces/IPriceConverter.sol";
 import { IPriceSource } from "../interfaces/IPriceSource.sol";
 import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { _READER_ROLE, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, NotLive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, NotLive, StalePrice, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -38,6 +39,25 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     /// @inheritdoc IOracleSecurityModule
     address public solvencyEngine;
 
+    /// @inheritdoc IOracleSecurityModule
+    /// @dev The authorized Price Converter (audit M14): called synchronously after every successful `cur`
+    ///      promotion and after `void`, BEFORE the solvency refresh, so the Vault Engine's cached spot can
+    ///      never lag a promoted price. The call is mandatory (not try/caught): catching a failure would
+    ///      preserve exactly the stale-authorization window the wiring exists to close, so a failing
+    ///      converter must fail the poke.
+    address public priceConverter;
+
+    /// @inheritdoc IOracleSecurityModule
+    /// @dev Maximum age of a promoted price before it stops being served (audit M11): `ilk.delay` records the
+    ///      timestamp of the last successful promotion, so once `block.timestamp > delay + maxAge` the current
+    ///      price is treated as ABSENT on both interfaces — peek returns has = false and read reverts — so
+    ///      solvency, auctions, and settlement cannot disagree about freshness. Without this bound a source
+    ///      outage preserves the last pre-outage price as valid forever, letting unsafe vaults stay
+    ///      unliquidatable and reserve outflows stay open against a stale valuation. Defaults to two OSM
+    ///      windows, matching the PriceConverter's tolerance: one window is the normal poke cadence, so a
+    ///      single missed keeper cycle never freezes healthy collateral.
+    uint256 public maxAge = 3600;
+
     /// @dev Oracle state per collateral type.
     mapping(bytes32 ilkId => Ilk ilk) private _ilks;
 
@@ -61,11 +81,41 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
     function file(bytes32 what, address data) external onlyRole(_WARD_ROLE) {
         if (what == "solvencyEngine") {
             solvencyEngine = data;
+        } else if (what == "priceConverter") {
+            // The converter refresh after a promotion is MANDATORY (audit M14), so a zero address may only
+            // be filed deliberately never by accident; rejecting zero here keeps the wiring explicit.
+            // Clearing the converter is not supported: once wired, promotions and the cached spot advance
+            // atomically, and detaching would silently reopen the stale-authorization window.
+            if (data == address(0)) {
+                _revert(InvalidAddress.selector);
+            }
+
+            priceConverter = data;
         } else {
             _revert(UnrecognizedParameter.selector);
         }
 
         emit File({ what: what, addr: data });
+    }
+
+    /**
+     * @inheritdoc IOracleSecurityModule
+     */
+    function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
+        if (what == "maxAge") {
+            // A zero maxAge would mark every promoted price permanently stale the moment it lands, freezing
+            // minting, liquidation kicks, and settlement reads system-wide with no repair path better than
+            // refiling. Same guard-the-bricking-direction standard as the PriceConverter's par/tol guards.
+            if (data == 0) {
+                _revert(InvalidAmount.selector);
+            }
+
+            maxAge = data;
+        } else {
+            _revert(UnrecognizedParameter.selector);
+        }
+
+        emit File({ what: what, data: data });
     }
 
     /**
@@ -93,6 +143,14 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
         Ilk storage ilk = _ilks[ilkId];
         ilk.cur = ilk.nxt = Feed(0, 0);
         ilk.stopped = 1;
+
+        // Mandatory spot refresh (audit M14), the void twin of the promotion path: voiding clears the price
+        // this instant, so the Vault Engine's cached spot must zero in the SAME transaction. Relying on a
+        // later permissionless PriceConverter.poke would leave the retired price authorizing mints until
+        // someone happens to call it — the exact stale-authorization window this wiring closes.
+        if (priceConverter != address(0)) {
+            IPriceConverter(priceConverter).poke(ilkId);
+        }
 
         emit Void({ ilkId: ilkId });
     }
@@ -161,12 +219,27 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
 
             emit Poke({ ilkId: ilkId, current: ilk.cur.val, next: ilk.nxt.val });
 
+            // Mandatory spot refresh (audit M14): the promotion and the Vault Engine's cached spot advance
+            // in the SAME transaction, so no permissionless caller can promote a lower price and omit the
+            // converter call to draw against the stale higher spot. Deliberately NOT try/caught — catching a
+            // failure would preserve exactly the stale-authorization window this call closes, so a failing
+            // converter fails the poke (the tradeoff: OSM liveness is coupled to converter liveness).
+            if (priceConverter != address(0)) {
+                IPriceConverter(priceConverter).poke(ilkId);
+            }
+
             // Soft solvency refresh: a price advance is where a breach FIRST becomes visible (the one input
             // nobody controls), so the breach flag is recomputed immediately rather than waiting for the next
             // keeper cycle. This NEVER reverts: censoring a price update because it carries bad news is how
             // systems die, so the call is wrapped and a mis-wired engine can never block the feed.
             if (solvencyEngine != address(0)) {
-                try ISolvencyEngine(solvencyEngine).checkInvariant() returns (uint256, uint256) {} catch {}
+                // Low-level call rather than try/catch (audit L02): a try with a `returns` clause omits the
+                // code-existence check, so against a code-less target the empty-returndata decode reverts in
+                // THIS frame and the catch never runs — a mistyped solvencyEngine would make every successful
+                // poke revert, freezing the feed while the stale spot keeps authorizing mints. The result is
+                // discarded, so no decode is needed: a code-less target degrades to the intended no-op.
+                (bool refreshed, ) = solvencyEngine.call(abi.encodeCall(ISolvencyEngine.checkInvariant, ()));
+                refreshed;
             }
         } else {
             // The source refused to report a valid price: surface it for monitoring without reverting.
@@ -199,9 +272,16 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
      * @inheritdoc IOracleSecurityModule
      */
     function peek(bytes32 ilkId) external view onlyRole(_READER_ROLE) returns (bytes32, bool) {
-        Feed storage cur = _ilks[ilkId].cur;
+        Ilk storage ilk = _ilks[ilkId];
+        Feed storage cur = ilk.cur;
 
-        return (bytes32(uint256(cur.val)), cur.has == 1);
+        // Staleness gate (audit M11): a price older than maxAge is treated as ABSENT, exactly like a missing
+        // one. ilk.delay records the last successful promotion, so an outage that stops poke from advancing
+        // the feed stops this interface from serving the pre-outage value — fail closed, matching every
+        // consumer's existing !has behavior (worstCaseLoss zeroes the collateral, kick reverts).
+        bool fresh = block.timestamp <= uint256(ilk.delay) + maxAge;
+
+        return (bytes32(uint256(cur.val)), cur.has == 1 && fresh);
     }
 
     /**
@@ -217,10 +297,17 @@ contract OracleSecurityModule is IOracleSecurityModule, AccessControl {
      * @inheritdoc IOracleSecurityModule
      */
     function read(bytes32 ilkId) external view onlyRole(_READER_ROLE) returns (bytes32) {
-        Feed storage cur = _ilks[ilkId].cur;
+        Ilk storage ilk = _ilks[ilkId];
+        Feed storage cur = ilk.cur;
 
         if (cur.has != 1) {
             _revert(NoCurrentValue.selector);
+        }
+
+        // Staleness gate (audit M11), the revert twin of peek's has = false: both interfaces must agree on
+        // freshness so solvency, auctions, and settlement can never act on different views of the same feed.
+        if (block.timestamp > uint256(ilk.delay) + maxAge) {
+            _revert(StalePrice.selector);
         }
 
         return bytes32(uint256(cur.val));

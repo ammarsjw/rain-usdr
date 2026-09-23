@@ -82,7 +82,15 @@ contract PriceConverter is IPriceConverter, AccessControl {
         }
 
         if (what == "pip") {
-            // Assigning an oracle makes the ilk oracle-backed. The kinds are mutually exclusive.
+            // Assigning an oracle makes the ilk oracle-backed. The kinds are mutually exclusive. A zero pip
+            // is rejected (audit L05): clearing the oracle here would create exactly the orphaned state the
+            // fixed-flag setter forbids — neither oracle-backed nor fixed, poke bricked, spot frozen at its
+            // last value while it keeps authorizing mints. Detaching an oracle has exactly one supported
+            // route: file(ilkId, "fixed", 1), which pins the ilk to $1 and clears pip atomically.
+            if (pip == address(0)) {
+                _revert(WouldOrphanIlk.selector);
+            }
+
             ilks[ilkId].pip = IOracleSecurityModule(pip);
             ilks[ilkId].fixedPrice = false;
         } else {
@@ -139,6 +147,14 @@ contract PriceConverter is IPriceConverter, AccessControl {
             // dollar of collateral at origination. No legitimate configuration wants that.
             if (data < _RAY) {
                 _revert(MatBelowOne.selector);
+            }
+
+            // Fixed-price (PSM stable) ilks must keep mat at exactly RAY (audit L09): spot is computed as
+            // price * RAY / par / mat, and the PSM's 1:1 accounting silently requires spot == RAY. Any mat
+            // above RAY drives spot below par — deposits then revert NotSafe while redemptions (risk-
+            // decreasing) keep draining the reserve, the exact asymmetry that empties it.
+            if (ilks[ilkId].fixedPrice && data != _RAY) {
+                _revert(InvalidAmount.selector);
             }
 
             ilks[ilkId].mat = data;

@@ -55,6 +55,18 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     /// @inheritdoc ILiquidationTrigger
     mapping(bytes32 ilkId => IlkLiquidation liquidation) public ilks;
 
+    /// @notice The circuit-breaker activation the current incident allowance belongs to (audit M15): the
+    ///         breaker reports a monotonically increasing activation id, incremented only on an
+    ///         inactive-to-active transition, so the trigger can tell a fresh incident from a continuing one.
+    uint256 public activationId;
+
+    /// @notice Remaining liquidation allowance [rad] for the current breaker activation (audit M15): set to
+    ///         room * throttle on the FIRST bark of a new activation and consumed by every subsequent bark's
+    ///         actual tab. Without this, repeated barks each take a fraction of a shrinking balance and
+    ///         converge on the entire ordinary hole (21 calls at the default 20% throttle consume over 99%),
+    ///         so the throttle never limits the incident it exists to bound.
+    uint256 public incidentAllowance;
+
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
@@ -237,10 +249,31 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
 
             uint256 room = Math.min(globalHole - globalDirt, milk.hole - milk.dirt);
 
-            // Circuit breaker check: when the breaker is active, new liquidations are throttled to a fraction
-            // of the normal available room per period.
-            if (address(circuitBreaker) != address(0) && circuitBreaker.active()) {
-                room = (room * throttle) / _WAD;
+            // Circuit breaker check (audit M15). Two fixes over the naive `active()` read:
+            //
+            // 1. check() is called FIRST, so the flag consulted is computed from the current delayed price
+            //    rather than from the last keeper call — a liquidator can no longer atomically promote a
+            //    crashed price and bark before anyone refreshes the flag.
+            //
+            // 2. The throttle is an INCIDENT-level budget, not a per-call multiplier. On the first bark of a
+            //    new activation (fresh activation id) the allowance is fixed at room * throttle; every
+            //    subsequent bark is capped by what remains and its actual tab is deducted below. Without
+            //    this, repeated calls each take a fraction of a shrinking balance and converge on the entire
+            //    ordinary hole, which is precisely what the breaker promises to prevent.
+            if (address(circuitBreaker) != address(0)) {
+                circuitBreaker.check();
+
+                if (circuitBreaker.active()) {
+                    uint256 currentActivation = circuitBreaker.activationId();
+
+                    if (currentActivation != activationId) {
+                        // A fresh incident: fix its budget from the room available at its first bark.
+                        activationId = currentActivation;
+                        incidentAllowance = (room * throttle) / _WAD;
+                    }
+
+                    room = Math.min(room, incidentAllowance);
+                }
             }
 
             // uint256.max()/(RAD*WAD) = 115,792,089,237,316, i.e. the room [rad] * WAD product has overflow
@@ -298,6 +331,13 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
 
             globalDirt += tab;
             ilks[ilkId].dirt += tab;
+
+            // Incident-budget consumption (audit M15): while the breaker is active, every bark's actual tab
+            // draws down the activation's fixed allowance. Saturating rather than underflowing: the dusty-
+            // vault bump can push tab past the room cap by design, and the allowance simply exhausts.
+            if (address(circuitBreaker) != address(0) && circuitBreaker.active()) {
+                incidentAllowance = incidentAllowance > tab ? incidentAllowance - tab : 0;
+            }
 
             // Starting the Dutch auction. Whoever called bark is eligible for the keeper reward. Any leftover
             // collateral from the auction is returned to the vault's owner. The vault id rides along so

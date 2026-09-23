@@ -3,6 +3,7 @@
 pragma solidity 0.8.30;
 
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import { IDutchAuction } from "../interfaces/IDutchAuction.sol";
 import { IExternalExposure } from "../interfaces/IExternalExposure.sol";
@@ -266,11 +267,21 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
         // Surfacing exposure-reporter anomalies for monitoring: a revert or an above-cap report both fall
         // back to the conservative cap inside {worstCaseLoss}; here the anomaly is made visible.
         if (address(externalExposure) != address(0)) {
-            try externalExposure.reportedExposure() returns (uint256 reported) {
+            // Low-level staticcall rather than try/catch (audit L02): a try with a `returns` clause omits
+            // the code-existence check, so against a code-less reporter the empty-returndata decode reverts
+            // in THIS frame and the catch never runs — and checkInvariant is recomputed inline by frob,
+            // buyStable and distributeSurplus, so that revert would freeze all three. A code-less or short-
+            // returning reporter now takes the anomaly path, exactly like a reverting one.
+            (bool ok, bytes memory data) =
+                address(externalExposure).staticcall(abi.encodeCall(IExternalExposure.reportedExposure, ()));
+
+            if (ok && data.length >= 32) {
+                uint256 reported = abi.decode(data, (uint256));
+
                 if (reported > exposureCap) {
                     emit ExposureClamped({ reported: reported, cap: exposureCap });
                 }
-            } catch {
+            } else {
                 emit ExposureClamped({ reported: type(uint256).max, cap: exposureCap });
             }
         }
@@ -342,8 +353,11 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
             }
 
             // Stressed recoverable value: collateral value marked down by the stress markdown [wad] and the
-            // stress liquidation depth [wad].
-            uint256 recoverable = (((collateralValue * stressMarkdown) / _WAD) * stressDepth) / _WAD;
+            // stress liquidation depth [wad]. Single full-precision division (audit R03): the sequential
+            // form truncated the intermediate product by up to one wei per ilk. Both factors are bounded to
+            // (0, WAD] by fileStress, so markdown * depth is at most 1e36 — far inside uint256 — and
+            // Math.mulDiv carries the numerator at 512-bit width, making the result exact to the wei.
+            uint256 recoverable = Math.mulDiv(collateralValue, stressMarkdown * stressDepth, _WAD * _WAD);
 
             if (ilkDebt > recoverable) {
                 loss += ilkDebt - recoverable;
@@ -366,7 +380,8 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
                     auctionLotValue = (house.totalLot() * uint256(val)) / _WAD;
                 }
 
-                uint256 auctionRecoverable = (((auctionLotValue * stressMarkdown) / _WAD) * stressDepth) / _WAD;
+                // Same single full-precision division as the live-collateral term (audit R03).
+                uint256 auctionRecoverable = Math.mulDiv(auctionLotValue, stressMarkdown * stressDepth, _WAD * _WAD);
 
                 if (auctionDebt > auctionRecoverable) {
                     loss += auctionDebt - auctionRecoverable;
@@ -380,10 +395,18 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
         if (address(externalExposure) != address(0)) {
             uint256 exposure = exposureCap;
 
-            try externalExposure.reportedExposure() returns (uint256 reported) {
+            // Low-level staticcall rather than try/catch (audit L02): a try with a `returns` clause reverts
+            // in THIS frame against a code-less reporter (the empty-returndata decode never reaches the
+            // catch), turning the intended cap fallback into a hard revert of every caller that recomputes
+            // the invariant inline. A code-less or short-returning reporter now falls back to the cap,
+            // exactly like a reverting one; an over-returning one decodes its first word and keeps working
+            // (matching the ABI decoder's own minimum-length semantics).
+            (bool ok, bytes memory data) =
+                address(externalExposure).staticcall(abi.encodeCall(IExternalExposure.reportedExposure, ()));
+
+            if (ok && data.length >= 32) {
+                uint256 reported = abi.decode(data, (uint256));
                 exposure = reported > exposureCap ? exposureCap : reported;
-            } catch {
-                // Reporter reverted: use the cap.
             }
 
             loss += exposure;

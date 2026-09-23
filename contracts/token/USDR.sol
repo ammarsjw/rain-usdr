@@ -8,7 +8,7 @@ import { ERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/ERC2
 
 import { IUSDR } from "../interfaces/IUSDR.sol";
 import { _BURNER_ROLE, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAmount } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, NotAuthorized } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -22,17 +22,33 @@ import { _revert } from "../shared/Globals.sol";
  *      Collateral Adapter; `_WARD_ROLE` administers roles but does not itself carry burn power.
  */
 contract USDR is IUSDR, ERC20, ERC20Permit, AccessControl {
+    /* ========================== STATE VARIABLES ========================== */
+
+    /// @notice The only address allowed to mint: the Collateral Adapter, fixed at construction (audit L11).
+    ///         An immutable minter is what makes "no administrator can create USDR out of nothing" true:
+    ///         _WARD_ROLE administers itself, so any role-gated mint path is reachable by a compromised ward.
+    ///         Replacing the adapter requires a token migration — deploy the Vault Engine and Collateral
+    ///         Adapter first, then pass the adapter here.
+    address public immutable MINTER;
+
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
-     * @notice Initializes the token and authorizes the deployer, which grants authorization to the Vault
-     *         Engine adapter and the Peg Stability Module during deployment.
+     * @notice Initializes the token, fixes the sole minter, and authorizes the deployer for role
+     *         administration (burner grants), which carries no mint power.
+     * @param minter_ The immutable minter (the Collateral Adapter).
      */
-    constructor() ERC20("Rain Dollar", "USDR") ERC20Permit("Rain Dollar") {
+    constructor(address minter_) ERC20("Rain Dollar", "USDR") ERC20Permit("Rain Dollar") {
+        if (minter_ == address(0)) {
+            _revert(InvalidAddress.selector);
+        }
+
         _setRoleAdmin(_BURNER_ROLE, _WARD_ROLE);
         _setRoleAdmin(_WARD_ROLE, _WARD_ROLE);
 
         _grantRole(_WARD_ROLE, msg.sender);
+
+        MINTER = minter_;
     }
 
     /* ========================== FUNCTIONS ========================== */
@@ -40,7 +56,12 @@ contract USDR is IUSDR, ERC20, ERC20Permit, AccessControl {
     /**
      * @inheritdoc IUSDR
      */
-    function mint(address to, uint256 amount) external onlyRole(_WARD_ROLE) {
+    function mint(address to, uint256 amount) external {
+        // Only the immutable minter may mint (audit L11); see the MINTER natspec.
+        if (msg.sender != MINTER) {
+            _revert(NotAuthorized.selector);
+        }
+
         if (amount == 0) {
             _revert(InvalidAmount.selector);
         }

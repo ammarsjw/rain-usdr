@@ -7,7 +7,7 @@ import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol"
 import { ICircuitBreaker } from "../interfaces/ICircuitBreaker.sol";
 import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, InvalidBytes, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, InvalidBytes, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -54,6 +54,12 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
     /// @inheritdoc ICircuitBreaker
     bool public active;
 
+    /// @notice Monotonically increasing activation identifier (audit M15): incremented ONLY on an
+    ///         inactive-to-active transition, never on re-anchoring while already active. Consumers (the
+    ///         Liquidation Trigger) key their per-incident liquidation allowance on this id, so one incident
+    ///         gets one budget no matter how many times the calm clock re-anchors within it.
+    uint256 public activationId;
+
     /// @dev Next write position in the ring buffer.
     uint256 private _obsIndex;
 
@@ -98,10 +104,25 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
      */
     function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "threshold") {
+            // The threshold lives in (0, WAD] (audit L10): _deviation is bounded by WAD on the downside, so
+            // a threshold above WAD can never be exceeded by a downward move — the breaker silently never
+            // activates. Zero would activate on any nonzero deviation, converting the breaker into a
+            // permanent throttle.
+            if (data == 0 || data > _WAD) {
+                _revert(InvalidAmount.selector);
+            }
+
             threshold = data;
         } else if (what == "calmPeriod") {
             calmPeriod = data;
         } else if (what == "obsInterval") {
+            // A zero interval records an observation on every call (audit L10), letting the ring buffer be
+            // refilled with twelve near-identical values in one short window — collapsing the trend onto the
+            // current price and blinding the breaker exactly when it is being gamed.
+            if (data == 0) {
+                _revert(InvalidAmount.selector);
+            }
+
             obsInterval = data;
         } else {
             _revert(UnrecognizedParameter.selector);
@@ -122,6 +143,13 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
 
         uint256 currentPrice = uint256(val);
 
+        // The deviation is measured against the trend that PRECEDES the price being judged (audit L04):
+        // recording first would fold the current price into its own anchor, diluting a genuine move by
+        // 1/OBS_COUNT (a true 25% move reads ~23% with a full buffer) and making the very first observation
+        // structurally unable to activate. _deviation already returns zero for an empty trend, so a fresh
+        // breaker stays inactive until history exists rather than trusting a self-referential anchor.
+        uint256 deviation = _deviation(currentPrice, trendPrice());
+
         // Recording an observation at most once per interval. A single manipulated observation moves the
         // trailing average by at most 1/OBS_COUNT, so the anchor cannot be poisoned in one block.
         if (lastObsTimestamp == 0 || block.timestamp - lastObsTimestamp >= obsInterval) {
@@ -135,13 +163,14 @@ contract CircuitBreaker is ICircuitBreaker, AccessControl {
             lastObsTimestamp = block.timestamp;
         }
 
-        // Comparing the current delayed price to the trailing-average trend.
-        uint256 deviation = _deviation(currentPrice, trendPrice());
-
         if (deviation > threshold) {
             // The move is too large too fast: activate (or re-anchor the calm clock while already active).
             if (!active) {
                 active = true;
+
+                // A fresh incident (audit M15): the id advances only here, on the inactive-to-active
+                // transition, so re-anchoring within one incident never resets a consumer's budget.
+                ++activationId;
 
                 emit Activated({ deviation: deviation });
             }
