@@ -160,11 +160,29 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         live = 0;
         when = block.timestamp;
 
-        // Freezing the system: no new debt, no new liquidations, no more price pokes. The Oracle Security
-        // Module is deliberately NOT frozen since `cage(ilkId)` still needs its last delayed price.
+        // Freezing the system: no new debt, no new liquidations, no more price pokes.
         VAULT_ENGINE.cage();
         liquidationTrigger.cage();
         priceConverter.cage();
+
+        // Freezing every oracle-backed ilk's OSM in the SAME transaction (audit H07): after the global cage,
+        // both poke and cage(ilkId) are permissionless, so transaction ordering would otherwise select which
+        // delayed price (cur vs a matured nxt) becomes each ilk's permanent settlement price — reallocating
+        // collateral between vault owners and USDR holders at the orderer's discretion. A stopped OSM blocks
+        // poke only: read still serves the frozen cur, which is exactly what cage(ilkId) consumes later.
+        // Deliberately NOT wrapped in try/catch — a failed stop would preserve the race for that ilk, so it
+        // must abort the shutdown instead (correct OSM authorization is a shutdown prerequisite).
+        uint256 length = VAULT_ENGINE.ilkIdsLength();
+
+        for (uint256 i; i < length; ++i) {
+            bytes32 ilkId = VAULT_ENGINE.ilkIds(i);
+
+            (IOracleSecurityModule pip, , bool fixedPrice) = priceConverter.ilks(ilkId);
+
+            if (!fixedPrice && address(pip) != address(0)) {
+                pip.stop(ilkId);
+            }
+        }
 
         emit Cage();
     }

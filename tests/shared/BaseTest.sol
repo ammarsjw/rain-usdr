@@ -213,6 +213,11 @@ abstract contract BaseTest is Test {
         dutchAuction.grantRole(_WARD_ROLE, address(end));
         osm.grantRole(_READER_ROLE, address(end));
 
+        // The End must be able to stop every oracle-backed ilk's OSM inside global cage() (audit H07):
+        // freezing the price feed in the same transaction as shutdown removes the poke/cage(ilkId) ordering
+        // race. Correct OSM authorization is a shutdown prerequisite — stop is deliberately not try/catch'd.
+        osm.grantRole(_WARD_ROLE, address(end));
+
         // Setting launch ceilings and minimum vault size.
         vaultEngine.file("globalLine", 1_100_000 * _RAD);
         vaultEngine.file(RAIN_ILK, "line", 100_000 * _RAD);

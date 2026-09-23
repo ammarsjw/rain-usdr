@@ -412,6 +412,33 @@ contract SettlementTest is BaseTest {
         assertEq(ink, 400e18 - owed, "underwater remainder");
     }
 
+    function test_cageFreezesOsmSoOrderingCannotSelectSettlementPrice() public {
+        // Audit H07 regression: after global cage(), poke and cage(ilkId) are both permissionless, so
+        // transaction ordering used to select which delayed price (cur vs a matured nxt) became the one-shot
+        // settlement tag — reallocating collateral between vault owners and USDR holders. cage() now stops
+        // every oracle-backed ilk's OSM in the same transaction: the matured nxt can never be promoted, and
+        // the tag is fixed from the frozen cur regardless of ordering.
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
+
+        // Stage a matured, much lower nxt ($0.20) behind the $1 cur: one more poke would promote it.
+        rainPriceSource.setPrice(0.2e18);
+        vm.warp(vm.getBlockTimestamp() + 3600);
+
+        end.cage();
+
+        // The ordering attack is dead: the promotion poke reverts on the stopped feed...
+        vm.expectRevert(NotLive.selector);
+        osm.poke(RAIN_ILK);
+
+        // ...so cage(ilkId) consumes the frozen cur ($1) no matter who moves first.
+        end.cage(RAIN_ILK);
+        assertEq(end.tag(RAIN_ILK), _RAY, "tag fixed from the frozen cur, not the staged nxt");
+
+        // Settlement proceeds normally against the frozen price: read still serves cur.
+        end.skim(vaultId);
+    }
+
     function test_cageIlkHaltsAuctionHouse() public {
         // Audit C-2: End.cage(ilkId) must cage the ilk's auction house. Before the fix, in-flight auctions
         // kept decaying against the FIXED settlement price — a risk-free, unbounded arbitrage against
