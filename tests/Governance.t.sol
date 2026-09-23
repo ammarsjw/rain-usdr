@@ -704,6 +704,41 @@ contract SettlementTest is BaseTest {
         assertApproxEqAbs(claimable, held, 1e6, "no over-payment, nothing stranded");
     }
 
+function test_distributeSurplusBlockedAfterShutdown() public {
+        // Audit M04 regression: the Balance Sheet had no shutdown awareness, so USDR retired by End.pack
+        // (indistinguishable from revenue to the surplus accounting) could be shipped out to the buyback
+        // receiver by the permissionless distributeSurplus. The guard reads VAULT_ENGINE.live() directly.
+        balanceSheet.file("humpFloor", 1 * _RAD);
+        balanceSheet.file("buybackReceiver", address(0xB0B));
+
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
+        _sellUsdt(keeper, 100e6);
+
+        // Run settlement far enough that pack credits the Balance Sheet with retired USDR.
+        end.cage();
+        end.cage(RAIN_ILK);
+        end.cage(USDT_ILK);
+        end.skim(vaultId);
+        (, , uint256 psmVaultId) = psm.ilks(USDT_ILK);
+        end.skim(psmVaultId);
+        end.thaw();
+
+        vm.startPrank(keeper);
+        usdr.approve(address(collateralAdapter), 100e18);
+        collateralAdapter.join(_USDR_ILK, keeper, 100e18);
+        vaultEngine.hope(address(end));
+        end.pack(100e18);
+        vm.stopPrank();
+
+        // The packed (retired) USDR sits on the Balance Sheet well above the tiny target...
+        assertGt(vaultEngine.usdr(address(balanceSheet)), 1 * _RAD, "retired USDR accumulated");
+
+        // ...but the report's attack step is dead: distribution refuses after shutdown.
+        vm.expectRevert(NotLive.selector);
+        balanceSheet.distributeSurplus();
+    }
+
     function test_freeRevertsForNonOwnerAndIndebtedVault() public {
         _setRainPrice(1e18);
         uint256 vaultId = _openVault(user, 400e18, 100e18);

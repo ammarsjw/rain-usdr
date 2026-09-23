@@ -9,7 +9,7 @@ import { IReserveAccounting } from "../interfaces/IReserveAccounting.sol";
 import { ISolvencyEngine } from "../interfaces/ISolvencyEngine.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, SolvencyGateActive, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, NotLive, SolvencyGateActive, UnrecognizedParameter } from "../shared/Errors.sol";
 import { _revert } from "../shared/Globals.sol";
 
 /**
@@ -181,6 +181,16 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
      * @inheritdoc IBalanceSheet
      */
     function distributeSurplus() external returns (uint256 excess) {
+        // Shutdown guard (audit M04): after emergency settlement begins, End.pack retires redeemed USDR by
+        // moving it onto this contract — to the surplus accounting below it is indistinguishable from
+        // revenue, so a post-cage distribution would ship retired USDR out to the buyback receiver instead
+        // of leaving it retired. The Vault Engine's own live flag is read directly (rather than adding a
+        // Balance Sheet flag a shutdown spell would have to remember to set), in the same spirit as the
+        // Vault Engine dripping every ilk inside its cage.
+        if (VAULT_ENGINE.live() != 1) {
+            _revert(NotLive.selector);
+        }
+
         uint256 surplus = VAULT_ENGINE.usdr(address(this));
         uint256 badDebt = VAULT_ENGINE.sin(address(this));
 
