@@ -163,7 +163,7 @@ contract GovernanceTest is BaseTest {
     }
 
     /* ========================== 3. REAL PAUSE AUTO-EXPIRY ========================== */
-
+ 
     function test_pauseAutoExpiresForConsumers() public {
         governor.pause();
         assertTrue(governor.paused(), "paused");
@@ -703,6 +703,38 @@ contract SettlementTest is BaseTest {
 
         assertApproxEqAbs(claimable, held, 1e6, "no over-payment, nothing stranded");
     }
+
+function test_thawUnblockedByDustDonation() public {
+    // Audit M07 regression: thaw used to require the Balance Sheet's surplus to be EXACTLY zero, so a
+    // one-rad move(attacker, balanceSheet, 1) — front-runnable at dust cost, repeatable forever once no
+    // unqueued bad debt remains to heal against — stalled emergency settlement indefinitely. The netting
+    // form excludes the balance from the snapshot instead of requiring it healed, so a donation merely
+    // shrinks the denominator by its own (retired) amount and blocks nothing.
+    _setRainPrice(1e18);
+    uint256 vaultId = _openVault(user, 400e18, 100e18);
+    _sellUsdt(keeper, 100e6);
+
+    end.cage();
+    end.cage(RAIN_ILK);
+    end.cage(USDT_ILK);
+    end.skim(vaultId);
+    (, , uint256 psmVaultId) = psm.ilks(USDT_ILK);
+    end.skim(psmVaultId);
+
+    // The attack: the keeper joins a wei of ERC-20 USDR (the adapter stays available after cage — the
+            // report's step 2) and donates one rad of the resulting internal balance just before thaw.
+            vm.startPrank(keeper);
+            usdr.approve(address(collateralAdapter), 1);
+            collateralAdapter.join(_USDR_ILK, keeper, 1);
+            vaultEngine.move(keeper, address(balanceSheet), 1);
+            vm.stopPrank();
+
+    // thaw proceeds anyway: the donated rad is netted out of the fixed debt rather than blocking it.
+    uint256 debtBefore = vaultEngine.debt();
+    end.thaw();
+    assertEq(end.debt(), debtBefore - vaultEngine.usdr(address(balanceSheet)), "donation netted, not blocking");
+    assertGt(end.debt(), 0, "redeemable supply fixed");
+}
 
 function test_distributeSurplusBlockedAfterShutdown() public {
         // Audit M04 regression: the Balance Sheet had no shutdown awareness, so USDR retired by End.pack

@@ -128,6 +128,13 @@ interface IEnd {
     error WaitNotElapsed();
 
     /**
+     * @dev Indicates that the netted debt snapshot is zero: there is no redeemable supply to settle (audit
+     *      M07). Without this guard a zero snapshot would not arm {DebtAlreadyFixed}, letting thaw re-run
+     *      indefinitely while flow/pack/cash stay unreachable anyway.
+     */
+    error NoRedeemableDebt();
+
+    /**
      * @dev Indicates that the total debt has already been fixed.
      */
     error DebtAlreadyFixed();

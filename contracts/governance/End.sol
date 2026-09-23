@@ -402,6 +402,13 @@ contract End is IEnd, AccessControl, ReentrancyGuard {
         // would understate every fix and strand the difference in this contract forever.
         debt = VAULT_ENGINE.debt() - VAULT_ENGINE.usdr(address(balanceSheet));
 
+        // A zero net snapshot means there is no redeemable supply at all (audit M07): without this guard the
+        // zero would not arm DebtAlreadyFixed, so thaw could be re-run indefinitely, emitting spurious Thaw
+        // events while flow/pack/cash (all requiring debt != 0) stay unreachable anyway.
+        if (debt == 0) {
+            _revert(NoRedeemableDebt.selector);
+        }
+
         emit Thaw({ debt: debt });
     }
 
