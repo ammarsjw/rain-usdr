@@ -14,7 +14,7 @@ import { IOracleSecurityModule } from "../interfaces/IOracleSecurityModule.sol";
 import { IPriceCurve } from "../interfaces/IPriceCurve.sol";
 import { IVaultEngine } from "../interfaces/IVaultEngine.sol";
 import { _RAY, _WAD, _WARD_ROLE } from "../shared/Constants.sol";
-import { InvalidAddress, InvalidBytes, NotLive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
+import { InvalidAddress, InvalidAmount, InvalidBytes, NotLive, SystemPaused, UnrecognizedParameter } from "../shared/Errors.sol";
 import { Cage } from "../shared/Events.sol";
 import { _revert } from "../shared/Globals.sol";
 
@@ -130,8 +130,22 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         if (what == "buf") {
             buf = data;
         } else if (what == "tail") {
+            // A zero tail would leave the reset-time disjunct of done permanently false at configuration
+            // level (audit M06 hardening): tail is the auction's lifetime bound and must be set.
+            if (data == 0) {
+                _revert(InvalidAmount.selector);
+            }
+
             tail = data;
         } else if (what == "cusp") {
+            // cusp must be in (0, _RAY) (audit M06): a zero cusp makes the price-collapse disjunct of done
+            // read 0 < 0 = false, so a zero curve price would not mark the auction done — the exact gap the
+            // direct price check in take also closes; belt and braces at the configuration layer. A cusp at
+            // or above RAY would mark every auction done the moment it starts.
+            if (data == 0 || data >= _RAY) {
+                _revert(InvalidAmount.selector);
+            }
+
             cusp = data;
         } else if (what == "chip") {
             chip = uint64(data);
@@ -323,10 +337,20 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
 
             (done, price) = _status(tic, sales[id].top);
 
-            // The auction must still be running and the price must be greater than zero.
+            // The auction must still be running.
             if (done) {
                 _revert(NeedsReset.selector);
             }
+        }
+
+        // The price is checked DIRECTLY rather than inferred from done (audit M06): the zero-price disjunct
+        // in _status is (price * RAY) / top < cusp, which with an unfiled cusp of zero evaluates 0 < 0 =
+        // false — so when the curve reaches zero (dur >= tau) while still inside tail, take would proceed at
+        // price 0: owe = slice * 0 = 0 skips both adjustment branches, the FULL lot fluxes to the keeper,
+        // zero moves to the vow, and the sale is deleted. The guarantee must not depend on a parameter being
+        // configured.
+        if (price == 0) {
+            _revert(ZeroPrice.selector);
         }
 
         // The current price must not exceed the keeper's stated maximum price.

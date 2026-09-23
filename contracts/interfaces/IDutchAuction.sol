@@ -163,6 +163,13 @@ interface IDutchAuction {
     error NeedsReset();
 
     /**
+     * @dev Indicates that the current auction price is zero: a purchase at zero would hand the whole lot
+     *      over for no payment (audit M06). The price is checked directly in take rather than inferred from
+     *      the reset status, so the guarantee does not depend on cusp being configured.
+     */
+    error ZeroPrice();
+
+    /**
      * @dev Indicates that the current price exceeds the keeper's stated maximum.
      */
     error TooExpensive();

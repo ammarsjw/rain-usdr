@@ -3,6 +3,7 @@
 pragma solidity 0.8.30;
 
 import { CircuitBreaker } from "../contracts/liquidation/CircuitBreaker.sol";
+import { DutchAuction } from "../contracts/liquidation/DutchAuction.sol";
 import { LiquidationTrigger } from "../contracts/liquidation/LiquidationTrigger.sol";
 import { IDutchAuction } from "../contracts/interfaces/IDutchAuction.sol";
 import { ILiquidationTrigger } from "../contracts/interfaces/ILiquidationTrigger.sol";
@@ -15,7 +16,7 @@ import {
     SystemPaused,
     UnrecognizedParameter
 } from "../contracts/shared/Errors.sol";
-import { _RAD, _RAY, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
+import { _RAD, _RAY, _READER_ROLE, _USDR_ILK, _WAD } from "../contracts/shared/Constants.sol";
 
 import { BaseTest } from "./shared/BaseTest.sol";
 import { MockAuctionCallee } from "./mocks/MockAuctionCallee.sol";
@@ -212,6 +213,52 @@ contract LiquidationTest is BaseTest {
         vm.prank(address(0xB1D));
         vm.expectRevert(IDutchAuction.TooExpensive.selector);
         dutchAuction.take(id, 400e18, price - 1, address(0xB1D), "");
+    }
+
+    function test_takeAtZeroPriceRefusedEvenWithUnfiledCusp() public {
+        // Audit M06 regression: the zero-price disjunct of done is (price * RAY) / top < cusp, which with an
+        // UNFILED cusp of zero reads 0 < 0 = false — so on a house whose cusp was never configured, with
+        // tail >= tau, there is a window where the curve price is zero and done is still false. take used to
+        // proceed there: owe = slice * 0 = 0 skipped both adjustment branches, the FULL lot fluxed to the
+        // keeper for zero payment, and the sale was deleted. The direct price check refuses regardless of
+        // configuration.
+        DutchAuction rawHouse = new DutchAuction(RAIN_ILK, vaultEngine);
+        rawHouse.file("pip", address(osm));
+        rawHouse.file("calc", address(priceCurve));
+        rawHouse.file("vow", address(balanceSheet));
+        rawHouse.file("dog", address(liquidationTrigger));
+
+        // tail at tau (3600): the zero-price window [tau, tail] is exactly the last second. cusp is
+        // deliberately NOT filed — the report's precondition — so only the tail disjunct can mark done.
+        rawHouse.file("tail", 3600);
+
+        osm.grantRole(_READER_ROLE, address(rawHouse));
+
+        _setRainPrice(1e18);
+
+        uint256 id = rawHouse.kick(100 * _RAD, 400e18, 1, user, keeper);
+
+        // Advance to exactly tau: the curve price is 0, elapsed == tail so the time disjunct (elapsed >
+        // tail) is still false, and with cusp == 0 the price disjunct is false too — done is false, price 0.
+        vm.warp(vm.getBlockTimestamp() + 3600);
+
+        (bool needsRedo, uint256 price, , ) = rawHouse.getStatus(id);
+        assertFalse(needsRedo, "the unconfigured-cusp gap: zero price yet not done");
+        assertEq(price, 0, "curve has decayed to zero");
+
+        // The report's attack dies: a whole-lot take at any max price is refused at the direct guard.
+        vm.expectRevert(IDutchAuction.ZeroPrice.selector);
+        rawHouse.take(id, type(uint256).max, type(uint256).max, address(this), "");
+
+        // Config-layer hardening (belt and braces): the dangerous defaults can no longer be filed.
+        vm.expectRevert(InvalidAmount.selector);
+        rawHouse.file("cusp", 0);
+
+        vm.expectRevert(InvalidAmount.selector);
+        rawHouse.file("cusp", _RAY);
+
+        vm.expectRevert(InvalidAmount.selector);
+        rawHouse.file("tail", 0);
     }
 
     function test_takeNeedsResetAfterTail() public {
