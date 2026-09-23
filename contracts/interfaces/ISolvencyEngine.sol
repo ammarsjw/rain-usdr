@@ -32,6 +32,13 @@ interface ISolvencyEngine {
     event File(bytes32 indexed ilkId, bytes32 indexed what, uint256 data);
 
     /**
+     * @dev Emitted when the stress tuple is updated atomically (audit M10).
+     * @param markdown New stress markdown [wad].
+     * @param depth New stress liquidation depth [wad].
+     */
+    event FileStress(uint256 markdown, uint256 depth);
+
+    /**
      * @dev Emitted when a volatile collateral type is added to the stress calculation.
      * @param ilkId Identifier of the collateral type.
      */
@@ -81,11 +88,22 @@ interface ISolvencyEngine {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Adjusts a stress parameter {stressMarkdown} or {stressDepth}.
+     * @notice Adjusts a numeric parameter {reserveFactor} or {exposureCap}. The stress tuple is NOT filable
+     *         here (audit M10): use {fileStress}, which validates and writes both members atomically.
      * @param what Name of the parameter.
      * @param data New value [wad].
      */
     function file(bytes32 what, uint256 data) external;
+
+    /**
+     * @notice Updates the stress tuple {stressMarkdown} and {stressDepth} atomically (audit M10): their
+     *         product determines stressed recovery, so independent scalar updates would let a permissionless
+     *         executor order a mixed-direction transition through a transient tuple more permissive than
+     *         either endpoint. Governance schedules this single call.
+     * @param markdown New stress markdown [wad], in (0, WAD].
+     * @param depth New stress liquidation depth [wad], in (0, WAD].
+     */
+    function fileStress(uint256 markdown, uint256 depth) external;
 
     /**
      * @notice Sets an address dependency {externalExposure}.

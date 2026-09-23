@@ -375,15 +375,27 @@ contract ReserveTest is BaseTest {
 
     /* ========================== 3. PARAMETER BOUNDS ========================== */
 
-    function test_stressParameterBounds() public {
+        function test_stressParameterBounds() public {
+        // The scalar file paths for the stress tuple are removed (audit M10): correlated transitions go
+        // through the atomic fileStress only.
+        vm.expectRevert(UnrecognizedParameter.selector);
+        solvencyEngine.file("stressMarkdown", _WAD / 2);
+
+        vm.expectRevert(UnrecognizedParameter.selector);
+        solvencyEngine.file("stressDepth", _WAD / 2);
+
+        // fileStress validates the complete tuple: each member lives in (0, WAD].
         vm.expectRevert(ISolvencyEngine.ParameterOutOfBounds.selector);
-        solvencyEngine.file("stressMarkdown", 0);
+        solvencyEngine.fileStress(0, _WAD / 2);
 
         vm.expectRevert(ISolvencyEngine.ParameterOutOfBounds.selector);
-        solvencyEngine.file("stressMarkdown", _WAD + 1);
+        solvencyEngine.fileStress(_WAD + 1, _WAD / 2);
 
         vm.expectRevert(ISolvencyEngine.ParameterOutOfBounds.selector);
-        solvencyEngine.file("stressDepth", 0);
+        solvencyEngine.fileStress(_WAD / 2, 0);
+
+        vm.expectRevert(ISolvencyEngine.ParameterOutOfBounds.selector);
+        solvencyEngine.fileStress(_WAD / 2, _WAD + 1);
 
         vm.expectRevert(ISolvencyEngine.ParameterOutOfBounds.selector);
         solvencyEngine.file("reserveFactor", 0);
@@ -391,8 +403,11 @@ contract ReserveTest is BaseTest {
         vm.expectRevert(ISolvencyEngine.ParameterOutOfBounds.selector);
         solvencyEngine.file("reserveFactor", _WAD + 1);
 
-        // Boundary values pass.
-        solvencyEngine.file("stressMarkdown", _WAD);
+        // Boundary values pass, and the tuple writes atomically.
+        solvencyEngine.fileStress(_WAD, _WAD);
+        assertEq(solvencyEngine.stressMarkdown(), _WAD, "markdown written");
+        assertEq(solvencyEngine.stressDepth(), _WAD, "depth written");
+
         solvencyEngine.file("reserveFactor", _WAD);
     }
 

@@ -99,22 +99,13 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
      * @inheritdoc ISolvencyEngine
      */
     function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
-        if (what == "stressMarkdown") {
-            // Stress parameters live in (0, WAD]: zero would value all collateral at nothing forever
-            // (permanent breach), above WAD would inflate recoverable value beyond market (disabling the
-            // invariant).
-            if (data == 0 || data > _WAD) {
-                _revert(ParameterOutOfBounds.selector);
-            }
-
-            stressMarkdown = data;
-        } else if (what == "stressDepth") {
-            if (data == 0 || data > _WAD) {
-                _revert(ParameterOutOfBounds.selector);
-            }
-
-            stressDepth = data;
-        } else if (what == "reserveFactor") {
+        // stressMarkdown and stressDepth are deliberately NOT filable here (audit M10): their PRODUCT
+        // determines stressed recovery, and two independently scheduled scalar updates let a permissionless
+        // executor order a mixed-direction transition through a transient tuple more permissive than either
+        // endpoint (e.g. 50%*60% -> 40%*70% exposes 50%*70% if depth executes first), draining reserve at a
+        // false-solvent intermediate. Correlated risk-policy transitions go through {fileStress}, which
+        // validates and writes the complete tuple atomically.
+        if (what == "reserveFactor") {
             // The breach threshold fraction lives in (0, WAD]: zero would flag a breach on any loss
             // regardless of reserve, above WAD would tolerate losses exceeding the entire reserve.
             if (data == 0 || data > _WAD) {
@@ -137,6 +128,25 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
         }
 
         emit File({ what: what, data: data });
+    }
+
+    /**
+     * @inheritdoc ISolvencyEngine
+     */
+    function fileStress(uint256 markdown, uint256 depth) external onlyRole(_WARD_ROLE) {
+        // The complete stress tuple is validated and written ATOMICALLY (audit M10): governance schedules
+        // this single call, so no permissionless executor can order a mixed-direction transition through a
+        // transient tuple more permissive than either endpoint. Stress parameters live in (0, WAD]: zero
+        // would value all collateral at nothing forever (permanent breach), above WAD would inflate
+        // recoverable value beyond market (disabling the invariant).
+        if (markdown == 0 || markdown > _WAD || depth == 0 || depth > _WAD) {
+            _revert(ParameterOutOfBounds.selector);
+        }
+
+        stressMarkdown = markdown;
+        stressDepth = depth;
+
+        emit FileStress({ markdown: markdown, depth: depth });
     }
 
     /**
