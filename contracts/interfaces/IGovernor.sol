@@ -169,6 +169,19 @@ interface IGovernor {
     function pausedAt() external view returns (uint256);
 
     /**
+     * @notice Returns the total seconds settled as paused so far [seconds]. Excludes the currently running
+     *         pause window, which {clock} accounts for on the fly.
+     */
+    function pausedTime() external view returns (uint256);
+
+    /**
+     * @notice Returns the monotonic active-time clock (audit M08): wall time minus every second spent
+     *         paused, with the current window capped at {PAUSE_MAX}. Auction age measured on this clock does
+     *         not advance while every auction action is forbidden.
+     */
+    function clock() external view returns (uint256);
+
+    /**
      * @notice Returns the change id counter, the number of changes scheduled so far.
      */
     function changeCount() external view returns (uint256);

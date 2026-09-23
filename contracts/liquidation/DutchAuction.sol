@@ -225,7 +225,9 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         sales[id].lot = lot;
         sales[id].vaultId = vaultId;
         sales[id].usr = usr;
-        sales[id].tic = uint96(block.timestamp);
+
+        // Recorded on the active-time clock (audit M08), the same clock _status measures against.
+        sales[id].tic = uint96(_clock());
 
         // The starting price is the current market price plus the markup (5%).
         uint256 top = (_getFeedPrice() * buf) / _RAY;
@@ -282,7 +284,8 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
         uint256 tab = sales[id].tab;
         uint256 lot = sales[id].lot;
 
-        sales[id].tic = uint96(block.timestamp);
+        // Refreshed on the active-time clock (audit M08), the same clock _status measures against.
+        sales[id].tic = uint96(_clock());
 
         // The starting price is refreshed to the current market price plus the markup.
         uint256 feedPrice = _getFeedPrice();
@@ -544,6 +547,19 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
     }
 
     /**
+     * @dev Returns the active-time clock (audit M08): the Governor's monotonic clock that excludes paused
+     *      intervals, so auction price decay and expiry do not advance while every auction action (kick,
+     *      take, redo) is pause-blocked. Falls back to wall time when no Governor is wired — the two clocks
+     *      only ever diverge by settled pause spans, and tic values are recorded and measured on the SAME
+     *      clock throughout. NOTE (migration): replacing the Governor changes the clock baseline; do so only
+     *      with no active auctions, or their ages jump by the difference in accumulated pause time.
+     * @return time The current active-time reading [seconds].
+     */
+    function _clock() private view returns (uint256 time) {
+        return governor != address(0) ? IGovernor(governor).clock() : block.timestamp;
+    }
+
+    /**
      * @dev Reads the current delayed price from the Oracle Security Module, scaled to ray.
      * @return feedPrice The current delayed price [ray].
      */
@@ -565,7 +581,12 @@ contract DutchAuction is IDutchAuction, AccessControl, ReentrancyGuard {
      * @return price The current price [ray].
      */
     function _status(uint96 tic, uint256 top) private view returns (bool done, uint256 price) {
-        price = calc.price(top, block.timestamp - tic);
-        done = (block.timestamp - tic > tail || (price * _RAY) / top < cusp);
+        // Elapsed time is measured on the active-time clock (audit M08): tic is recorded on the same clock
+        // in kick/redo, so the age excludes paused intervals — the curve does not decay and tail does not
+        // elapse while every auction action is forbidden.
+        uint256 dur = _clock() - tic;
+
+        price = calc.price(top, dur);
+        done = (dur > tail || (price * _RAY) / top < cusp);
     }
 }

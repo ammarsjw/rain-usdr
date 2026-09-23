@@ -38,6 +38,9 @@ contract Governor is IGovernor, AccessControl {
     uint256 public pausedAt;
 
     /// @inheritdoc IGovernor
+    uint256 public pausedTime;
+
+    /// @inheritdoc IGovernor
     uint256 public changeCount;
 
     /// @dev Raw pause flag. Read through {paused}, which also applies the 72-hour auto-expiry.
@@ -175,6 +178,13 @@ contract Governor is IGovernor, AccessControl {
             _revert(AlreadyPaused.selector);
         }
 
+        // A stale expired pause must be settled into the accumulator BEFORE the new window overwrites
+        // pausedAt (audit M08): paused() reads false after auto-expiry, so this branch is reachable with
+        // _paused still true — without settlement the expired span would vanish from the active-time clock.
+        if (_paused) {
+            pausedTime += PAUSE_MAX;
+        }
+
         // NOTE: A ward can re-pause after expiry (or after an early unpause), chaining windows beyond 72
         // hours. The auto-expiry bounds a SINGLE pause, not governance's total authority; repeated pauses are
         // visible on-chain and are a matter for governance process, not contract code.
@@ -202,6 +212,17 @@ contract Governor is IGovernor, AccessControl {
             }
         }
 
+        // The elapsed span is settled into the accumulator (audit M08), capped at PAUSE_MAX: past the
+        // auto-expiry the system already read unpaused everywhere, so only the effective window counts as
+        // paused time on the active-time clock.
+        uint256 span = block.timestamp - pausedAt;
+
+        if (span > PAUSE_MAX) {
+            span = PAUSE_MAX;
+        }
+
+        pausedTime += span;
+
         _paused = false;
         pausedAt = 0;
 
@@ -216,5 +237,26 @@ contract Governor is IGovernor, AccessControl {
         // consumer even if nobody has called {unpause} to clear the storage. This makes the "72h auto-expiry"
         // real rather than a relabelling of who may call unpause.
         return _paused && block.timestamp < pausedAt + PAUSE_MAX;
+    }
+
+    /**
+     * @inheritdoc IGovernor
+     */
+    function clock() external view returns (uint256) {
+        // The monotonic active-time clock (audit M08): wall time minus every second spent paused. Settled
+        // spans live in the accumulator; the CURRENT span (live or expired-but-uncleared) is added on the
+        // fly, capped at PAUSE_MAX so auto-expiry is respected. Auction age measured on this clock does not
+        // advance while every auction action is forbidden.
+        uint256 current;
+
+        if (_paused) {
+            current = block.timestamp - pausedAt;
+
+            if (current > PAUSE_MAX) {
+                current = PAUSE_MAX;
+            }
+        }
+
+        return block.timestamp - pausedTime - current;
     }
 }

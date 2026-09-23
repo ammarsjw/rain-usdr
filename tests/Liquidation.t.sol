@@ -261,6 +261,47 @@ contract LiquidationTest is BaseTest {
         rawHouse.file("tail", 0);
     }
 
+    function test_pauseFreezesAuctionPriceAndExpiry() public {
+        // Audit M08 regression: the pause blocked kick/take/redo but the curve kept decaying and tail kept
+        // elapsing on raw wall time — unpausing sold more collateral for the same debt (time nobody was
+        // allowed to bid is priced in), and a pause longer than tail forced a paid redo. Age is now measured
+        // on the Governor's active-time clock, which stops while paused.
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
+        _setRainPrice(0.6e18);
+
+        uint256 id = liquidationTrigger.bark(vaultId, keeper);
+
+        // Wire the governor into the auction house so its clock governs auction age.
+        dutchAuction.file("governor", address(governor));
+
+        // Decay for 900s of active time, then snapshot the price.
+        vm.warp(vm.getBlockTimestamp() + 900);
+        (bool needsRedoBefore, uint256 priceBefore, , ) = dutchAuction.getStatus(id);
+        assertFalse(needsRedoBefore, "running before the pause");
+
+        // Pause for a stretch far past tail (1800): on wall time the auction would be long dead.
+        governor.pause();
+        vm.warp(vm.getBlockTimestamp() + 48 hours);
+
+        (bool needsRedoDuring, uint256 priceDuring, , ) = dutchAuction.getStatus(id);
+        assertEq(priceDuring, priceBefore, "price frozen through the pause");
+        assertFalse(needsRedoDuring, "tail frozen through the pause");
+
+        // Unpause: the auction resumes exactly where it stopped, no paid redo needed.
+        governor.unpause();
+
+        (bool needsRedoAfter, uint256 priceAfter, , ) = dutchAuction.getStatus(id);
+        assertEq(priceAfter, priceBefore, "resumes at the frozen price");
+        assertFalse(needsRedoAfter, "no reset minted by the pause");
+
+        // Active time keeps counting after the unpause: 900s more (1800 total, exactly tail) then one more
+        // second trips the reset condition — the same boundary the unpaused decay test pins.
+        vm.warp(vm.getBlockTimestamp() + 901);
+        (bool needsRedoExpired, , , ) = dutchAuction.getStatus(id);
+        assertTrue(needsRedoExpired, "tail elapses on active time only");
+    }
+
     function test_takeNeedsResetAfterTail() public {
         _setRainPrice(1e18);
         uint256 vaultId = _openVault(user, 400e18, 100e18);
