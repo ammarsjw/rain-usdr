@@ -177,6 +177,18 @@ interface IBalanceSheet {
     function laggedReserveAt() external view returns (uint256);
 
     /**
+     * @notice Returns the PREVIOUS lagged-reserve anchor [wad], judged by {humpTarget} instead of
+     *         {laggedReserve} when the current anchor was taken in the current block (audit M05): a
+     *         snapshot must never benefit the transaction that took it.
+     */
+    function prevLaggedReserve() external view returns (uint256);
+
+    /**
+     * @notice Returns the block number in which the current lagged-reserve anchor was taken.
+     */
+    function laggedReserveBlock() external view returns (uint256);
+
+    /**
      * @notice Returns the Vault Engine this balance sheet reports to.
      */
     function VAULT_ENGINE() external view returns (IVaultEngine);

@@ -184,6 +184,50 @@ contract BalanceSheetTest is BaseTest {
         assertEq(balanceSheet.humpTarget(), 10_000e18 * _RAY, "10% of 100k reserve");
     }
 
+    function test_snapshotCannotReanchorLagInSameBlock() public {
+        // Audit M05 regression: snapshotReserve is permissionless and its only condition is the anchor's
+        // AGE, so an attacker could shrink the reserve via buyStable, re-take the anchor in the same
+        // transaction, and distribute against the shrunken target — defeating the lag entirely. The fix:
+        // when the anchor was re-taken in the current block, humpTarget judges the MAX of the previous and
+        // current anchors (two-deep ring), so a same-block re-anchor can only raise the figure, never lower.
+        balanceSheet.file("humpRate", _WAD / 10);
+        balanceSheet.file("reserveAccounting", address(reserveAccounting));
+
+        // Reserve at 100k, settled and anchored.
+        usdt.mint(user, 100_000e6);
+        vm.startPrank(user);
+        usdt.approve(address(psm), 100_000e6);
+        psm.sellStable(USDT_ILK, user, 100_000e6);
+        vm.stopPrank();
+        vm.roll(vm.getBlockNumber() + 1);
+
+        // The age condition (>= laggedReserveAt + 1 day) must be satisfiable before the FIRST snapshot can
+        // fire: Foundry starts near timestamp 1, so a day is put on the clock first.
+        vm.warp(vm.getBlockTimestamp() + 1 days);
+        balanceSheet.snapshotReserve();
+        vm.roll(vm.getBlockNumber() + 1);
+        vm.warp(vm.getBlockTimestamp() + 1 days);
+
+        assertEq(balanceSheet.humpTarget(), 10_000e18 * _RAY, "anchored at the 100k reserve");
+
+        // The attack: redeem 60k (reserve falls to 40k) and re-anchor in the SAME block — the lag window
+        // is open, so the naive snapshot succeeds.
+        vm.startPrank(user);
+        usdr.approve(address(psm), 60_000e18);
+        psm.buyStable(USDT_ILK, user, 60_000e6);
+        vm.stopPrank();
+
+        balanceSheet.snapshotReserve();
+
+        // The same-block anchor does not benefit its taker: the target still derives from the previous
+        // 100k anchor, so a distribute in this transaction faces the old, higher figure.
+        assertEq(balanceSheet.humpTarget(), 10_000e18 * _RAY, "same-block re-anchor cannot shrink the target");
+
+        // From the next block onward the fresh anchor applies normally (max of live 40k and anchor 40k).
+        vm.roll(vm.getBlockNumber() + 1);
+        assertEq(balanceSheet.humpTarget(), 4_000e18 * _RAY, "fresh anchor counts from the next block");
+    }
+
     function test_distributeReleasesOnlyExcessAboveTarget() public {
         balanceSheet.file("humpFloor", 20 * _RAD);
         balanceSheet.file("buybackReceiver", address(0xB0B));
@@ -1091,9 +1135,13 @@ contract ReserveAuditTest is BaseTest {
         assertEq(balanceSheet.laggedReserve(), 200_000e18, "same-window snapshot refused");
 
         skip(1 days);
-        balanceSheet.snapshotReserve();
-        assertEq(balanceSheet.laggedReserve(), 100_000e18, "shrinkage lands after the lag");
-        assertEq(balanceSheet.humpTarget(), 10_000e18 * _RAY, "target follows after the lag");
+                balanceSheet.snapshotReserve();
+                assertEq(balanceSheet.laggedReserve(), 100_000e18, "shrinkage lands after the lag");
+
+                // The fresh (lower) anchor counts from the NEXT block (audit M05: a same-block re-anchor is judged
+                // at the max of the previous and current anchors, so the shrink is visible one block later).
+                vm.roll(vm.getBlockNumber() + 1);
+                assertEq(balanceSheet.humpTarget(), 10_000e18 * _RAY, "target follows after the lag");
     }
 
     /* ========================== 8. EXPOSURE CAP SYMMETRIC GUARD (H-5) ========================== */

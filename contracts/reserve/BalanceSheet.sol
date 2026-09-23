@@ -55,6 +55,12 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
     uint256 public laggedReserveAt;
 
     /// @inheritdoc IBalanceSheet
+    uint256 public prevLaggedReserve;
+
+    /// @inheritdoc IBalanceSheet
+    uint256 public laggedReserveBlock;
+
+    /// @inheritdoc IBalanceSheet
     address public buybackReceiver;
 
     /// @inheritdoc IBalanceSheet
@@ -284,6 +290,14 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
      */
     function _snapshotReserve() private {
         if (block.timestamp >= laggedReserveAt + _RESERVE_LAG && address(reserveAccounting) != address(0)) {
+            // The outgoing anchor is retained (audit M05): a snapshot taken in the CURRENT block must not
+            // benefit the transaction that took it, so humpTarget falls back to this previous anchor until
+            // the next block. Without it, an attacker could shrink the reserve via buyStable, re-anchor with
+            // the permissionless snapshotReserve, and distribute against the shrunken target — all in one
+            // transaction, defeating the lag entirely.
+            prevLaggedReserve = laggedReserve;
+            laggedReserveBlock = block.number;
+
             laggedReserve = reserveAccounting.totalReserve();
             laggedReserveAt = block.timestamp;
 
@@ -307,8 +321,21 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         if (address(reserveAccounting) != address(0)) {
             uint256 reserve = reserveAccounting.totalReserve();
 
-            if (laggedReserve > reserve) {
-                reserve = laggedReserve;
+            // A snapshot taken in the CURRENT block must not benefit the transaction that took it (audit
+            // M05): the anchor exists so the figure a distribution is measured against predates the
+            // transaction performing it. When the anchor was re-taken this block, the MAX of the previous
+            // and current anchors is judged — a two-deep ring: a same-block re-anchor can only RAISE the
+            // judged figure (a growing reserve counts immediately, as documented), never lower it, so a
+            // shrink-reanchor-distribute round trip still faces the old, higher figure. From the next block
+            // onward the fresh anchor applies normally.
+            uint256 anchor = laggedReserve;
+
+            if (block.number == laggedReserveBlock && prevLaggedReserve > anchor) {
+                anchor = prevLaggedReserve;
+            }
+
+            if (anchor > reserve) {
+                reserve = anchor;
             }
 
             uint256 dynamic = ((reserve * humpRate) / _WAD) * _RAY;
