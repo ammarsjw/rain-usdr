@@ -210,6 +210,24 @@ contract SolvencyEngine is ISolvencyEngine, AccessControl {
 
         for (uint256 i; i < length; ++i) {
             if (volatileIlks[i] == ilkId) {
+                // The ilk must carry NO live exposure before it leaves the loss model (audit M09): removal
+                // deletes its contribution from the only list worstCaseLoss traverses, so delisting an ilk
+                // with outstanding debt would release escrow against exposure that still exists. Symmetric
+                // with addVolatileIlk's existence check. Both exposure sources are checked: live vault debt
+                // (globalArt) and seized-but-unsettled auctions (totalTab/totalLot), which the loss term
+                // prices the same way.
+                (uint256 globalArt, , , , , , , ) = VAULT_ENGINE.ilks(ilkId);
+
+                if (globalArt != 0) {
+                    _revert(IlkStillExposed.selector);
+                }
+
+                IDutchAuction house = auctionHouse[ilkId];
+
+                if (address(house) != address(0) && (house.totalTab() != 0 || house.totalLot() != 0)) {
+                    _revert(IlkStillExposed.selector);
+                }
+
                 // Swap-and-pop removal.
                 volatileIlks[i] = volatileIlks[length - 1];
                 volatileIlks.pop();

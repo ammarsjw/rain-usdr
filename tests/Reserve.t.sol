@@ -398,6 +398,33 @@ contract ReserveTest is BaseTest {
 
     /* ========================== 4. VOLATILE ILK VALIDATION ========================== */
 
+    function test_removeVolatileIlkRefusedWhileExposed() public {
+        // Audit M09 regression: removeVolatileIlk used to delete the ilk from the only list worstCaseLoss
+        // traverses without checking its exposure, so a routine delisting of an ilk with live debt erased
+        // its stressed shortfall from the loss model and released the corresponding escrow. Removal now
+                // refuses while the ilk carries live vault debt or seized-but-unsettled auction exposure.
+        // ReserveTest opts out of the baseline seed (_baselineReserve() == 0), so the reserve backing the
+        // draw's stressed loss (30 USDR for a 100 USDR draw) is seeded here explicitly.
+        _sellUsdt(keeper, 100e6);
+
+        _setRainPrice(1e18);
+        uint256 vaultId = _openVault(user, 400e18, 100e18);
+
+        // The ilk carries live debt: removal is refused.
+        vm.expectRevert(ISolvencyEngine.IlkStillExposed.selector);
+        solvencyEngine.removeVolatileIlk(RAIN_ILK);
+
+        // Full wind-down: the vault repays everything and withdraws its collateral.
+        vm.startPrank(user);
+        vaultEngine.frob(vaultId, user, user, 0, -int256(100e18));
+        vaultEngine.frob(vaultId, user, user, -int256(400e18), 0);
+        vm.stopPrank();
+
+        // No exposure left: the delisting proceeds.
+        solvencyEngine.removeVolatileIlk(RAIN_ILK);
+        assertFalse(solvencyEngine.isVolatile(RAIN_ILK), "ilk delisted once exposure is zero");
+    }
+
     function test_addVolatileIlkValidatesExistence() public {
         vm.expectRevert();
         solvencyEngine.addVolatileIlk("GHOST-A");

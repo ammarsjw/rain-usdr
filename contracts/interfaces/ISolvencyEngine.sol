@@ -71,6 +71,13 @@ interface ISolvencyEngine {
      */
     error ExposureCapNotSet();
 
+    /**
+     * @dev Indicates that a volatile ilk cannot be removed while it still carries live exposure (audit M09):
+     *      outstanding vault debt or seized-but-unsettled auctions. Removing it would delete its
+     *      contribution from the loss model and release escrow against exposure that still exists.
+     */
+    error IlkStillExposed();
+
     /* ========================== FUNCTIONS ========================== */
 
     /**
