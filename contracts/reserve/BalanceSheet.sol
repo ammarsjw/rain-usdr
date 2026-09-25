@@ -22,22 +22,23 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title BalanceSheet
  * @author Rain Team
- * @notice The protocol's treasury and debt manager. Receives revenue as surplus, holds a safety buffer, and absorbs
- *         bad debt through an ordered waterfall. When the surplus buffer is full, the excess goes toward buying back
- *         and burning RAIN.
- * @dev Uses no surplus or debt auctions. USDR uses a RAIN buyback-and-burn for surplus and a controlled backstop for
- *      bad debt instead. The strict "fill before burn" rule is enforced in `distributeSurplus`. Bad debt entering via
- *      `fess` sits in a time-indexed queue for `wait` seconds before it can be healed so surplus cannot be netted
- *      against debt whose auction is still running. After surplus is exhausted, {backstop} sells treasury RAIN to a
- *      caller at a haircuted oracle price for USDR that is then healed against unqueued sin — capped, never an
- *      unlimited mint.
+ * @notice The protocol's treasury and debt manager. Receives revenue as surplus, holds a safety buffer, and
+ *         absorbs bad debt through an ordered waterfall. When the surplus buffer is full, the excess goes
+ *         toward buying back and burning RAIN.
+ * @dev Uses no surplus or debt auctions. USDR uses a RAIN buyback-and-burn for surplus and a controlled
+ *      backstop for bad debt instead. The strict "fill before burn" rule is enforced in `distributeSurplus`.
+ *      Bad debt entering via `fess` sits in a time-indexed queue for `wait` seconds before it can be healed
+ *      so surplus cannot be netted against debt whose auction is still running. After surplus is exhausted,
+ *      {backstop} sells treasury RAIN to a caller at a haircuted oracle price for USDR that is then healed
+ *      against unqueued sin ({backstop} is capped, and never an unlimited mint).
  */
 contract BalanceSheet is IBalanceSheet, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
 
-    /// @dev Minimum age of the lagged reserve snapshot used by {humpTarget}. A day is long enough that shrinking the
-    ///      dynamic term requires genuinely parking capital outside the reserve, not a flash round trip.
-    uint256 private constant _RESERVE_LAG = 1 days;
+    /// @dev Minimum age of the lagged reserve snapshot used by {humpTarget}. A day is long enough that
+    ///      shrinking the dynamic term requires genuinely parking capital outside the reserve for the full
+    ///      window.
+    uint256 private constant _RESERVE_LAG = 86_400;
 
     /// @inheritdoc IBalanceSheet
     IVaultEngine public immutable VAULT_ENGINE;
@@ -104,7 +105,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
 
         VAULT_ENGINE = vaultEngine_;
 
-        // Default sale price is 90% of the delayed oracle — buyers get a measured discount, the protocol never mints.
+        // Default sale price is 90% of the delayed oracle. Buyers get a measured discount, the protocol never
+        // mints.
         backstopHaircut = (_WAD * 90) / 100;
     }
 
@@ -123,7 +125,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         } else if (what == "backstopCap") {
             backstopCap = data;
         } else if (what == "backstopHaircut") {
-            // Haircut must be in (0, WAD]: selling above oracle would be out of scope; zero would divide by zero.
+            // Haircut must be in (0, WAD]: selling above oracle would be out of scope, and zero would divide
+            // by zero.
             if (data == 0 || data > _WAD) {
                 _revert(InvalidAmount.selector);
             }
@@ -176,8 +179,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
      * @inheritdoc IBalanceSheet
      */
     function fess(uint256 tab) external onlyRole(_WARD_ROLE) {
-        // Queueing the bad debt by its era so it cannot be healed (or shipped out as surplus) until `wait` seconds
-        // have passed and `flog` releases it.
+        // Queueing the bad debt by its era so it cannot be healed (or shipped out as surplus) until `wait`
+        // seconds have passed and `flog` releases it.
         sin[block.timestamp] += tab;
         totalQueuedSin += tab;
 
@@ -208,8 +211,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             _revert(InsufficientSurplus.selector);
         }
 
-        // Only debt released from the queue may be healed. USDR has no debt auctions, so there is no on-auction term
-        // to subtract, only the queued portion.
+        // Only debt released from the queue may be healed. USDR has no debt auctions, so there is no
+        // on-auction term to subtract, only the queued portion.
         if (rad > VAULT_ENGINE.sin(address(this)) - totalQueuedSin) {
             _revert(InsufficientDebt.selector);
         }
@@ -244,8 +247,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         uint256 surplus = VAULT_ENGINE.usdr(address(this));
         uint256 badDebt = VAULT_ENGINE.sin(address(this));
 
-        // Only unqueued sin past existing surplus is eligible: the surplus buffer (and queued debt) must be exhausted
-        // first. This is waterfall step 4.
+        // Only unqueued sin past existing surplus is eligible: the surplus buffer (and queued debt) must be
+        // exhausted first. This is waterfall step 4.
         if (badDebt <= totalQueuedSin + surplus) {
             _revert(BackstopNotNeeded.selector);
         }
@@ -283,7 +286,8 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             _revert(InsufficientBackstopRain.selector);
         }
 
-        // Caller must have hoped this contract (or be itself) so USDR can be pulled. RAIN is sent from the treasury.
+        // Caller must have hoped this contract (or be itself) so USDR can be pulled. RAIN is sent from the
+        // treasury.
         VAULT_ENGINE.move(msg.sender, address(this), rad);
         VAULT_ENGINE.flux(rainIlk, address(this), msg.sender, rainWad);
 
@@ -302,26 +306,39 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
         uint256 surplus = VAULT_ENGINE.usdr(address(this));
         uint256 badDebt = VAULT_ENGINE.sin(address(this));
 
-        // Unqueued bad debt must be healed before any distribution. This is a routine keeper race (a liquidation
-        // window always carries some sin), not an error, so it no-ops instead of reverting which is the same
-        // philosophy as the below-target case: keepers retry, automation stays quiet, nothing is lost. When the queue
-        // exceeds the engine sin (a fess without matched engine debt), unqueued debt is zero and the queue reservation
-        // below still holds back the full queued amount.
+        // Unqueued bad debt must be healed before any distribution. This is a routine keeper race (a
+        // liquidation window always carries some sin), not an error, so it no-ops instead of reverting which
+        // is the same philosophy as the below-target case: keepers retry, automation stays quiet, nothing is
+        // lost. When the queue exceeds the engine sin (a fess without matched engine debt), unqueued debt is
+        // zero and the queue reservation below still holds back the full queued amount.
         if (badDebt > totalQueuedSin) {
+            return 0;
+        }
+
+        // Snapshot-maturity gate: {humpTarget}'s dynamic term reads the lagged reserve snapshot, so the
+        // snapshot consumed by THIS distribution must itself be at least {_RESERVE_LAG} old. This closes the
+        // window boundary, where snapshot spacing (enforced in {_snapshotReserve}) would otherwise let a
+        // redeem into {snapshotReserve} into distribute round trip inside one transaction hand the
+        // distribution a target shrunk seconds earlier. A missing or immature snapshot is a routine timing
+        // condition (keepers retry once it matures), so it no-ops like the cases above.
+        if (
+            address(reserveAccounting) != address(0) &&
+            (laggedReserveAt == 0 || block.timestamp < laggedReserveAt + _RESERVE_LAG)
+        ) {
             return 0;
         }
 
         uint256 target = humpTarget();
 
-        // Queued sin cannot be healed yet, but it is real bad debt: the surplus that will heal it once the queue
-        // releases must never be shipped out. It is reserved on top of the buffer target.
+        // Queued sin cannot be healed yet, but it is real bad debt: the surplus that will heal it once the
+        // queue releases must never be shipped out. It is reserved on top of the buffer target.
         target += totalQueuedSin;
 
-        // Reserve-backing assertion: every fee-exempt (PSM stable) ilk's debt is the bookkeeping counterpart of
-        // stablecoins in the reserve, so the reserve must cover that debt before ANY surplus leaves the protocol. A
-        // shortfall means unbacked USDR was minted somewhere (e.g. a fee accrued on a stable ilk): distributing in
-        // that state converts the hole into permanently burned RAIN. Unlike the cases above this is a genuine alarm,
-        // not a keeper race, so it reverts loudly.
+        // Reserve-backing assertion: every fee-exempt (PSM stable) ilk's debt is the bookkeeping counterpart
+        // of stablecoins in the reserve, so the reserve must cover that debt before ANY surplus leaves the
+        // protocol. A shortfall means unbacked USDR was minted somewhere (e.g. a fee accrued on a stable
+        // ilk): distributing in that state converts the hole into permanently burned RAIN. Unlike the cases
+        // above this is a genuine alarm, not a keeper race, so it reverts loudly.
         if (address(reserveAccounting) != address(0)) {
             uint256 stableDebt;
             uint256 length = VAULT_ENGINE.ilkIdsLength();
@@ -341,17 +358,17 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
             }
         }
 
-        // The strict "fill before burn" rule: the surplus buffer must be above its target first. When the buffer is
-        // below target, no distribution happens and all revenue stays, and because this is a routine keeper no-op, not
-        // an error, it returns 0 instead of reverting.
+        // The strict "fill before burn" rule: the surplus buffer must be above its target first. When the
+        // buffer is below target, no distribution happens and all revenue stays, and because this is a
+        // routine keeper no-op, not an error, it returns 0 instead of reverting.
         if (surplus <= target) {
             return 0;
         }
 
-        // Solvency gate (HARD breach): a distribution ships value out of the protocol, so it is blocked while the
-        // reserve invariant is breached. The invariant is RECOMPUTED here rather than trusting the keeper-maintained
-        // flag, the same lazy gate as PSM redemption: surplus must never leave toward buyback while the stressed loss
-        // exceeds what the reserve can cover.
+        // Solvency gate (HARD breach): a distribution ships value out of the protocol, so it is blocked while
+        // the reserve invariant is breached. The invariant is RECOMPUTED here rather than trusting the
+        // keeper-maintained flag, the same lazy gate as PSM redemption: surplus must never leave toward
+        // buyback while the stressed loss exceeds what the reserve can cover.
         if (address(solvencyEngine) != address(0)) {
             solvencyEngine.checkInvariant();
 
@@ -369,11 +386,6 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
 
         VAULT_ENGINE.move(address(this), buybackReceiver, excess);
 
-        // Refreshing the lagged reserve snapshot AFTER the distribution: the snapshot a distribution is measured
-        // against is always at least {_RESERVE_LAG} old, so a redeem-shrink-distribute round trip inside one
-        // transaction (or one snapshot window) cannot lower the target it faces.
-        _snapshotReserve();
-
         emit DistributeSurplus({ excess: excess });
     }
 
@@ -388,12 +400,14 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
      * @inheritdoc IBalanceSheet
      */
     function humpTarget() public view returns (uint256 target) {
-        // Dynamic buffer target: the greater of the static floor and `humpRate` of the total stable reserve. The
-        // reserve is tracked in wad, the buffer in rad, so the rate product is scaled up by RAY. The dynamic term
-        // reads the LARGER of the live reserve and a snapshot at least {_RESERVE_LAG} old : `totalReserve` moves with
-        // permissionless PSM flows, so without the lag a user could redeem first, shrink the target, and drain more
-        // surplus in the same transaction. Growing the target (selling stables in) takes effect immediately and only
-        // shrinking it is lagged. The floor remains the authoritative lower bound.
+        // Dynamic buffer target: the greater of the static floor and `humpRate` of the total stable reserve.
+        // The reserve is tracked in wad, the buffer in rad, so the rate product is scaled up by RAY. The
+        // dynamic term reads the LARGER of the live reserve and the lagged snapshot: `totalReserve` moves
+        // with permissionless PSM flows, so without the lag a user could redeem first, shrink the target, and
+        // drain more surplus in the same transaction. {distributeSurplus} additionally waits for the snapshot
+        // to be at least {_RESERVE_LAG} old, so the value it consumes here has stood for a full window.
+        // Growing the target (selling stables in) takes effect immediately and only shrinking it is lagged.
+        // The floor remains the authoritative lower bound.
         target = humpFloor;
 
         if (address(reserveAccounting) != address(0)) {
@@ -412,9 +426,11 @@ contract BalanceSheet is IBalanceSheet, AccessControl {
     }
 
     /**
-     * @dev Records the current total reserve as the lagged snapshot, at most once per {_RESERVE_LAG}. Permissionless
-     *      via {snapshotReserve} (keepers keep it fresh) and called after every distribution. Because the snapshot can
-     *      only move once per lag window, a distribution never faces a target shrunk by same-window PSM outflow.
+     * @dev Records the current total reserve as the lagged snapshot, at most once per {_RESERVE_LAG}.
+     *      Permissionless via {snapshotReserve}: the daily keeper call is the only mover, and
+     *      {distributeSurplus} requires the snapshot it consumes to be at least {_RESERVE_LAG} old, so a
+     *      distribution always faces a target that stood for a full window. A stale snapshot fails safe
+     *      because overstating the reserve holds the target up and suppresses distributions.
      */
     function _snapshotReserve() private {
         if (block.timestamp >= laggedReserveAt + _RESERVE_LAG && address(reserveAccounting) != address(0)) {

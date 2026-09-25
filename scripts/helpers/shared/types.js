@@ -10,7 +10,8 @@ const LOG_TYPE = Object.freeze({
     /**
      * Primary logging disabled, secondary logging enabled.
      * @type {string}
-     * @description Suppresses log output from primary function logic while preserving secondary function logs.
+     * @description Suppresses log output from primary function logic while preserving secondary function
+     *              logs.
      * @example fun(data, LOG_TYPE.PRIMARY_QUIET)
      */
     PRIMARY_QUIET: "1",
@@ -18,7 +19,8 @@ const LOG_TYPE = Object.freeze({
     /**
      * Secondary logging disabled, primary logging enabled.
      * @type {string}
-     * @description Suppresses log output from secondary function calls while preserving primary function logs.
+     * @description Suppresses log output from secondary function calls while preserving primary function
+     *              logs.
      * @example fun(data, LOG_TYPE.SECONDARY_QUIET)
      */
     SECONDARY_QUIET: "2",
@@ -44,7 +46,8 @@ const TX_TYPE = Object.freeze({
     /**
      * EIP-1559 transaction type.
      * @type {string}
-     * @description Type 2 transactions support dynamic fee structure with maxFeePerGas and maxPriorityFeePerGas.
+     * @description Type 2 transactions support dynamic fee structure with maxFeePerGas and
+     *              maxPriorityFeePerGas.
      * @see {@link https://eips.ethereum.org/EIPS/eip-1559|EIP-1559 Specification}
      */
     TYPE2: "2"

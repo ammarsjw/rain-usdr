@@ -14,19 +14,19 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title USDR
  * @author Rain Team
- * @notice The Rain Dollar stablecoin. A standard, transferable digital dollar that can only be minted or burned by
- *         authorized system contracts (the Vault Engine adapter and the Peg Stability Module). No administrator can
- *         create USDR out of nothing.
+ * @notice The Rain Dollar stablecoin. A standard, transferable digital dollar that can only be minted or
+ *         burned by authorized system contracts (the Vault Engine adapter and the Peg Stability Module). No
+ *         administrator can create USDR out of nothing.
  * @dev Minter authorization is governed by the `_WARD_ROLE` of the shared AccessControl base. Burning from an
- *      arbitrary address without an allowance requires the dedicated `_BURNER_ROLE`, held only by the Collateral
- *      Adapter; `_WARD_ROLE` administers roles but does not itself carry burn power.
+ *      arbitrary address without an allowance requires the dedicated `_BURNER_ROLE`, held only by the
+ *      Collateral Adapter. `_WARD_ROLE` administers roles but does not itself carry burn power.
  */
 contract USDR is IUSDR, ERC20, ERC20Permit, AccessControl {
     /* ========================== CONSTRUCTOR ========================== */
 
     /**
-     * @notice Initializes the token and authorizes the deployer, which grants authorization to the Vault Engine
-     *         adapter and the Peg Stability Module during deployment.
+     * @notice Initializes the token and authorizes the deployer, which grants authorization to the Vault
+     *         Engine adapter and the Peg Stability Module during deployment.
      */
     constructor() ERC20("Rain Dollar", "USDR") ERC20Permit("Rain Dollar") {
         _setRoleAdmin(_BURNER_ROLE, _WARD_ROLE);

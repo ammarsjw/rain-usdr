@@ -14,7 +14,8 @@ const logTag = (tag) => {
 };
 
 const overwriteLog = (message) => {
-    // Overwriting output to terminal using a prepended carriage return and clearing from cursor to end of line.
+    // Overwriting output to terminal using a prepended carriage return and clearing from cursor to end of
+    // line.
     process.stdout.write(`\r\x1b[K${message}`);
 };
 

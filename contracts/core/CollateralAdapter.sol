@@ -16,14 +16,15 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title CollateralAdapter
  * @author Rain Team
- * @notice The doorway for tokens entering and leaving the system. Bridges real tokens (RAIN, USDT, USDC, and USDR
- *         itself) and the internal ledger. A single deployed instance serves every token: ilks are registered
- *         dynamically, each carrying its own token and custody or mint and burn behaviour.
- * @dev A single ilk-keyed module handles every token. Collateral ilks convert token decimals (USDT and USDC use 6,
- *      RAIN uses 18) to the internal 18 decimal representation and update the ledger through `slip`. The USDR ilk,
- *      registered under {_USDR_ILK}, moves internal balances (45 decimals) through `move` and mints or burns the
- *      ERC-20. Merging is safe because only `_WARD_ROLE` may register ilks and USDR mint authority is granted to this
- *      single contract on the token itself, so the collateral code path can never reach `mint`.
+ * @notice The doorway for tokens entering and leaving the system. Bridges real tokens (RAIN, USDT, USDC, and
+ *         USDR itself) and the internal ledger. A single deployed instance serves every token: ilks are
+ *         registered dynamically, each carrying its own token and custody or mint and burn behaviour.
+ * @dev A single ilk-keyed module handles every token. Collateral ilks convert token decimals (USDT and USDC
+ *      use 6, RAIN uses 18) to the internal 18 decimal representation and update the ledger through `slip`.
+ *      The USDR ilk, registered under {_USDR_ILK}, moves internal balances (45 decimals) through `move` and
+ *      mints or burns the ERC-20. Merging is safe because only `_WARD_ROLE` may register ilks and USDR mint
+ *      authority is granted to this single contract on the token itself, so the collateral code path can
+ *      never reach `mint`.
  */
 contract CollateralAdapter is ICollateralAdapter, AccessControl {
     using SafeERC20 for IERC20Metadata;
@@ -70,8 +71,8 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
 
         uint8 dec = token.decimals();
 
-        // Tokens with more than 18 decimals cannot be represented internally: the `10 ** (18 - dec)` conversion would
-        // underflow. Reject them at registration.
+        // Tokens with more than 18 decimals cannot be represented internally: the `10 ** (18 - dec)`
+        // conversion would underflow. Reject them at registration.
         if (dec > 18) {
             _revert(InvalidDecimals.selector);
         }
@@ -107,10 +108,10 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
                 _revert(NotLive.selector);
             }
 
-            // Measuring the balance delta actually received rather than trusting the nominal amount: a fee-on-transfer
-            // or rebasing token would otherwise credit more than the adapter holds, silently under-collateralizing the
-            // shared adapter and socializing the shortfall across every holder of the ilk. Only the delta is credited,
-            // and any shortfall surfaces here as a hard revert.
+            // Measuring the balance delta actually received rather than trusting the nominal amount: a
+            // fee-on-transfer or rebasing token would otherwise credit more than the adapter holds, silently
+            // under-collateralizing the shared adapter and socializing the shortfall across every holder of
+            // the ilk. Only the delta is credited, and any shortfall surfaces here as a hard revert.
             uint256 balanceBefore = ilk.token.balanceOf(address(this));
 
             ilk.token.safeTransferFrom(msg.sender, address(this), amount);
@@ -161,10 +162,11 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
             IUSDR(address(ilk.token)).mint(user, amount);
         } else {
             // Converting token decimals to the internal 18 decimal representation.
-            // NOTE: Exit takes the amount in TOKEN decimals, so for 6-decimal ilks any internal balance below 1e12
-            // (one token unit scaled to 18 decimals) is unreachable by exit. Such sub-unit ledger dust can only arise
-            // from internal transfers (flux), never from join/frob flows, and is bounded by one token unit per holder;
-            // it stays on the ledger rather than being silently rounded away.
+            //
+            // NOTE: Exit takes the amount in TOKEN decimals, so for 6-decimal ilks any internal balance below
+            // 1e12 (one token unit scaled to 18 decimals) is unreachable by exit. Such sub-unit ledger dust
+            // can only arise from internal transfers (flux), never from join/frob flows, and is bounded by
+            // one token unit per holder, and it stays on the ledger rather than being silently rounded away.
             uint256 wad = amount * (10 ** (18 - ilk.dec));
 
             if (wad > uint256(type(int256).max)) {
@@ -182,8 +184,8 @@ contract CollateralAdapter is ICollateralAdapter, AccessControl {
      * @inheritdoc ICollateralAdapter
      */
     function cage(bytes32 ilkId) external onlyRole(_WARD_ROLE) {
-        // Caging an unregistered ilk is rejected: silently succeeding would let a typoed governance call report
-        // success while the intended ilk stays live.
+        // Caging an unregistered ilk is rejected: silently succeeding would let a typoed governance call
+        // report success while the intended ilk stays live.
         if (address(ilks[ilkId].token) == address(0)) {
             _revert(InvalidAddress.selector);
         }

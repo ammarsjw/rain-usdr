@@ -12,10 +12,11 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title PriceCurve
  * @author Rain Team
- * @notice A pure calculator. Given an auction's starting price, its start time, and how long it should run, it returns
- *         the current price at any moment. USDR uses a straight-line decline: the price falls steadily from the start
- *         to zero over the auction's lifetime.
- * @dev Implements a linear decrease. The price falls in a straight line from the start value to zero over `tau`.
+ * @notice A pure calculator. Given an auction's starting price, its start time, and how long it should run,
+ *         it returns the current price at any moment. USDR uses a straight-line decline: the price falls
+ *         steadily from the start to zero over the auction's lifetime.
+ * @dev Implements a linear decrease. The price falls in a straight line from the start value to zero over
+ *      `tau`.
  */
 contract PriceCurve is IPriceCurve, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -41,8 +42,8 @@ contract PriceCurve is IPriceCurve, AccessControl {
      */
     function file(bytes32 what, uint256 data) external onlyRole(_WARD_ROLE) {
         if (what == "tau") {
-            // tau == 0 would make price() return 0 for every duration: every take reverts, redo cannot recover, and
-            // all collateral in auction is unsellable until a nonzero tau is filed.
+            // tau == 0 would make price() return 0 for every duration: every take reverts, redo cannot
+            // recover, and all collateral in auction is unsellable until a nonzero tau is filed.
             if (data == 0) {
                 _revert(InvalidAmount.selector);
             }

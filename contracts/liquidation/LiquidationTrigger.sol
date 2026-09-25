@@ -19,10 +19,11 @@ import { _revert } from "../shared/Globals.sol";
 /**
  * @title LiquidationTrigger
  * @author Rain Team
- * @notice The watchdog. When a vault falls below its required collateralization, anyone can point this contract at it
- *         to {bark}, seizing the vault and kicking off a Dutch auction to sell its collateral and recover the debt.
- * @dev Adds a circuit breaker check. When the breaker is active, the rate of new liquidations is throttled to a
- *      fraction of normal.
+ * @notice The watchdog. When a vault falls below its required collateralization, anyone can point this
+ *         contract at it to {bark}, seizing the vault and kicking off a dutch auction to sell its collateral
+ *         and recover the debt.
+ * @dev Adds a circuit breaker check. When the breaker is active, the rate of new liquidations is throttled to
+ *      a fraction of normal.
  */
 contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     /* ========================== STATE VARIABLES ========================== */
@@ -47,6 +48,9 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
 
     /// @inheritdoc ILiquidationTrigger
     ICircuitBreaker public circuitBreaker;
+
+    /// @inheritdoc ILiquidationTrigger
+    IDutchAuction public dutchAuction;
 
     /// @inheritdoc ILiquidationTrigger
     IGovernor public governor;
@@ -84,8 +88,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         if (what == "globalHole") {
             globalHole = data;
         } else if (what == "throttle") {
-            // The throttle lives in (0, WAD]: it scales available liquidation room while the circuit breaker is
-            // active, and zero would silently convert the throttle into a full liquidation halt.
+            // The throttle lives in (0, WAD]: it scales available liquidation room while the circuit breaker
+            // is active, and zero would silently convert the throttle into a full liquidation halt.
             if (data == 0 || data > _WAD) {
                 _revert(InvalidThrottle.selector);
             }
@@ -106,6 +110,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             balanceSheet = IBalanceSheet(data);
         } else if (what == "circuitBreaker") {
             circuitBreaker = ICircuitBreaker(data);
+        } else if (what == "dutchAuction") {
+            dutchAuction = IDutchAuction(data);
         } else if (what == "governor") {
             governor = IGovernor(data);
         } else {
@@ -128,8 +134,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         } else if (what == "hole") {
             ilks[ilkId].hole = data;
         } else if (what == "barkFactor") {
-            // The bark factor must be in (0, 1]: a vault only becomes liquidatable once its collateral ratio falls to
-            // this fraction of the ilk's required ratio.
+            // The bark factor must be in (0, 1]: a vault only becomes liquidatable once its collateral ratio
+            // falls to this fraction of the ilk's required ratio.
             if (data == 0 || data > _WAD) {
                 _revert(InvalidBarkFactor.selector);
             }
@@ -145,19 +151,6 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
     /**
      * @inheritdoc ILiquidationTrigger
      */
-    function file(bytes32 ilkId, bytes32 what, address dutchAuction) external onlyRole(_WARD_ROLE) {
-        if (what == "dutchAuction") {
-            ilks[ilkId].dutchAuction = dutchAuction;
-        } else {
-            _revert(UnrecognizedParameter.selector);
-        }
-
-        emit File({ ilkId: ilkId, what: what, addr: dutchAuction });
-    }
-
-    /**
-     * @inheritdoc ILiquidationTrigger
-     */
     function bark(uint256 vaultId, address kpr) external returns (uint256 id) {
         if (live != 1) {
             _revert(NotLive.selector);
@@ -168,9 +161,9 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             _revert(SystemPaused.selector);
         }
 
-        // The vault must exist; its collateral type is fixed at open time. Each vault is checked against the bark
-        // threshold independently: only the (ink, art) of THIS vault id enter the unsafe condition, so one owner's
-        // unsafe vault never drags their other vaults into liquidation.
+        // The vault must exist, and its collateral type is fixed at open time. Each vault is checked against
+        // the bark threshold independently: only the (ink, art) of THIS vault id enter the unsafe condition,
+        // so one owner's unsafe vault never drags their other vaults into liquidation.
         address owner = VAULT_ENGINE.ownerOf(vaultId);
 
         if (owner == address(0)) {
@@ -179,8 +172,8 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
 
         bytes32 ilkId = VAULT_ENGINE.ilkOf(vaultId);
 
-        // Accrue the stability fee first so the unsafe check, the tab and the auction all snapshot the true accrued
-        // debt at the current rate.
+        // Accrue the stability fee first so the unsafe check, the tab and the auction all snapshot the true
+        // accrued debt at the current rate.
         VAULT_ENGINE.drip(ilkId);
 
         (uint256 ink, uint256 art) = VAULT_ENGINE.urns(vaultId);
@@ -195,12 +188,13 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
 
             (, , rate, spot, , dust, , ) = VAULT_ENGINE.ilks(ilkId);
 
-            // Unsafe check: the vault's collateral value must be below `barkFactor` of its debt. `spot` [ray] already
-            // embeds the ilk's required ratio (mat), so `ink * spot < art * rate` is the at-mat condition; scaling the
-            // debt side by barkFactor [wad] moves the trigger to barkFactor of mat (e.g. 65% of 400% = 260%). Units:
-            // ink [wad] * spot [ray] = [rad]; art [wad] * rate [ray] = [rad]. With a variable rate, `art * rate` is no
-            // longer a multiple of RAY, so dividing by WAD before multiplying by barkFactor would truncate;
-            // Math.mulDiv keeps full 512-bit precision at any rate >= RAY.
+            // Unsafe check: the vault's collateral value must be below `barkFactor` of its debt. `spot` [ray]
+            // already embeds the ilk's required ratio (mat), so `ink * spot < art * rate` is the at-mat
+            // condition. Scaling the debt side by barkFactor [wad] moves the trigger to barkFactor of mat
+            // (e.g. 65% of 400% = 260%). Units: ink [wad] * spot [ray] = [rad] and art [wad] * rate [ray] =
+            // [rad]. With a variable rate, `art * rate` is no longer a multiple of RAY, so dividing by WAD
+            // before multiplying by barkFactor would truncate, so Math.mulDiv keeps full 512-bit precision at
+            // any rate >= RAY.
             if (spot == 0 || ink * spot >= Math.mulDiv(art * rate, milk.barkFactor, _WAD)) {
                 _revert(NotUnsafe.selector);
             }
@@ -212,15 +206,15 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
 
             uint256 room = Math.min(globalHole - globalDirt, milk.hole - milk.dirt);
 
-            // Circuit breaker check: when the breaker is active, new liquidations are throttled to a fraction of the
-            // normal available room per period.
+            // Circuit breaker check: when the breaker is active, new liquidations are throttled to a fraction
+            // of the normal available room per period.
             if (address(circuitBreaker) != address(0) && circuitBreaker.active()) {
                 room = (room * throttle) / _WAD;
             }
 
-            // uint256.max()/(RAD*WAD) = 115,792,089,237,316, i.e. the room [rad] * WAD product has overflow headroom
-            // up to ~115 trillion rad of room. Ordering multiplies before dividing so small rooms at large rates still
-            // yield a correctly scaled, nonzero dart.
+            // uint256.max()/(RAD*WAD) = 115,792,089,237,316, i.e. the room [rad] * WAD product has overflow
+            // headroom up to ~115 trillion rad of room. Ordering multiplies before dividing so small rooms at
+            // large rates still yield a correctly scaled, nonzero dart.
             dart = Math.min(art, (room * _WAD) / rate / milk.chop);
 
             // Partial liquidation edge case logic.
@@ -248,7 +242,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
         }
 
         // Seizing the vault: collateral moves to the auction, debt moves to the balance sheet.
-        VAULT_ENGINE.grab(vaultId, milk.dutchAuction, address(balanceSheet), -int256(dink), -int256(dart));
+        VAULT_ENGINE.grab(vaultId, address(dutchAuction), address(balanceSheet), -int256(dink), -int256(dart));
 
         uint256 due = dart * rate;
 
@@ -261,10 +255,10 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             globalDirt += tab;
             ilks[ilkId].dirt += tab;
 
-            // Starting the Dutch auction. Whoever called bark is eligible for the keeper reward. Any leftover
-            // collateral from the auction is returned to the vault's owner. The vault id rides along so emergency
-            // settlement can reclaim the auction into the vault it was seized from.
-            id = IDutchAuction(milk.dutchAuction).kick({ tab: tab, lot: dink, vaultId: vaultId, usr: owner, kpr: kpr });
+            // Starting the dutch auction. Whoever called bark is eligible for the keeper reward. Any leftover
+            // collateral from the auction is returned to the vault's owner. The vault id rides along so
+            // emergency settlement can reclaim the auction into the vault it was seized from.
+            id = dutchAuction.kick({ ilkId: ilkId, tab: tab, lot: dink, vaultId: vaultId, usr: owner, kpr: kpr });
         }
 
         emit Bark({
@@ -274,7 +268,7 @@ contract LiquidationTrigger is ILiquidationTrigger, AccessControl {
             ink: dink,
             art: dart,
             due: due,
-            dutchAuction: milk.dutchAuction,
+            dutchAuction: address(dutchAuction),
             id: id
         });
     }

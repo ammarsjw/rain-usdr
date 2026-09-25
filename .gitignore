@@ -35,4 +35,5 @@ foundry.lock
 /broadcast/**/dry-run/
 
 # Documentation files
-docs
+docs/*
+!docs/shared/

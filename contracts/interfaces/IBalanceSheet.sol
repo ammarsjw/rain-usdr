@@ -110,8 +110,8 @@ interface IBalanceSheet {
     error NoBuybackReceiver();
 
     /**
-     * @dev Indicates that the stable reserve no longer covers the debt of the fee-exempt (PSM) ilks: unbacked USDR
-     *      exists and no surplus may leave the protocol.
+     * @dev Indicates that the stable reserve no longer covers the debt of the fee-exempt (PSM) ilks: unbacked
+     *      USDR exists and no surplus may leave the protocol.
      */
     error ReserveBackingShortfall();
 
@@ -143,9 +143,9 @@ interface IBalanceSheet {
     /* ========================== FUNCTIONS ========================== */
 
     /**
-     * @notice Adjusts the surplus buffer floor {humpFloor} [rad], the dynamic buffer rate {humpRate} [wad], the bad
-     *         debt queue delay {wait} [seconds], the backstop lifetime cap {backstopCap} [rad], or the backstop sale
-     *         haircut {backstopHaircut} [wad].
+     * @notice Adjusts the surplus buffer floor {humpFloor} [rad], the dynamic buffer rate {humpRate} [wad],
+     *         the bad debt queue delay {wait} [seconds], the backstop lifetime cap {backstopCap} [rad], or
+     *         the backstop sale haircut {backstopHaircut} [wad].
      * @param what Name of the parameter.
      * @param data New value.
      */
@@ -168,8 +168,8 @@ interface IBalanceSheet {
 
     /**
      * @notice Registers bad debt when an auction fails to fully cover a vault's debt.
-     * @dev Called by the Liquidation Trigger. The debt itself lands on this contract's `sin` balance in the Vault
-     *      Engine via `grab`.
+     * @dev Called by the Liquidation Trigger. The debt itself lands on this contract's `sin` balance in the
+     *      Vault Engine via `grab`.
      * @param tab Amount of uncovered debt registered [rad].
      */
     function fess(uint256 tab) external;
@@ -196,10 +196,10 @@ interface IBalanceSheet {
     function suck(address kpr, uint256 rad) external;
 
     /**
-     * @notice Sells treasury RAIN for USDR at a haircuted oracle price and heals the proceeds against unqueued bad
-     *         debt. Waterfall step 4 after the surplus buffer is exhausted.
-     * @dev The caller must have hoped this contract (or be paying from its own balance). Clamped to the remaining hole
-     *      and {backstopCap}. Returns the RAIN amount transferred.
+     * @notice Sells treasury RAIN for USDR at a haircuted oracle price and heals the proceeds against
+     *         unqueued bad debt. Waterfall step 4 after the surplus buffer is exhausted.
+     * @dev The caller must have hoped this contract (or be paying from its own balance). Clamped to the
+     *      remaining hole and {backstopCap}. Returns the RAIN amount transferred.
      * @param rad Maximum USDR amount to heal [rad].
      * @return rainWad RAIN sold [wad].
      */
@@ -207,19 +207,25 @@ interface IBalanceSheet {
 
     /**
      * @notice Sends the surplus above the buffer target toward RAIN buyback-and-burn.
-     * @dev Returns 0 without effect when the buffer is at or below target, the strict "fill before burn" rule.
+     * @dev Returns 0 without effect when the buffer is at or below target (the strict "fill before burn"
+     *      rule), when unqueued bad debt is outstanding, or when reserve accounting is wired and the lagged
+     *      reserve snapshot is missing or younger than the lag window. The maturity requirement guarantees
+     *      the target is measured against a reserve value that has stood for a full window.
      * @return excess Amount released [rad].
      */
     function distributeSurplus() external returns (uint256 excess);
 
     /**
      * @notice Refreshes the lagged reserve snapshot used by {humpTarget}, at most once per lag window.
-     * @dev Permissionless: keepers keep the snapshot fresh so reserve growth eventually raises the dynamic target.
+     * @dev Permissionless and the snapshot's only mover: keepers call it once per window. A freshly taken
+     *      snapshot becomes consumable by {distributeSurplus} once it matures for a full lag window, and a
+     *      stale snapshot fails safe because overstating the reserve holds the target up.
      */
     function snapshotReserve() external;
 
     /**
-     * @notice Returns the current surplus buffer target: max of {humpFloor} and {humpRate} of the total reserve.
+     * @notice Returns the current surplus buffer target: max of {humpFloor} and {humpRate} of the total
+     *         reserve.
      * @return target The buffer target [rad].
      */
     function humpTarget() external view returns (uint256 target);
@@ -251,6 +257,7 @@ interface IBalanceSheet {
 
     /**
      * @notice Returns the lagged total-reserve snapshot [wad] used by {humpTarget}'s dynamic term.
+     *         {distributeSurplus} consumes it once it is at least a full lag window old.
      */
     function laggedReserve() external view returns (uint256);
 

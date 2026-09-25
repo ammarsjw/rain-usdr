@@ -4,12 +4,13 @@ pragma solidity 0.8.30;
 
 /* ========================== FREE VARIABLES ========================== */
 
-/// @dev Reserved ilk identifier for USDR itself in the Collateral Adapter. USDR is not a collateral type in the Vault
-///      Engine, so this id only selects the mint and burn code path.
+/// @dev Reserved ilk identifier for USDR itself in the Collateral Adapter. USDR is not a collateral type in
+///      the Vault Engine, so this id only selects the mint and burn code path.
 bytes32 constant _USDR_ILK = "USDR";
 
 // keccak256("BURNER_ROLE")
-/// @dev Grants the right to burn USDR from any address without an allowance. Held only by the Collateral Adapter.
+/// @dev Grants the right to burn USDR from any address without an allowance. Held only by the Collateral
+///      Adapter.
 bytes32 constant _BURNER_ROLE = 0x3c11d16cbaffd01df69ce1c404f6340ee057498f5f00246190ea54220576a848;
 
 // keccak256("COMMITTER_ROLE")

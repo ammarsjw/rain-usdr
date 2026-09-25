@@ -59,7 +59,8 @@ interface IReserveAccounting {
 
     /**
      * @notice Sets how much of the reserve is committed to guaranteed obligations.
-     * @dev Reverts if the committed amount would exceed the total reserve. Only the Solvency Engine can call this.
+     * @dev Reverts if the committed amount would exceed the total reserve. Only the Solvency Engine can call
+     *      this.
      * @param wad The current worst-case loss [wad].
      */
     function updateCommittedEscrow(uint256 wad) external;

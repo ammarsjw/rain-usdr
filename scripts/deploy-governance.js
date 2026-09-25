@@ -54,8 +54,8 @@ const deployGovernance = async () => {
     const endConstructorArguments = [vaultEngineAddress];
     const endAddress = await deployContract(endName, endConstructorArguments);
 
-    // Wiring the End's dependencies and settlement cooldown (must exceed the Balance Sheet's sin queue wait so
-    // thaw can heal all queued sin first).
+    // Wiring the End's dependencies and settlement cooldown (must exceed the Balance Sheet's sin queue wait
+    // so thaw can heal all queued sin first).
     const endInstance = await hardhat.ethers.getContractAt(endName, endAddress);
     await (
         await endInstance["file(bytes32,address)"](
@@ -114,9 +114,9 @@ const deployGovernance = async () => {
         )
     ).wait();
 
-    // Refreshing the auction's dust-times-chop cache now that dust is final.
+    // Refreshing the auction's dust-times-chop cache for RAIN now that dust is final.
     const dutchAuctionInstance = await hardhat.ethers.getContractAt("DutchAuction", dutchAuctionAddress);
-    await (await dutchAuctionInstance.upchost()).wait();
+    await (await dutchAuctionInstance.upchost(rainIlk)).wait();
 
     // Wiring the Governor's emergency pause into the gated entry points.
     const governorWhat = hardhat.ethers.encodeBytes32String("governor");
@@ -145,9 +145,9 @@ const deployGovernance = async () => {
     await (await osmInstance.grantRole(READER_ROLE, endAddress)).wait();
 
     if (governorHandover) {
-        // Handing full control of EVERY deployed contract to the Governor and renouncing the deployer's WARD role.
-        // Ordering matters: renounce only after all cross-contract wiring and file calls are complete (this script runs
-        // last in the deploy sequence).
+        // Handing full control of EVERY deployed contract to the Governor and renouncing the deployer's WARD
+        // role. Ordering matters: renounce only after all cross-contract wiring and file calls are complete
+        // (this script runs last in the deploy sequence).
         const [deployer] = await hardhat.ethers.getSigners();
         const wardedContracts = [
             ["USDR", usdrAddress],

@@ -1,6 +1,6 @@
 const hardhat = require("hardhat");
 
-const { BURNER_ROLE, COMMITTER_ROLE, READER_ROLE, RECORDER_ROLE, WARD_ROLE } = require("./helpers/shared/constants");
+const { BURNER_ROLE, COMMITTER_ROLE, READER_ROLE, RECORDER_ROLE, WARD_ROLE } = require("../helpers/shared/constants");
 
 /**
  * Verifies the post-deployment access-control surface:

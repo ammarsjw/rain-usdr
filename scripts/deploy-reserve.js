@@ -62,14 +62,33 @@ const deployReserve = async () => {
     // Allowing the Solvency Engine to commit escrow in Reserve Accounting.
     await (await reserveAccountingInstance.grantRole(COMMITTER_ROLE, solvencyEngineAddress)).wait();
 
+    // Binding the stable (PSM) ilks exclusively to the PSM BEFORE it opens its vaults: the reserve-backing
+    // check in BalanceSheet.distributeSurplus assumes every unit of debt on a stable ilk is the PSM's
+    // reserve-backed 1:1 debt, so no other owner may ever hold a vault on these ilks. Must be filed before
+    // psm.init (open enforces the binding) and while the ilks carry no debt (file enforces that).
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,address)"](
+            usdtIlk,
+            hardhat.ethers.encodeBytes32String("exclusiveTo"),
+            psmAddress
+        )
+    ).wait();
+    await (
+        await vaultEngineInstance["file(bytes32,bytes32,address)"](
+            usdcIlk,
+            hardhat.ethers.encodeBytes32String("exclusiveTo"),
+            psmAddress
+        )
+    ).wait();
+
     // Registering the stablecoin ilks on the PSM and authorizing it as a reserve recorder.
     const psmInstance = await hardhat.ethers.getContractAt(psmName, psmAddress);
     await (await psmInstance.init(usdtIlk)).wait();
     await (await psmInstance.init(usdcIlk)).wait();
     await (await reserveAccountingInstance.grantRole(RECORDER_ROLE, psmAddress)).wait();
 
-    // Registering RAIN as a volatile collateral in the solvency stress calculation and wiring the direct OSM price
-    // source (worst-case loss reads prices straight from the OSM, never spot * mat).
+    // Registering RAIN as a volatile collateral in the solvency stress calculation and wiring the direct OSM
+    // price source (worst-case loss reads prices straight from the OSM, never spot * mat).
     await (await solvencyEngineInstance.addVolatileIlk(rainIlk)).wait();
     await (
         await solvencyEngineInstance["file(bytes32,address)"](
@@ -82,8 +101,8 @@ const deployReserve = async () => {
     const osmInstance = await hardhat.ethers.getContractAt("OracleSecurityModule", osmAddress);
     await (await osmInstance.grantRole(READER_ROLE, solvencyEngineAddress)).wait();
 
-    // Wiring the solvency gate: risk-increasing frobs, PSM redemptions and surplus distributions consult the Solvency
-    // Engine (hard gates); OSM pokes and drip refresh the breach flag softly.
+    // Wiring the solvency gate: risk-increasing frobs, PSM redemptions and surplus distributions consult the
+    // Solvency Engine (hard gates); OSM pokes and drip refresh the breach flag softly.
     await (
         await vaultEngineInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("solvencyEngine"),
@@ -103,7 +122,8 @@ const deployReserve = async () => {
         )
     ).wait();
 
-    // Balance Sheet: bad debt queue delay, surplus buffer floor ($500k) and dynamic rate (10% of the reserve).
+    // Balance Sheet: bad debt queue delay, surplus buffer floor ($500k) and dynamic rate (10% of the
+    // reserve).
     const balanceSheetInstance = await hardhat.ethers.getContractAt(balanceSheetName, balanceSheetAddress);
     await (
         await balanceSheetInstance["file(bytes32,uint256)"](hardhat.ethers.encodeBytes32String("wait"), 561600n)
@@ -137,6 +157,11 @@ const deployReserve = async () => {
         )
     ).wait();
 
+    // Taking the genesis reserve snapshot: distributeSurplus only consumes a snapshot at least one lag window
+    // (86400 s) old, so the clock must start at deploy or the first distribution waits on the first keeper
+    // snapshot instead. Keepers refresh it once per window from here on.
+    await (await balanceSheetInstance.snapshotReserve()).wait();
+
     // RAIN backstop (waterfall step 4): sell treasury RAIN at a haircuted OSM price to heal unqueued sin.
     const backstopCap = process.env.BACKSTOP_CAP ? BigInt(process.env.BACKSTOP_CAP) : 50000n * RAD;
     await (
@@ -159,9 +184,13 @@ const deployReserve = async () => {
     // Authorizing the Balance Sheet to heal and suck on the ledger.
     await (await vaultEngineInstance.grantRole(WARD_ROLE, balanceSheetAddress)).wait();
 
-    // Stability fee wiring: accrued fees (drip) are credited to the Balance Sheet as surplus. Only VOLATILE ilk's duty
-    // needs to be filed, in our case RAIN-A will have ~2% APY = 1000000000627937192491029810n (ray, per-second factor
-    // 1.02^(1/31536000)).
+    // Stability fee wiring: accrued fees (drip) are credited to the Balance Sheet as surplus. Only VOLATILE
+    // ilk's duty needs to be filed, in our case RAIN-A will have ~2% APY = 1000000000627937192491029810n
+    // (ray, per-second factor 1.02^(1/31536000)).
+    const rainDuty = process.env.RAIN_DUTY
+        ? BigInt(process.env.RAIN_DUTY)
+        : // ~2% APY default.
+          1000000000627937192491029810n;
     await (
         await vaultEngineInstance["file(bytes32,address)"](
             hardhat.ethers.encodeBytes32String("feeRecipient"),
@@ -172,7 +201,7 @@ const deployReserve = async () => {
         await vaultEngineInstance["file(bytes32,bytes32,uint256)"](
             rainIlk,
             hardhat.ethers.encodeBytes32String("duty"),
-            1000000000627937192491029810n
+            rainDuty
         )
     ).wait();
 

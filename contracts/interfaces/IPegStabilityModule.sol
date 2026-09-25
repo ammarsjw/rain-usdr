@@ -14,8 +14,8 @@ import { IVaultEngine } from "./IVaultEngine.sol";
 /**
  * @title IPegStabilityModule
  * @author Rain Team
- * @notice Interface for the module that swaps stablecoins for USDR at 1:1, serving every stablecoin from a single
- *         deployed instance.
+ * @notice Interface for the module that swaps stablecoins for USDR at 1:1, serving every stablecoin from a
+ *         single deployed instance.
  */
 interface IPegStabilityModule {
     /* ========================== TYPES ========================== */
@@ -74,12 +74,14 @@ interface IPegStabilityModule {
     error InsufficientFreeSlack();
 
     /**
-     * @dev Indicates a stable ilk being registered without a permanent stability-fee exemption in the Vault Engine.
+     * @dev Indicates a stable ilk being registered without a permanent stability-fee exemption in the Vault
+     *      Engine.
      */
     error StableIlkNotFeeExempt();
 
     /**
-     * @dev Indicates that a stable ilk's debt multiplier has left RAY: the module's 1:1 accounting is unsound.
+     * @dev Indicates that a stable ilk's debt multiplier has left RAY: the module's 1:1 accounting is
+     *      unsound.
      */
     error StableIlkRateNotPar();
 
@@ -87,15 +89,15 @@ interface IPegStabilityModule {
 
     /**
      * @notice Registers a stablecoin ilk. This is how new stablecoins are added to the module.
-     * @dev The ilk must already be registered with the Collateral Adapter, and must not be the USDR ilk. The token and
-     *      its decimals are read from the adapter.
+     * @dev The ilk must already be registered with the Collateral Adapter, and must not be the USDR ilk. The
+     *      token and its decimals are read from the adapter.
      * @param ilkId Identifier of the stablecoin's collateral type.
      */
     function init(bytes32 ilkId) external;
 
     /**
-     * @notice Sets an address dependency {solvencyEngine} or {governor}. Either may be unset (`address(0)`), in which
-     *         case the corresponding check is skipped.
+     * @notice Sets an address dependency {solvencyEngine} or {governor}. Either may be unset (`address(0)`),
+     *         in which case the corresponding check is skipped.
      * @param what Name of the parameter.
      * @param data New address.
      */
